@@ -1,7 +1,7 @@
 # 🎮 UnitySkills
 
 <p align="center">
-  <img src="docs/Unity-Skills-H.png" alt="Unity-Skills" width="800">
+  <img src="docs/images/Unity-Skills-H.png" alt="Unity-Skills" width="800">
 </p>
 
 <p align="center">
@@ -130,7 +130,7 @@ UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission
 > **总体路线**：安装 Unity 插件 → 开启 UnitySkills 服务器 → AI 使用 Skill
 
 <p align="center">
-  <img src="docs/installation-demo.gif" alt="一键安装演示" width="800">
+  <img src="docs/images/installation-demo.gif" alt="一键安装演示" width="800">
 </p>
 
 ### 1. 安装 Unity 插件
@@ -311,7 +311,10 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │           ├── Controllers/                    # 页面与组件控制器
 │           └── Tabs/                           # UXML 页面结构与设置抽屉
 ├── docs/
-│   └── SETUP_GUIDE.md              # 完整安装使用指南
+│   ├── SETUP_GUIDE.md              # 完整安装使用指南（另有 _CN 版本）
+│   ├── OPERATING_MODES.md          # 操作模式与治理层（另有 _CN 版本）
+│   ├── images/                     # README 图片
+│   └── sponsors/                   # 赞助商图标
 ├── CHANGELOG.md                    # 版本更新记录
 └── LICENSE                         # MIT 开源协议
 ```

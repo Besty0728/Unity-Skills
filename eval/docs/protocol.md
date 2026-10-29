@@ -121,4 +121,4 @@ corrections (D3 first-empty-label selection and D12 pathless rollback deletion),
 164 derived passes and4 partials. All12 T2 samples and all168 scope journals were reviewed
 uniformly. Original reports, ledger and frozen source are unchanged. The separate generator
 validates original evidence hashes and changes copied report objects only. CaseVersion1
-remains frozen in `reports/case-freeze-v1.json`; proposed future fixes require new identities.
+remains frozen in `results/case-freeze-v1.json`; proposed future fixes require new identities.

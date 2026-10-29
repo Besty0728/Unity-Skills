@@ -6,7 +6,7 @@ import unittest
 from .runner_support import REPO
 from usk_eval import prompts
 
-CONTRACT = os.path.join(REPO, "eval", "design", "v3-contracts.md")
+CONTRACT = os.path.join(REPO, "eval", "docs", "design", "v3-contracts.md")
 PLACEHOLDER_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 

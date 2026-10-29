@@ -8,7 +8,7 @@ shipped with the package. P1 will move the same rules into the editor panel.
 ## v3 maintainer workflow
 
 v3 moves the evaluation into the package: the runner is `SkillsForUnity/Evaluation~/run_eval.py` (contract:
-[design/v3-contracts.md](design/v3-contracts.md)), users start it from the Evaluation tab or through their agent, and
+[docs/design/v3-contracts.md](docs/design/v3-contracts.md)), users start it from the Evaluation tab or through their agent, and
 the public tasks ship in `SkillsForUnity/Evaluation~/pack/`. This folder keeps what must not ship: the private
 verifiers (`pack/private/<ID>.py`, published per release tag and as a zip), the reference solutions
 (`pack/solutions/<ID>.py`) and the maintainer tools below. Everything under `runs/` stays local.
@@ -80,6 +80,12 @@ A gate vouches for the plugin build that ran it: the editor must load this check
 `packageRoot`; `--allow-other-package` records anyway, marked `override`) and must have compiled every `.cs`/`.asmdef`
 in it (none newer than `assembliesLoadedAtUtc`), otherwise no gate is recorded. `--task` may be repeated.
 
+A long gate run needs editor restarts. On 2022.3 every domain reload of an editor process makes the next one slower,
+whether or not the plugin is installed: about 0.8 s fresh, 7 s after 250 reloads. Only a restart resets it, and past
+about 26 s Play Mode cases time out. Open each editor with its own `-logFile`, and between two tasks run
+`python3 -B eval/tools/reload_guard.py <that log>`. When it exits 3 (the median of the last three reloads is 3 s or
+more), restart that editor before the next task. The tool is not a gate input, so it does not change any gate hash.
+
 ### Batch suite
 
 ```bash
@@ -148,12 +154,10 @@ separately adjudicated **164 pass / 4 partial**. Two documented T2 verifier fals
 corrected only in derived reports with user approval; raw scores and ledger remain unchanged.
 All identity/isolation/cleanup/cohort checks passed, with no invalid attempts or replacements.
 
-See [final report](reports/p0-calibration.md), [case freeze](reports/case-freeze-v1.json),
-[integrity audit](reports/adjudication/final-evidence-audit.md), and
-[release-note draft](reports/release-notes-draft.md). The original Claude cohort remains deferred;
+See [final report](docs/results/p0-calibration.md), [case freeze](docs/results/case-freeze-v1.json) and
+[v1 results](docs/results/RESULTS_V1.md). The original Claude cohort remains deferred;
 a separate 42-slot Claude Code supplement has since completed with 41 pass and one partial,
-unchanged after review. Current additional cohorts and their execution order are recorded in
-the [extension report index](reports/extension/README.md). The 14-task bank
+unchanged after review. The 14-task bank
 has 10 ceiling tasks after adjudication and does not establish a stable model ranking.
 Future verifier patches are proposed separately; the current source is the frozen evaluated version.
 
@@ -166,9 +170,7 @@ Future verifier patches are proposed separately; the current source is the froze
 
 ## Usage
 
-See the [task catalog and testing guide](../docs/TESTING_GUIDE.md) for all 14 questions,
-project setup, supported hosts, and output locations. Use a new suite name for a new
-experiment; the completed cohorts below are historical evidence.
+Use a new suite name for a new experiment; the completed cohorts below are historical evidence.
 
 ```bash
 export UNITYSKILLS_EVAL_PROJECT=/absolute/path/to/YourEvalProject
@@ -177,7 +179,7 @@ python3 eval/cli.py setup-check --record-baseline   # identity, environment, fro
 python3 eval/cli.py selftest                       # all task verifiers; no model calls
 python3 eval/cli.py suite --host codex --models sol --effort high --suite my-sol-high-v1 --plan pilot
 python3 eval/cli.py suite --host codex --models sol --effort high --suite my-sol-high-v1 --plan calibration
-python3 eval/cli.py report --suite my-sol-high-v1 --models sol --output eval/reports/my-sol-high-v1.md
+python3 eval/cli.py report --suite my-sol-high-v1 --models sol --output eval/runs/my-sol-high-v1.md
 ```
 
 Run each step only after the preceding one succeeds. The pilot schedules 14 slots; optional
@@ -188,15 +190,19 @@ report shows the remaining repetitions as missing. Do not bypass the selftest ga
 
 | Path | Content |
 |---|---|
+| `cli.py`, `selftest3.py`, `suite3.py` | maintainer CLI, v3 gate, v3 batch suite |
 | `harness/` | instance discovery, REST client, environment, fixture lifecycle, change journal, subject launcher, metrics, verifier library, classification, reports |
-| `tasks/` | one module per task (`TASK`), registry in `tasks/__init__.py` |
-| `design/task-specs.md` | design draft; current prompts and assertions live in `tasks/` |
-| `protocol.md` | registered execution and analysis rules |
-| `known-defects.md` | plugin defects that affect attribution |
-| `probes.md` | capability probe results |
-| `reports/` | aggregate reports (tracked) |
-| `runs/` | local only: per-attempt reports, transcripts, ledger, frozen docs, selftest gate |
-| `reserved/` | local only: reserved task variants |
+| `tasks/` | v1 tasks: one module per task (`TASK`), registry in `tasks/__init__.py` |
+| `pack/private/`, `pack/solutions/` | v3 maintainer side: private verifiers and reference solutions (the public tasks ship in `SkillsForUnity/Evaluation~/pack/`) |
+| `tools/` | pack manifest, pack check, lint, private zip, reload guard and other maintainer tools |
+| `tests/` | offline unit tests (`python3 -B -m unittest discover eval/tests`) |
+| `docs/protocol.md` | registered execution and analysis rules |
+| `docs/known-defects.md` | plugin defects that affect attribution |
+| `docs/probes.md` | capability probe results |
+| `docs/design/` | `v3-contracts.md` (runner contract), `task-intents.md` (v3 task design source), `task-specs.md` (v1 draft), verifier-fix proposals |
+| `docs/results/` | v1 results, calibration report, case freeze, failure attribution, spec deviations |
+| `runs/` | local only (git-ignored): per-attempt reports, transcripts, ledger, frozen docs, selftest gate |
+| `reserved/` | local only (git-ignored): reserved task variants |
 
 Each attempt runs in its own scene and folder under `Assets/__UnitySkillsEval/<runId>/` and is
 removed afterwards; the user's scenes are never saved. The harness never changes the operating

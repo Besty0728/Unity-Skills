@@ -1,5 +1,7 @@
 # T2 D3 future verifier fix
 
+> The proposed `t2-existential-tmp.patch` was removed from the tree in the eval/ reorganization; recover it from git history (`git log --all -- eval/design/t2-verifier-fix/t2-existential-tmp.patch`, last present in 91dfc434). Paths such as `eval/design/...` and `eval/reports/...` below refer to the layout before that move; the adjudication files they name were never committed.
+
 This directory contains a proposal only. Do not apply it while the 168-attempt
 `p0-codex-isolated-v1` calibration is running. The frozen `eval/tasks/t2.py`
 remains unchanged.
@@ -45,7 +47,7 @@ grows from 11 to 13 cases.
    scores.
 2. Confirm the source SHA-256 above still matches `eval/tasks/t2.py`, then apply
    the patch from the repository root with
-   `git apply eval/design/t2-verifier-fix/t2-existential-tmp.patch`.
+   `git apply t2-existential-tmp.patch`.
 3. The patch sets `T2.case_version` to `"2"`. The source change also produces a
    new `_gate_hash("T2")`, invalidating the version 1 T2 gate automatically.
    Record the new task source hash in the next freeze manifest.

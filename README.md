@@ -1,7 +1,7 @@
 # 🎮 UnitySkills
 
 <p align="center">
-  <img src="docs/Unity-Skills-H.png" alt="Unity-Skills" width="800">
+  <img src="docs/images/Unity-Skills-H.png" alt="Unity-Skills" width="800">
 </p>
 
 <p align="center">
@@ -130,7 +130,7 @@ This project has been deeply optimized for the following environments (tools not
 > **Overview**: Install Unity Plugin → Start UnitySkills Server → AI Uses Skills
 
 <p align="center">
-  <img src="docs/installation-demo.gif" alt="一键安装演示" width="800">
+  <img src="docs/images/installation-demo.gif" alt="一键安装演示" width="800">
 </p>
 
 ### 1. Install Unity Plugin
@@ -311,7 +311,10 @@ If you're using other tools that support Skills, install according to the Skills
 │           ├── Controllers/                    # UI Tab & Widget Controllers
 │           └── Tabs/                           # UXML Tab Layouts & Settings Drawer
 ├── docs/
-│   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
+│   ├── SETUP_GUIDE.md              # Complete Setup & Usage Guide (_CN version available)
+│   ├── OPERATING_MODES.md          # Operating Modes & Governance (_CN version available)
+│   ├── images/                     # README images
+│   └── sponsors/                   # Sponsor logos
 ├── CHANGELOG.md                    # Version Update Log
 └── LICENSE                         # MIT License
 ```

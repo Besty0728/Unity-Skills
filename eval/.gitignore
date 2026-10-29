@@ -2,7 +2,3 @@
 runs/
 reserved/
 __pycache__/
-
-# Calibration summaries and release-note drafts are source-controlled deliverables.
-!reports/
-!reports/*.md

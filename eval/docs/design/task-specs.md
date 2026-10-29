@@ -3,7 +3,7 @@
 Contract: see `eval/harness/task.py` (Task, Negative, Context) and the worked example `eval/tasks/s01.py`
 (green selftest 13/13). Helpers: `eval/harness/checks.py`, `eval/harness/verify.py` (Scorecard.check /
 .fraction, Probe, quat_from_euler, quat_close, parse_ref), `eval/harness/uyaml.py` (Unity YAML on disk),
-probe findings `eval/probes.md`. Prompts are Chinese; R = ctx.R (object root), A = ctx.A (asset root).
+probe findings `eval/docs/probes.md`. Prompts are Chinese; R = ctx.R (object root), A = ctx.A (asset root).
 Weights must sum to 10. Negatives must fail EXACTLY their expect set (selftest checks equality).
 Negative answers should report actual state honestly unless the negative is about reporting.
 

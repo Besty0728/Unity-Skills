@@ -28,7 +28,7 @@ Cache-read 是独立列示的缓存用量，不能再加到 processed 上。模�
 
 预算建议仅用每题各配置合并后的严格通过样本计算 nearest-rank P90，每题样本数仅 10–12（复核后 11–12）。
 T2 的 P90 从原始 376.2 秒变为复核后 467.8 秒，但两者都受原预算一半的下限约束，建议仍为 1,200 秒。
-这些是后续预算建议，没有反向改变本次测试超时条件。[独立统计核对](adjudication/final-statistics.md) 保留完整口径。
+这些是后续预算建议，没有反向改变本次测试超时条件。
 
 ## 原始成绩与复核修正
 
@@ -40,9 +40,6 @@ T2 的 P90 从原始 376.2 秒变为复核后 467.8 秒，但两者都受原预�
 | `091aeec4ce3f`，T2 / Terra / rep 2 | 9.5，D12 失败 | 事务回滚删除了刚在允许范围创建的对象；缺路径事件被误判越界 | 10.0 / pass |
 
 全部 12 个 T2 样本及 168 条报告的类似范围事件均已统一复核，没有发现其他受影响样本。
-[复核统计与完整表](adjudication/p0-calibration-adjudicated.md) · [T2 全样本证据](adjudication/final-t2-review.md) ·
-[最终独立复核](adjudication/final-integrity-review.md)。复核统计可以运行
-`python3 eval/reports/adjudication/generate_adjudicated.py` 重建，运行前会校验证据哈希。
 
 保留的四项有效部分通过是：S03/Luna 首轮未在超时前提交答案；S08/Luna 首轮漏报一个已查询到的对象；
 T1/Luna 第三轮用共享路径绑定到错误的同名对象；T7/Terra 第二轮未按题意区分大小写，误改三个诱饵对象。
@@ -60,12 +57,11 @@ Codex CLI 0.161.0 使用 `codex exec`；`codex -p` 是配置 profile 选项，�
 44 个冻结源码文件及 manifest 已归档，归档 SHA-256：
 `11c766e5704036c117ee2f59a533a2bf02817d92cf6abb2994b52a83bc90d319`。
 [caseVersion 1 冻结清单](case-freeze-v1.json) 记录题目、断言、预算、答案格式、种子和源文件哈希；
-原始源码归档在本机 `eval/runs/isolated-source-20261011.zip`，详见 [方法说明](calibration-method-notes.md)。
+原始源码归档在本机 `eval/runs/isolated-source-20261011.zip`。
 
 源绑定 selftest 为 160/160，冻结版本离线测试 87 项通过。该自测没有覆盖后来发现的两种误判，不能视为验证器完备性证明。
 168/168 实际模型身份、用量、技能隔离检查、清理及账本对应关系通过；没有重复或缺失槽位。
-[完整性审计](adjudication/final-evidence-audit.md) 可运行
-`python3 eval/reports/adjudication/audit_final_evidence.py` 重建。最终专用项目只加载干净的 SampleScene，评测资产目录为空；
+最终专用项目只加载干净的 SampleScene，评测资产目录为空；
 清理证据在 `eval/runs/final-cleanup-20261012.json`。
 
 初始 `p0-codex-calibration` 批次因本机技能目录注入而隔离：8 条完成记录及 1 条中断记录保留为基础设施诊断，
@@ -75,10 +71,10 @@ Codex CLI 0.161.0 使用 `codex exec`；`codex -p` 是配置 profile 选项，�
 ## 后续与交付边界
 
 Claude Opus / Sonnet / Fable 的配置与历史诊断保留，其 126 次正式测试待渠道可用后另行继续。
-[发布日志草稿](release-notes-draft.md) 明确区分已完成 Codex 与未完成 Claude。未提交代码、推送、改版本、打 tag 或发布。
+未提交代码、推送、改版本、打 tag 或发布。
 
 当前交付保留实际受测源码及已知验证器限制。后续补丁位于
-[标签验证修复](../design/t2-verifier-fix/README.md) 和 [范围事件修复方案](../design/scope-verifier-fix/README.md)，均未应用。
+[标签验证修复](../design/t2-verifier-fix.md) 和 [范围事件修复方案](../design/scope-verifier-fix.md)，均未应用。
 后者仅能利用已知身份路径保守解析删除事件，不能自动消除缺少任何路径证据的历史误判。应用补丁需要新源码/用例身份与自测门禁；
 不能把新代码追加进本批次。
 

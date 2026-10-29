@@ -8,7 +8,7 @@
 |---|---|
 | 范围 | 14 题题库 × 19 个模型配置 / 5 个智能体主机；8 个批次、602 个登记槽位、635 次模型尝试 |
 | 时间 | 2026-10-11 至 2026-10-16（Asia/Tokyo） |
-| 题库 | S01 S03 S04 S06 S08 D01 T1 T2 T3 T4 T5 T7 T9 T10（6 道基础题 + 8 道综合题），caseVersion 1；题面与断言见 [case-freeze-v1.json](reports/case-freeze-v1.json)，题目说明见 TESTING_GUIDE |
+| 题库 | S01 S03 S04 S06 S08 D01 T1 T2 T3 T4 T5 T7 T9 T10（6 道基础题 + 8 道综合题），caseVersion 1；题面与断言见 [case-freeze-v1.json](case-freeze-v1.json)，题目说明见 TESTING_GUIDE |
 | 被测 SDK | UnitySkills v2.9.0，提交 `58d3339d`（含 §7 的已知缺陷 P1–P14） |
 | 环境 | 专用工程 UnitySkillsEval2022：Unity 2022.3.62f2、URP 14.0.12；实例 UnitySkillsEval2022_B95ADA34，端口 8091；mode=bypass、tier=maximum、surface=full、dryRunPolicy=off；冻结文档树 SHA-256 以 `5bbb9d35` 开头。每次尝试使用独立场景与资产目录，事后清理 |
 | 智能体 | Codex CLI（0.161.0）、Claude Code（2.1.296）、Antigravity CLI、Kimi Code CLI、Cursor CLI |
@@ -18,7 +18,7 @@
 
 **定位**：以上均为历史结果，不会补跑，也不据此做模型排名或档位推荐。v1 题库已饱和：P0 Codex 组 14 题中 10 题为天花板（复核后 12/12 通过；原始为 9 题），其余 4 题（S03、S08、T1、T7）仅弱区分，没有强区分题。v3.0 测试集另立题库与批次。
 
-**数据来源**：成绩、槽位与失败原因由各 runtime 的 `ledger.jsonl`（`kind=model`，剔除 `smoke` 与 `p0-codex-calibration`，按 `attemptId` 去重，共 635 条）及对应 `report.json` 重算；用量与耗时取自 TEST_SUMMARY，已与账本逐组核对（见 §8）；批次定义与复核见 TEST_RESULTS_CN、[p0-calibration](reports/p0-calibration.md)、[failure-attribution](reports/failure-attribution.md)。原始产物在本机 `eval/runs/`（git 忽略，约 69 GB）。
+**数据来源**：成绩、槽位与失败原因由各 runtime 的 `ledger.jsonl`（`kind=model`，剔除 `smoke` 与 `p0-codex-calibration`，按 `attemptId` 去重，共 635 条）及对应 `report.json` 重算；用量与耗时取自 TEST_SUMMARY，已与账本逐组核对（见 §8）；批次定义与复核见 TEST_RESULTS_CN、[p0-calibration](p0-calibration.md)、[failure-attribution](failure-attribution.md)。原始产物在本机 `eval/runs/`（git 忽略，约 69 GB）。
 
 **归档**：原始详细报告（本页引用的 TEST_SUMMARY、TEST_RESULTS_CN、TEST_GEMINI_ARGON、TESTING_GUIDE 等）不随仓库提交，已归档在维护者本机：`~/UnitySkillsEvalArchive/v1-20261017/eval-v1-archive.tar.gz`。
 
@@ -74,7 +74,7 @@ Cursor 三行的强度为 CLI 默认值（登记值 Haiku high、Sonnet high、O
 
 | 范围 | 原始 | 复核 / 裁定后 | 说明 |
 |---|---|---|---|
-| Codex P0 基线 | 162 pass / 6 partial | 164 pass / 4 partial | 两项已批准的 T2 验证器误判修正：`c854bf101f47`（Luna max，T2 rep1，D3：只读到第一个空 TMP 标签）、`091aeec4ce3f`（Terra high，T2 rep2，D12：无路径的回滚删除事件被误判越界）。只改派生副本，原始分数与账本不变；T2 因此由弱区分变为天花板题。详见 [p0-calibration](reports/p0-calibration.md)、final-t2-review |
+| Codex P0 基线 | 162 pass / 6 partial | 164 pass / 4 partial | 两项已批准的 T2 验证器误判修正：`c854bf101f47`（Luna max，T2 rep1，D3：只读到第一个空 TMP 标签）、`091aeec4ce3f`（Terra high，T2 rep2，D12：无路径的回滚删除事件被误判越界）。只改派生副本，原始分数与账本不变；T2 因此由弱区分变为天花板题。详见 [p0-calibration](p0-calibration.md)、final-t2-review |
 | Codex 扩展 | 167 pass / 1 partial / 10 invalid | 同左 | `f694a1044ea9`（Astra max，T2 rep2，D12：回滚删除）另有单独复核（pass / 10.0），文档注明“尚不代表统一复核”，不在上面的两项之内；本页汇总均为原始口径，不含该复核 |
 | Antigravity | 原始有效 53/84：49 pass / 4 partial（另 49 invalid、2 contaminated） | 复核视图 76/84：70 pass / 6 partial；8 个槽位无结果 | 复核视图 = 53 条原始有效 + 23 条经事实复核的原始 invalid（22 条为宿主工具 `manage_task` 越界、1 条为缓存用量更正；21 条任务分 10.0，2 条 9.5）。medium 39（36 / 3）、high 37（34 / 3）；`f5ab4ec9500e`（T1 high rep0）、`f5cd475881d7`（T7 medium rep1）保留 9.5 分的扣分。原始状态与用量不变；无法验证有效提示词隔离，不可与 Codex 直接比较 |
 | 其余批次 | — | 原始状态均保持 | Claude Code 复核后仍为 41 pass / 1 partial；Kimi、Cursor、Gemini 4 Argon 没有改变状态的复核 |

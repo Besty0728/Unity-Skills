@@ -1,5 +1,7 @@
 # Future scope-verifier identity resolution
 
+> The proposed `scope-identity-resolution.patch` was removed from the tree in the eval/ reorganization; recover it from git history (`git log --all -- eval/design/scope-verifier-fix/scope-identity-resolution.patch`, last present in 91dfc434). Paths such as `eval/design/...` and `eval/reports/...` below refer to the layout before that move; the adjudication files they name were never committed.
+
 This directory contains an evaluator-only proposal. Do not apply it to the
 frozen source used by `p0-codex-isolated-v1`. It does not rewrite or fully
 automate the adjudication of T2 attempt `091aeec4ce3f`.
@@ -66,7 +68,7 @@ proposal.
    `eval/harness/journal.py` must be
    `c9fd802f14e293a00cb2d134ff9e0cc04757d6004717f6ea89586abb8a13f7a6`.
 3. Apply from the repository root with
-   `git apply eval/design/scope-verifier-fix/scope-identity-resolution.patch`.
+   `git apply scope-identity-resolution.patch`.
 4. Run `python3 -m unittest discover eval/tests`. Then rerun the complete
    source-bound selftest, because changing a shared harness module invalidates
    every task's `_gate_hash`, not only T2's.
