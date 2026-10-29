@@ -1,8 +1,191 @@
-# 当前接力状态（2026-10-26 23:04 JST）
+# 当前接力状态（2026-10-30 02:03 JST）
 
-这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机时区是 JST（UTC+9），runner、门禁记录和会话目录名里的时间是 UTC。
+这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机与本节时间一律按日本时区（Asia/Tokyo，JST，UTC+9）。runner、门禁记录和会话目录名里的时间是 UTC。较早小节若写 UTC+8 或其他时区，换算后以本节的日本时区为准。
 
-## 10-26 收工（最新，优先于下方所有小节）
+## 10-30 02:03 JST 状态（最新，优先于下方所有小节）
+
+gate8 五格全绿后，已按「本轮 / 非本轮」分批完成本地提交；**仍未推送**，也未做正式 `/release`。相对 `origin/beta`（`c7ff4508`）本地领先 6 个提交（tip 即本交接）。`.releases/v3.0.0.md` 仍为 git 忽略的草稿。
+
+### 本地提交（未推送）
+
+本轮：
+
+1. `b071c7cd` feat(eval): add DB4/DC2/DC6/DC8 and bump pack to 1.2.0
+2. `8108ad56` fix(scenario): search Error/Exception/Assert across the full log window
+3. `255da6ba` docs(changelog): note pack 1.2.0 and failureLogWindow in 3.0.0
+
+非本轮：
+
+4. `d6d5b9d9` docs: move eval design notes under eval/docs and refresh READMEs
+5. `348f6e1e` feat(eval): restart Unity when gate reload time drifts
+6. （本提交）docs: session handoff after gate8 local commits
+
+### 已完成（承接 01:31）
+
+- 2022 五格门禁全绿（`eval/runs/pending-20261021/gate8-result.md`，10-30 00:28 JST）。
+- 四个起草 worktree 与 `worktree-agent-*` 分支已删；监控 routine 已删。
+- 题包 1.2.0 / 41 题与 `failureLogWindow` 插件改动已进本地 beta。
+- docs 整理与 `reload_guard` 已分批进本地 beta。
+
+### 下一步
+
+1. **等用户指示再推 `beta`**（当前禁止推送）。
+2. **正式 `/release`（tag + GitHub Release）** 等用户另说；RN 草稿仍在 `.releases/v3.0.0.md`。
+3. **6000 两格门禁**仍按原安排推迟。
+4. 评审遗留（DC8 未写完结论、DC2 `no_clamp`、DC6 难度等）不挡合并，可后置。
+
+### 不要做
+
+- 不要改四题公开 / private / solutions（会改门禁 hash）。
+- 不要 `--force`、不要 `--no-verify`、不要 amend 已推送的 `c7ff4508`。
+
+## 10-30 01:31 JST 状态（当时最新；细节仍有效，提交状态以 02:03 为准）
+
+
+额度用尽后由本会话收尾。四道题已合并进主工作区（beta，`c7ff4508`），题包 **1.2.0、41 题**。离线检查通过。2022 五格门禁已全部 GREEN（见 `eval/runs/pending-20261021/gate8-result.md`，生成于 10-30 00:28 JST）。四个起草 worktree 与对应 `worktree-agent-*` 分支已删除。**当时尚未提交；02:03 已分批本地提交，仍未推送。**
+
+### 已完成
+
+- 插件：`editor_run_scenario` 不再把「普通日志超过 1000 条」当成覆盖不完整。Error / Exception / Assert 在整个窗口里单独检索，结果在 `resultData.failureLogWindow`。全量 EditMode（`eval/runs/pending-20261021/full1029-result.md`，git 忽略）：Built-in 2614 个、通过 2521、跳过 93、失败 0；URP 2614 个、通过 2533、跳过 81、失败 0。
+- DB4、DC2、DC6、DC8 已从四个 worktree 拷进主工作区。清单用 `build_pack_manifest.py --pack-version 1.2.0 --seed DB4=10536 --seed DC2=10536 --seed DC6=10536 --seed DC8=10536` 生成，四题种子都是 `[10536]`。
+- 原有 37 题的门禁输入 hash 与 `/tmp/usk-merge/gatehash-before.txt` 一致。新增四题：
+  - DB4 `9212697d8c62`
+  - DC2 `ddc812158fd9`
+  - DC6 `341532fe518e`
+  - DC8 `8cd23d8a8612`
+- `lint_pack` 0 错误（OC5 / T1 / DC1 各一条既有 warning）。`check_eval_pack` 0 错误。`check_locales`、`check_meta_files`、`check_project_version` 通过。`git diff --check` 干净。
+- `eval/tests`：Python 3.13 跑 1763 个，跳过 34，失败 0；Python 3.9.6（`/usr/bin/python3`）跑 1763 个，跳过 35，失败 0。
+- CHANGELOG 3.0.0：题包改为 1.2.0 / 41 题，并已有 1000 条日志那条 Fixed。进度页已重新生成（`eval/runs/` 被 git 忽略）。
+
+### 门禁（已完成，五格全绿）
+
+- **结果（10-30 00:28 JST）**：已生成 `eval/runs/pending-20261021/gate8-result.md`。本轮 5 题全部 GREEN。
+  - DC2（A，URP）GREEN 23/23，23:16:05 → 23:38:42 JST
+  - DC8（A，URP）GREEN 19/19，23:38:42 → 00:02:05 JST
+  - DB4（B，URP）GREEN 21/21，23:16:04 → 23:28:11 JST
+  - DC6（B，URP）GREEN 24/24，23:28:11 → 00:17:10 JST
+  - DB4（C，Built-in）GREEN 21/21，00:18:50 → 00:28:44 JST
+- 2022 URP 格（gate.json）：41/41 GREEN。Built-in 格：12/12 GREEN。队列无剩余题；三台 worker 均 0 次因变慢重启。
+- 目录：`eval/runs/pending-20261021/gate8/`（git 忽略）。日志：`a.log`、`b.log`、`c.log`、`chain.log`、`editor-*.log`。
+- 现场：URP 两台 Unity 本来就没开；skill（Built-in）已发关闭信号。
+- 不要改这四题的公开 / private / solutions 文件（会改 hash）。有红格就只改那一题再只重跑那一格——本轮无红格。
+
+### 评审里留下、没有改的点
+
+- DC8 的 Opus 评审没有写完结论就停了。本会话只做了它已经论证过的计时防护：`(a)` 的计时戳挪到场景第一步；第一波允许早 1.0 秒（两份 prompt 从 0.7 改成 1.0）、晚仍是 0.8 秒；场景超时余量从 +30 秒改成 +60 秒。离线测试里参考解在 4 fps 仍严格通过，3 fps 起 C10 失败。
+- DC8 未改的意见（不挡合并）：C1 在组件没挂上时会和 R2/R3 重复扣分，命名空间违规主要落在 C4/C12；`public void SetConfig`、生成物必须是 prefab 实例、「不要移动」没有单独断言；R6 对 (a) 后续波次的容差，两份 prompt 的措辞都挂在 (d) 上；R8 只写了名字和 Transform，判分还会看 tag / layer / 激活。上限少生成一个时，后面的等待会超时，C10–C14 一起掉分。
+- DC2 的 `no_clamp`：离线测试接受 `{X1,X3}` 或 `{X1,X2,X3}`。实机上行程至少 2.5 秒，X2 窗口很短，判成 `{X1,X3}`。若门禁红在 X2，把期望集改成包含 X2，或删掉这个 negative。
+- DC6：`deactivate_only` 没有进题包。难度可能高于 70%，留作校准，不要为了压难度去改断言。
+
+### 本轮对话改动的文件
+
+下面是这一轮（从「继续 SESSION-HANDOFF」到现在）写过或合并进来的文件。四个起草 worktree 已删除；内容早前已拷进主工作区。
+
+**插件与文档（已跟踪，未暂存）**
+
+- `SkillsForUnity/Editor/Skills/ConsoleLogHistoryService.cs`
+- `SkillsForUnity/Editor/Skills/RuntimeScenarioService.cs`
+- `SkillsForUnity/Tests/Editor/Core/ConsoleLogHistoryServiceTests.cs`
+- `SkillsForUnity/Tests/Editor/Core/RuntimeScenarioTests.cs`
+- `SkillsForUnity/unity-skills~/skills/editor/reference/editor_run_scenario.md`
+- `CHANGELOG.md`（1000 条日志的 Fixed，以及题包 1.2.0 / 41 题那句）
+- `SkillsForUnity/Evaluation~/pack/manifest.json`（1.2.0，41 题）
+- `eval/docs/design/v3-contracts.md`（在已暂存的移动之上加了一句 `failureLogWindow`）
+- `SESSION-HANDOFF.md`（本文件）
+
+**四道题（未跟踪，本轮新建）**
+
+- `SkillsForUnity/Evaluation~/pack/tasks/DB4/`：`task.py`、`prompt.en.md`、`prompt.zh-CN.md`
+- `SkillsForUnity/Evaluation~/pack/tasks/DC2/`：同上三件
+- `SkillsForUnity/Evaluation~/pack/tasks/DC6/`：同上三件
+- `SkillsForUnity/Evaluation~/pack/tasks/DC8/`：同上三件
+- `eval/pack/private/DB4.py`、`DC2.py`、`DC6.py`、`DC8.py`
+- `eval/pack/solutions/DB4.py`、`DC2.py`、`DC6.py`、`DC8.py`
+- `eval/tests/runner/fake_db4.py`、`fake_dc2.py`、`fake_dc6.py`、`fake_dc8.py`
+- `eval/tests/runner/test_pack_db4.py`、`test_pack_dc2.py`、`test_pack_dc6.py`、`test_pack_dc8.py`
+
+**只在本机、git 忽略**
+
+- `eval/runs/pending-20261021/page/build.py`
+- `eval/runs/pending-20261021/page/unityskills-3.0-progress.html`
+- `eval/runs/pending-20261021/full1029/` 与 `full1029-result.md`
+- `eval/runs/pending-20261021/gate8/` 与同级 `gate8-result.md`（已跑完，五格全绿）
+- 仓库外：`/tmp/usk-merge/merge.sh`、`gatehash-before.txt`、`gatehash-after.txt`
+
+**起草副本（已删除）**
+
+- 原 `.claude/worktrees/agent-a219db52535d91446`（DB4）、`agent-aa7f32688426d3ce8`（DC2）、`agent-aaa2a86878ec22ff7`（DC6）、`agent-a4a534b9239094e11`（DC8）及对应 `worktree-agent-*` 分支，已于 10-30 01:31 JST 在五格全绿后删除。
+
+### 工作区里还有、但不是本轮改的
+
+续接之前就在，仍然未提交。不要和上面的清单混成一次「本轮改动」。
+
+- 目录整理：`docs/images/` 三张图的移动；`eval/docs/**` 的移动与删除；`eval/docs/design/task-intents.md`；`eval/.gitignore`、`eval/README.md`、`eval/tests/runner/test_runner_prompts.py`；`README.md`、`README_CN.md`。
+- 10-28 的重载重启：`eval/tools/reload_guard.py`、`eval/tests/test_reload_guard.py`（`eval/README.md` 里的说明也在上面那批里）。
+
+### 下一步
+
+1. 五格已全绿；四个起草 worktree 与分支已清掉。
+2. 提交范围按上面「本轮」+「不是本轮」分开——**02:03 已完成本地分批提交**；仍不要推送，等用户指示。
+3. 6000 两格仍按原安排推迟。
+
+## 10-28 状态
+
+- **B1/B2 已跑完**（`reload1027-result.md`）：
+  - 变慢只跟**域重载次数**有关，与题目内容和运行时长无关。OC8 跑 106 分钟、OC6 跑 59 分钟，期间没有重载，耗时就不涨。T9 之后只做纯重载，也照同一趋势往上涨。
+  - 增长比线性快：`ProcessInitializeOnLoad` 在第 141 次约 0.78 s，第 212 次约 1.75 s，第 336 次约 5.3 s。
+  - 关窗口、挪开 sessions / batch_state / editor_changes 都没用；**重启编辑器后立即恢复到 778 ms**，所以是进程内存里的累积，不是磁盘状态。
+  - 每次重载**恰好多出 1 个 `EditorWindowViewData`**。这是 Unity 2022.3 的 bug：`ScriptableSingletonDictionary.instance` 用静态字段缓存 HideAndDontSave 实例，重载后静态字段清空，就再建一个，旧的留在内存里（UnityCsReference 2022.3 `Editor/Mono/ScriptableSingletonDictionary.cs`）。`RenderTexture` 也是每次重载约多 1 个。两者是否就是变慢的原因，还没证实。
+  - 插件自己的 `PrefabAssetUndo`（HideAndDontSave）在 OC 题里涨到 761 个后不再变，和重载变慢无关，但到重启前都不会释放。
+- **A 已快进并入 beta**（`17f15aae`、`c7ff4508`，未推送）。门禁 hash 与基线一致；`check_locales` / `check_meta_files` / `check_project_version` 通过；`git diff --check` 干净。
+- **post1028 已跑完**（`eval/runs/pending-20261021/post1028-result.md`）：
+  - 两条管线全量 EditMode 都是 2611 个，0 失败。
+  - 57 MB 控制台历史下，重载从改前的 1569 ms 降到 805 ms，和清空历史的 792 ms 持平。
+  - C1：新开编辑器 A，只做纯重载，250 次后从 796 ms 涨到 7234 ms，复现了变慢。
+- **C2 定性：是 Unity 的问题，不是插件的**。
+  - 做法：把 URP 工程 A 克隆两份，一份去掉插件，一份不动，各用同一个自驱脚本做 150 次纯重载。克隆、脚本和日志都在本会话 scratchpad 的 `c2/` 下，结果在 `c2/c2-result.md`。
+  - 结果：不装插件 589 → 1834 ms，装插件 742 → 2304 ms，两边都涨到约 3.1 倍。插件只是固定开销（约 150 ms）跟着被等比放大，不是累积的来源。
+- **用户决定（10-28）**：
+  - 门禁在两题之间检查重载耗时，变慢就重启编辑器：已做，详见下一条。
+  - 压缩插件约 150 ms 的固定重载开销：先不做。
+  - 给 Unity 报 bug：先不做。
+  - A 推送：已推送，`origin/beta` 现在是 `c7ff4508`。
+- **重启机制（未提交）**：
+  - 仓库里新增 `eval/tools/reload_guard.py` 和 `eval/tests/test_reload_guard.py`，`eval/README.md` 的 Gate 一节补了一段说明。
+  - 这些文件不在 `GATE_INPUTS` 里，门禁 hash 不变。
+  - `eval/tests` 全量 1692 个用例通过。
+- **本机门禁驱动模板**：`eval/runs/gate-driver/`（git 忽略，用法见其中的 `README.md`）。
+  - 每台编辑器写自己的 `-logFile`。
+  - worker 每跑完一题就跑一次 guard，最近 3 次重载的中位数 ≥3 s 就重启这台编辑器。
+  - 不再单独起 console guard，清 workflow 和控制台由 worker 在两题之间自己做。
+  - 已在编辑器 A 上实测：用自己的日志打开 → 重启（日志轮换为 `.1`、同端口回来、锁已释放）→ 关闭。
+  - 坑：`unity open --args` 只接受一个字符串，多个参数要用引号括起来整串传。
+- 下次门禁：把 `gate-driver/` 复制成新的运行目录，往 `queue` / `queue-c` 里填题，再 `bash start.sh`。
+
+## 10-27 21:30 状态（用户额度用尽，会话中断）
+
+- **已完成**：
+  - full1026 全量 EditMode 两条管线 0 失败（2597 个）；门禁 hash 与 `gatehash-before.txt` 一致。
+  - gate7 补跑 OC8 GREEN，门禁 48 格全绿。
+- **用户决定**：重载变慢「修控制台历史 + 查 URP 主因」，进 3.0。方案已批：`~/.claude/plans/zazzy-meandering-bonbon.md`。
+- **B0 已出结果**：`eval/runs/pending-20261021/reload1027-b0-result.md`。在新开的 URP 编辑器上测：
+  - 55 MB 控制台历史让每次重载多约 0.78 s；
+  - 面板开着时，重载后多约 0.33 s；
+  - sessions 目录没有影响。
+- **B1/B2 正在后台独立跑**（10-27 20:26 起，最长约 14 小时）：
+  - 脚本是 `reload1027/b1.py`，日志 `reload1027/b1.log`，跑完写 `reload1027-result.md` 并弹通知。
+  - 在 URP 编辑器 A 上按 gate5 编辑器 A 的题序用 `--no-gate` 重跑，不碰 gate.json；每题之后测纯重载和内存；纯重载超过 10 s 或题跑完就进 B2 二分。
+  - **跑完之前不要改主工作区的 `SkillsForUnity/`**，也不要开 URP 编辑器 A。
+- **A（控制台历史延迟加载）已写完，没有并入 beta**：
+  - worktree 在 `.claude/worktrees/agent-a78f74e7664981c46`，分支 `worktree-agent-a78f74e7664981c46`；
+  - 两个提交：`17f15aae`（主体）、`c7ff4508`（按审查修了读失败丢行、补全后强制重写等 7 项）；
+  - 离线编译 4 组 0 错误，.NET harness 里 32 个测试全过；**Unity 里还没跑**。
+- **下一步**：
+  1. 看 `reload1027-result.md`，分析 URP 主因，向用户汇报修法，修复要用户拍板。
+  2. B1 结束后把两个提交 fast-forward 并入 beta，跑两条管线的 `ConsoleLogHistoryServiceTests` 等相关测试类和全量 EditMode。
+  3. 用 `reload1027/console-snapshot/`（57 MB）对比改前改后的重载耗时，核对门禁 hash，然后本地提交，不推送。
+
+## 10-26 收工
 
 - **面板改版：用户已验收，10-26 按用户指示提交并推送到 origin/beta**。提交是 `a77a4a3c`（runner 报告的等级与评语）、`61e87d1d`（安装器加 `/unity-skills-eval`、自定义安装记录）、`3dfcd455`（面板）、`e579beae`（只有面板的安装才记入自定义列表），另有一个交接文档提交；之前 25 个本地提交也一起推送了。`eval/RESULTS_V1.md`、`eval/reports/p0-calibration.md` 是用户自己的改动，没有提交。
 - **推送前跑的检查**：4 组离线编译、门禁 hash 与基线逐题一致、`check_locales` / `check_meta_files` / `check_project_version` / `check_skill_frontmatter` 全部通过；`git diff --check` 干净。**最后一轮 UI 改动之后没有跑两条管线的全量 EditMode**，只跑过相关测试类。
@@ -579,3 +762,9 @@ UnitySkills 项目（Unity Editor 的 AI 技能插件，主仓库 `/Users/betsy/
 2. 重跑双 Python 版本全量测试确认基线（预期：仅 lint_pack manifest 与 DS3 两个已知失败）；
 3. 重新分派子任务：WP11 manifest 重建 → 第三波提交 → 冻结副本重跑门禁 → WP4b/P15 提交 → WP15 题目集成与实机验证；
 4. 遇到 §7 中标注"需用户决定"的条目，逐一向用户提问。
+
+## 2026-10-30 01:05 JST — Release Note / CHANGELOG 加深（未提交）
+
+- 已按 `origin/main`（v2.9.1）↔ 当前领先线补全 `CHANGELOG.md` `[3.0.0]`：对照表、题包 41 矩阵、实测表；blurb 去掉「37 道」、主线改为根 Skill + 评测。
+- 已重写 `.releases/v3.0.0.md`（约 105 行、多表），仍为草稿 Release Note，非正式发版。
+- **未** commit / push；gate8 / worktrees 策略不变。
