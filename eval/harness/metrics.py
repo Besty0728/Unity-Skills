@@ -19,6 +19,9 @@ ERRCODE_RE = re.compile(r"[\"']errorCode[\"']\s*:\s*[\"']([A-Z_]+)[\"']")
 # user's Claude data, including an installed skill copy that is not the frozen docs under test.
 SUSPICIOUS_PATHS = ("/CodeSpace/Unity-Skills", "/.claude/projects", "/.claude/skills",
                     "/.codex/", "/.agents/skills", "/eval/runs", "/temp/eval")
+# Claude Code spills a large tool result into the session's own tool-results file and tells the
+# model to read it there; that exact file is the subject's own output, not user data.
+PERSISTED_OUTPUT_RE = re.compile(r"Full output saved to: (\S+)")
 
 
 def load_events(path):
@@ -138,6 +141,7 @@ def parse(stream_path, eval_port, is_read_only=None, host=None):
     message_usage = {"input": 0, "output": 0, "cacheRead": 0, "cacheCreation": 0}
     uses = {}
     models = set()
+    persisted = set()
     for event in events:
         etype = event.get("type")
         if etype == "system" and event.get("subtype") == "init":
@@ -168,6 +172,8 @@ def parse(stream_path, eval_port, is_read_only=None, host=None):
                 if name == "Bash":
                     _absorb_command(row, tool_input.get("command") or "", eval_port, is_read_only)
                 touched = " ".join(str(v) for v in tool_input.values() if isinstance(v, str))
+                for saved in persisted:
+                    touched = touched.replace(saved, "")
                 for marker in SUSPICIOUS_PATHS:
                     if marker in touched:
                         row.setdefault("suspiciousAccess", []).append({"tool": name, "marker": marker,
@@ -177,7 +183,9 @@ def parse(stream_path, eval_port, is_read_only=None, host=None):
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     if block.get("is_error"):
                         row["toolErrors"] += 1
-                    for code in ERRCODE_RE.findall(_text(block.get("content"))):
+                    text = _text(block.get("content"))
+                    persisted.update(PERSISTED_OUTPUT_RE.findall(text))
+                    for code in ERRCODE_RE.findall(text):
                         row["errorCodes"][code] = row["errorCodes"].get(code, 0) + 1
         elif etype == "result":
             row["result"] = {k: event.get(k) for k in ("subtype", "is_error", "num_turns", "duration_ms",

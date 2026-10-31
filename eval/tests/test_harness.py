@@ -180,6 +180,26 @@ class MetricsTests(unittest.TestCase):
         self.assertFalse(M.model_matches("claude-haiku-5-5", {"init": {"model": "claude-haiku-5-5"},
                                                               "assistantModels": ["<synthetic>"]}))
 
+    def test_persisted_output_is_not_suspicious(self):
+        saved = "/Users/u/.claude/projects/-tmp-eve-s-x/abc/tool-results/b1.txt"
+        events = [
+            {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content":
+                "<persisted-output>\nOutput too large (48KB). Full output saved to: %s\n\nPreview" % saved}]}},
+            {"type": "assistant", "message": {"id": "m1", "content": [
+                {"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": saved}},
+                {"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "f=%s; wc -l $f" % saved}}]}},
+        ]
+        other = {"type": "assistant", "message": {"id": "m2", "content": [{"type": "tool_use", "id": "t4",
+                 "name": "Bash", "input": {"command": "ls /Users/u/.claude/projects/-tmp-eve-s-x/"}}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "s.jsonl")
+            with open(path, "w") as handle:
+                handle.write("\n".join(json.dumps(e) for e in events) + "\n")
+            self.assertEqual(M.parse(path, 8091)["suspiciousAccess"], [])
+            with open(path, "a") as handle:
+                handle.write(json.dumps(other) + "\n")
+            self.assertEqual([a["tool"] for a in M.parse(path, 8091)["suspiciousAccess"]], ["Bash"])
+
     def test_kimi_alias_is_mismatch(self):
         row = {"init": {"model": "kimi-k3[1M]"}, "assistantModels": ["kimi-k3"]}
         self.assertFalse(M.model_matches("claude-sonnet-5-5[1M]", row))
