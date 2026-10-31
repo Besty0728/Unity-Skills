@@ -368,6 +368,10 @@ def _base_model(name):
     return re.sub(r"\[[^\]]*\]$", "", (name or "").strip().lower())
 
 
+# Claude Code's own placeholder for messages it writes itself (API errors, usage limits); it names no model.
+SYNTHETIC_MODEL = "<synthetic>"
+
+
 def model_matches(requested, row):
     """init must report the requested id (case-insensitive) or, from Claude Code 2.1.312 on, its base name, and every
     assistant message its base name: the S1 probe saw init "claude-opus-5-5[1m]" with messages "claude-opus-5-5"."""
@@ -379,7 +383,7 @@ def model_matches(requested, row):
     want = _base_model(requested)
     if init_model not in ((requested or "").lower(), want):
         return False
-    observed = row.get("assistantModels") or []
+    observed = [m for m in row.get("assistantModels") or [] if m != SYNTHETIC_MODEL]
     return bool(observed) and all(_base_model(m) == want for m in observed)
 
 

@@ -174,6 +174,12 @@ class MetricsTests(unittest.TestCase):
         self.assertTrue(M.model_matches("claude-sonnet-5-5[1M]", row))
         self.assertFalse(M.model_matches("claude-opus-5-5[1M]", row))
 
+    def test_synthetic_messages_are_not_a_model(self):
+        row = {"init": {"model": "claude-haiku-5-5"}, "assistantModels": ["<synthetic>", "claude-haiku-5-5"]}
+        self.assertTrue(M.model_matches("claude-haiku-5-5", row))
+        self.assertFalse(M.model_matches("claude-haiku-5-5", {"init": {"model": "claude-haiku-5-5"},
+                                                              "assistantModels": ["<synthetic>"]}))
+
     def test_kimi_alias_is_mismatch(self):
         row = {"init": {"model": "kimi-k3[1M]"}, "assistantModels": ["kimi-k3"]}
         self.assertFalse(M.model_matches("claude-sonnet-5-5[1M]", row))
