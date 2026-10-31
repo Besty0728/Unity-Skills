@@ -1881,8 +1881,10 @@
 .token-level-value {
     flex-shrink: 0;
     margin-left: 8px;
-    padding: 2px 10px;
-    border-radius: 10px;
+    /* Fixed height: in a short window the label measures to the remaining height and flattens. */
+    height: 18px;
+    padding: 0 10px;
+    border-radius: 9px;
     font-size: 11px;
     -unity-font-style: normal;
     -unity-text-align: middle-center;
