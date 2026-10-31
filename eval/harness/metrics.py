@@ -369,16 +369,16 @@ def _base_model(name):
 
 
 def model_matches(requested, row):
-    """init must report the requested id (case-insensitive) and every assistant message its base
-    name: the S1 probe saw init "claude-opus-5-5[1m]" with messages "claude-opus-5-5"."""
+    """init must report the requested id (case-insensitive) or, from Claude Code 2.1.312 on, its base name, and every
+    assistant message its base name: the S1 probe saw init "claude-opus-5-5[1m]" with messages "claude-opus-5-5"."""
     if row.get("host") == "codex":
         observed = row.get("observedModels") or []
         return row.get("identitySource") == "response.model" and bool(observed) and all(
             _base_model(m) == _base_model(requested) for m in observed)
     init_model = ((row.get("init") or {}).get("model") or "").lower()
-    if init_model != (requested or "").lower():
-        return False
     want = _base_model(requested)
+    if init_model not in ((requested or "").lower(), want):
+        return False
     observed = row.get("assistantModels") or []
     return bool(observed) and all(_base_model(m) == want for m in observed)
 

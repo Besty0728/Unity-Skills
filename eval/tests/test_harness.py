@@ -169,6 +169,11 @@ class MetricsTests(unittest.TestCase):
         self.assertTrue(M.model_matches("claude-opus-5-5[1M]", row))
         self.assertFalse(M.model_matches("claude-sonnet-5-5[1M]", row))
 
+    def test_init_without_context_selector_matches(self):
+        row = {"init": {"model": "claude-sonnet-5-5"}, "assistantModels": ["claude-sonnet-5-5"]}
+        self.assertTrue(M.model_matches("claude-sonnet-5-5[1M]", row))
+        self.assertFalse(M.model_matches("claude-opus-5-5[1M]", row))
+
     def test_kimi_alias_is_mismatch(self):
         row = {"init": {"model": "kimi-k3[1M]"}, "assistantModels": ["kimi-k3"]}
         self.assertFalse(M.model_matches("claude-sonnet-5-5[1M]", row))
