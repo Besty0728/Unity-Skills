@@ -280,6 +280,26 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ---
 
+## 🧪 评测集
+
+内置带评分的评测集（题库 1.2.0，共 41 题），可在你自己的 Unity 项目里检验 AI 智能体驱动 UnitySkills 的能力。题目位于 [`SkillsForUnity/Evaluation~/pack/`](SkillsForUnity/Evaluation~/pack/)：`manifest.json` 加 `tasks/<ID>/{prompt.en.md, prompt.zh-CN.md, task.py}`。评分用的断言为私有内容，不随包发布。
+
+| 赛道 | 基础 | 标准 | 挑战 |
+|------|------|------|------|
+| **ops 运维**（编辑器操作） | 6：S01 S03 S04 S06 S08 D01 | 7：T3 T4 T5 T7 T10 OS1 OS2 | 8：OC1–OC8 |
+| **dev 开发**（开发任务） | 6：DB1–DB6 | 6：T1 T2 T9 DS1 DS2 DS3 | 8：DC1–DC8 |
+
+**运行方式**：在 UnitySkills 窗口打开 **评测** 标签页（选题 → 把提示词复制给智能体 → 看进度 → 看结果），或对智能体说 `/unity-skills-eval`。复制出的提示词里带着运行器在你安装位置的完整命令（随包的 `Evaluation~/run_eval.py`，Python 3.9+，仅标准库）。
+
+**前置条件**：
+- 运行模式需为 `Bypass`。
+- 41 题都能在 URP 上跑，其中 12 题（S01 S03 S04 S06 S08 D01 DB1–DB6）也能在 Built-in 上跑；其余 29 题只支持 URP，且需要一个在评测页标记为专用的空工程。
+- DB5、DC5、OC5、OS2、T2 需要 `com.unity.ugui`。
+
+每道题会临时在 `Assets/__UnitySkillsEval/` 下添加资产，结束后运行器会还原你的场景。报告写入 `Library/UnitySkills/eval/sessions/<sessionId>/report.json` 与 `report.md`；等级按严格通过率评定（≥90% 优秀、≥70% 良好、≥50% 及格）。
+
+---
+
 ## 📂 项目结构
 
 ```bash
@@ -287,12 +307,14 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ├── SkillsForUnity/                 # Unity 编辑器插件 (UPM Package)
 │   ├── package.json                # com.besty.unity-skills
 │   ├── unity-skills~/              # 跨平台 AI Skill 模板 (波浪线隐藏目录, 随包分发)
-│   ├── unity-skills-eval~/         # /unity-skills-eval 评测技能，装在 unity-skills 旁边
 │   │   ├── SKILL.md                # 主 Skill 定义 (AI 读取)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python 客户端库
 │   │   ├── skills/                 # 85 个模块文档（55 个 REST/模块文档 + 30 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
+│   ├── unity-skills-eval~/         # /unity-skills-eval 评测技能，装在 unity-skills 旁边
+│   │   └── SKILL.md
+│   ├── Evaluation~/                # 评测集：run_eval.py 运行器、usk_eval/、pack/（manifest + 41 题）
 │   └── Editor/
 │       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
 │       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 872 Skills)

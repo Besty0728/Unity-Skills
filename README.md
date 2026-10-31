@@ -280,6 +280,26 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
+## 🧪 Evaluation Set
+
+A scored evaluation set (pack 1.2.0, 41 tasks) lets you test how well your AI agent drives UnitySkills on your own Unity project. Tasks live in [`SkillsForUnity/Evaluation~/pack/`](SkillsForUnity/Evaluation~/pack/): `manifest.json` plus `tasks/<ID>/{prompt.en.md, prompt.zh-CN.md, task.py}`. The scoring assertions are private and are not shipped with the package.
+
+| Track | Basic | Standard | Challenge |
+|-------|-------|----------|-----------|
+| **ops** (editor operations) | 6: S01 S03 S04 S06 S08 D01 | 7: T3 T4 T5 T7 T10 OS1 OS2 | 8: OC1–OC8 |
+| **dev** (development work) | 6: DB1–DB6 | 6: T1 T2 T9 DS1 DS2 DS3 | 8: DC1–DC8 |
+
+**Run it**: open the **Evaluation** tab in the UnitySkills window (pick tasks → copy the prompt to your agent → watch progress → read results), or tell your agent `/unity-skills-eval`. The copied prompt carries the full runner command for your install (bundled `Evaluation~/run_eval.py`, Python 3.9+, standard library only).
+
+**Prerequisites**:
+- Operating mode `Bypass`.
+- All 41 tasks run on URP; 12 of them (S01 S03 S04 S06 S08 D01 DB1–DB6) also run on Built-in. The other 29 are URP-only and need an empty project marked as dedicated in the Evaluation tab.
+- DB5, DC5, OC5, OS2 and T2 need `com.unity.ugui`.
+
+Each task temporarily adds assets under `Assets/__UnitySkillsEval/` and the runner restores your scenes afterwards. Reports are written to `Library/UnitySkills/eval/sessions/<sessionId>/report.json` and `report.md`; the grade follows the strict pass rate (≥90% excellent, ≥70% good, ≥50% pass).
+
+---
+
 ## 📂 Project Structure
 
 ```bash
@@ -287,12 +307,14 @@ If you're using other tools that support Skills, install according to the Skills
 ├── SkillsForUnity/                 # Unity Editor Plugin (UPM Package)
 │   ├── package.json                # com.besty.unity-skills
 │   ├── unity-skills~/              # Cross-platform AI Skill Template (tilde-hidden, bundled with package)
-│   ├── unity-skills-eval~/         # /unity-skills-eval evaluation skill, installed beside unity-skills
 │   │   ├── SKILL.md                # Main Skill Definitions (AI-readable)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 85 module docs (55 REST/module docs + 30 documentation-only docs)
 │   │   └── references/             # Unity Development References
+│   ├── unity-skills-eval~/         # /unity-skills-eval evaluation skill, installed beside unity-skills
+│   │   └── SKILL.md
+│   ├── Evaluation~/                # Evaluation set: run_eval.py runner, usk_eval/, pack/ (manifest + 41 tasks)
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
 │       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 872 Skills)

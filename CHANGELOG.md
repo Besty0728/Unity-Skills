@@ -19,7 +19,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 其中 Editor C# | 2.9.1 能力面 | 约 **202 文件 / +31k / −4.7k**（Workflow、Particle、Evaluation、entityId、Console…） |
 | 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7936 B**；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
 | 技能数 | 839 | **872（+33）** |
-| 用户侧公开题 | 无（仅维护者本地 v1 档案） | **41 题 / pack 1.2.0** |
+| 用户侧公开题 | 无 | **41 题 / pack 1.2.0** |
 | Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
 | 定位 | 合成 / 宽松回退同名 | **原生 entityId**；找不到即 `TARGET_NOT_FOUND` |
 | 设置作用域 | 本机全局偏好为主 | **按工程** `UserSettings/UnitySkills/settings.json` |
@@ -36,8 +36,6 @@ All notable changes to **UnitySkills** will be documented in this file.
 | **合计** | **12** | **13** | **16** | **41** |
 
 1.2.0 相对早期草稿新增：**DB4** 跟随相机、**DC2** 门状态机、**DC6** 金币触发计分、**DC8** ScriptableObject 难度配置。插件约束 `plugin.min = 2.9.1`。题目公开面（提示词 / task.py）随包；私有断言在 `eval/pack/private`，不随用户安装分发。
-
-v1 历史对照（14 题 × 19 配置，数据截至 2026-10-17，**不是排行榜**）：见 `eval/docs/results/RESULTS_V1.md` 与 `docs/TEST_SUMMARY.md`。v3 题库将另立批次重测。
 
 ### 本版实测
 
@@ -57,7 +55,7 @@ v1 历史对照（14 题 × 19 配置，数据截至 2026-10-17，**不是排行
 | 通过数 | 21/21 | **21/21** |
 | 处理 token 总均值 | 646K | **625K（约 0.97×）** |
 
-- **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2560 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2614 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
 
@@ -103,11 +101,13 @@ v1 历史对照（14 题 × 19 配置，数据截至 2026-10-17，**不是排行
 - **`component_invoke_method` 短类型名歧义** — 实例调用时 `Button` 这类同时匹配 UI 与 UIElements 的短名，优先取组件类型，不再报歧义。
 - **事件与引用定位、预制体与隐藏属性**（P4–P14）— 事件目标、Object 参数和序列化引用按 entityId / instanceId / 路径 / 名称严格解析，找不到时报错而不退回同名对象；`prefab_get_overrides` 新增 `path`、`includeDetails` 与分页信息；组件、ScriptableObject、预制体的序列化属性读取支持 `includeHidden`；序列化向量与颜色按区域无关的格式输出；`physics_create_material` 先建目录，拒绝只读包路径。
 - **Unity 6000.4+ 兼容**（PR #66）— 活动场景没有出现在已加载场景列表里时，补回它的根物体（仅限确实已加载的场景，不会重复计数）；两个上游自测在新版本上恢复通过。
+- **面板窗口很矮时 Token 等级徽标被压成扁椭圆** — 徽标改为固定高度的胶囊。
+- **替换底部钉选语言后两个语言按钮都不高亮** — 当前语言被换出钉选位时跟随新选的语言。
 
 ### Docs
 
 - **根 Skill 与试点模块（产品主线）** — 见 Changed：入口变薄、参考按需加载、去掉 `SKILL_FULL`；Workflow 模块文档按「检查点优先」重写（回退协议、`workflow_list` 行格式、检查点、回退契约、「撤销单步与 scope」、已知局限）。
-- **评测文档与 v1 对照** — `eval/docs/` 收纳 v3 合约、已知缺陷、协议与 **RESULTS_V1**（14 题 × 19 配置 / 5 主机，602 槽位、635 次尝试；有效 552：531 pass / 21 partial）；精简用量 / 耗时表见 `docs/TEST_SUMMARY.md`。定位为历史对照基线，**不作模型排行榜**；v3 题库另测。
+- **评测集** — README 新增评测集一节：题目位置（`SkillsForUnity/Evaluation~/pack/`）、运行方式与题目总览。`eval/docs/` 收纳 v3 合约、已知缺陷与协议；v1 的模型对照与用量结论不再保留（旧题库与旧插件下的结果，对新题库没有参考价值），新题库的模型成绩另行发布。
 - 技能计数与模块数同步到 **872** 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
 
 ## [2.9.1] - 2026-10-17

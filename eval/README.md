@@ -147,19 +147,7 @@ Sessions on a `--pack-dir` pack are never official and their reports stay local;
 
 The sections below describe the frozen v1 harness.
 
-## Completed calibration
-
-The isolated Codex cohort completed **168/168** slots on 2026-10-12: raw **162 pass / 6 partial**,
-separately adjudicated **164 pass / 4 partial**. Two documented T2 verifier false negatives were
-corrected only in derived reports with user approval; raw scores and ledger remain unchanged.
-All identity/isolation/cleanup/cohort checks passed, with no invalid attempts or replacements.
-
-See [final report](docs/results/p0-calibration.md), [case freeze](docs/results/case-freeze-v1.json) and
-[v1 results](docs/results/RESULTS_V1.md). The original Claude cohort remains deferred;
-a separate 42-slot Claude Code supplement has since completed with 41 pass and one partial,
-unchanged after review. The 14-task bank
-has 10 ceiling tasks after adjudication and does not establish a stable model ranking.
-Future verifier patches are proposed separately; the current source is the frozen evaluated version.
+The v1 task bank is frozen as caseVersion 1; see [case freeze](docs/results/case-freeze-v1.json).
 
 ## Requirements
 
@@ -200,7 +188,7 @@ report shows the remaining repetitions as missing. Do not bypass the selftest ga
 | `docs/known-defects.md` | plugin defects that affect attribution |
 | `docs/probes.md` | capability probe results |
 | `docs/design/` | `v3-contracts.md` (runner contract), `task-intents.md` (v3 task design source), `task-specs.md` (v1 draft), verifier-fix proposals |
-| `docs/results/` | v1 results, calibration report, case freeze, failure attribution, spec deviations |
+| `docs/results/` | `case-freeze-v1.json` (caseVersion 1 task freeze) |
 | `runs/` | local only (git-ignored): per-attempt reports, transcripts, ledger, frozen docs, selftest gate |
 | `reserved/` | local only (git-ignored): reserved task variants |
 
