@@ -65,6 +65,12 @@ reports/
 # Local temporary planning files
 temp/
 
+# Local session handoff notes
+SESSION-HANDOFF.md
+
+# Python test cache
+.pytest_cache/
+
 # Local testing harness
 scripts/local-test/
 nul
