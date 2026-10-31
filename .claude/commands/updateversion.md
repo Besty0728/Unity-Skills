@@ -1,3 +1,9 @@
+---
+description: 安全更新项目版本锚点并生成 CHANGELOG（只准备候选，不发布）
+argument-hint: "<MAJOR.MINOR.PATCH>"
+allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git branch --show-current:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git tag -l:*), Bash(git ls-remote:*), Bash(git merge-base:*), Bash(gh api:*), Bash(gh release view:*), Bash(python3 .github/scripts/check_project_version.py:*), Bash(python3 .github/scripts/check_meta_files.py:*), Bash(python3 .github/scripts/check_locales.py:*), Bash(python3 -m json.tool:*), Read, Grep, Glob, Edit
+---
+
 # Update Version — 安全更新项目版本 + 生成 CHANGELOG
 
 你是 UnitySkills 项目的版本更新助手。此命令只负责准备一个可发布的版本候选；它不会创建 tag 或 GitHub Release，也不会立即向已安装用户发送更新提醒。
@@ -31,20 +37,13 @@ Unity 内的更新提醒使用 `SkillsLogger.Version` 与 GitHub `releases/lates
 5. 确认 `beta` 没有遗漏远端提交：
    ```bash
    git log beta..origin/beta --oneline
-   git log beta..origin/main --oneline
    ```
-   任一命令有输出都停止：本地 `beta` 落后于远端，必须先同步或处理分歧。
+   有输出即停止：本地 `beta` 落后于远端，必须先同步或处理分歧。`origin/main` 相对 `beta` 的检查与 `/release` 完全相同：执行 `.claude/commands/release.md`「共享规则」第 2 条的两条 Star History 豁免检查，均须无输出。
 6. 从 `origin/main` 的 `SkillsLogger.Version` 读取当前稳定版本 `{OLD_VER}`，不要依赖可能过期的本地 `main`：
    ```bash
    git show origin/main:SkillsForUnity/Editor/Skills/SkillsLogger.cs
    ```
-7. 查询 GitHub 当前最新稳定 Release：
-   ```bash
-   gh api repos/Besty0728/Unity-Skills/releases/latest \
-     --jq '{tag_name,html_url,draft,prerelease}'
-   ```
-   - `tag_name` 必须严格为 `vMAJOR.MINOR.PATCH`。
-   - 必须是非 draft、非 prerelease。
+7. 按 `release.md`「共享规则」第 3 条查询 GitHub 当前最新稳定 Release：
    - 正常情况下其版本应等于 `{OLD_VER}`；若不一致，停止并报告“main 当前版本与 latest Release 已错位”，不要猜测基准版本。
 8. 验证当前工作树内的所有项目版本锚点仍等于 `{OLD_VER}`：
    ```bash
@@ -71,8 +70,7 @@ gh release view "v{NEW_VER}"
 ```
 
 - `gh release view` 返回“未找到”才表示该检查通过。
-- 不得删除、移动或强制重推已发布 tag。
-- 若版本曾经创建过 tag 但尚未创建 Release，同样视为已占用；修复后应换用新的 patch 版本。
+- tag 规则见 `release.md`「共享规则」第 1 条（含“已创建 tag 但无 Release 同样视为占用”）。
 
 ## 步骤 3：分析 beta 相对稳定版的变更
 
@@ -109,7 +107,7 @@ git status --short
 
 ## 步骤 4：只更新明确的项目版本锚点
 
-使用 `apply_patch` 精确修改以下 5 类锚点（第 6 处 `.github/SECURITY.md` 是条件锚点，只在 minor / major 更迭时纳入，见本步骤末尾）：
+用 Edit 工具直接精确修改以下锚点文件（`.github/SECURITY.md` 是另列的条件锚点，只在 minor / major 更迭时纳入，见本步骤末尾）：
 
 | 文件 | 唯一允许修改的版本锚点 |
 |------|------------------------|
@@ -119,7 +117,7 @@ git status --short
 | `AGENTS.md` | 项目表格行 `| Version | {OLD_VER} |` |
 | `CHANGELOG.md` | 在原最新条目前插入 `## [{NEW_VER}] - {TODAY}` 与本次变更内容 |
 
-> README×2 的"当前版本"标记已于 2.7.0 移除（README 不再承载版本锚点），`check_project_version.py` 已同步；不要往 README 回加版本标记。
+> README×2 不再承载版本锚点，`check_project_version.py` 已同步；不要往 README 回加版本标记。
 
 CHANGELOG 的 `Changed` 中追加：
 

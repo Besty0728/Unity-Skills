@@ -122,6 +122,47 @@ class MetaCheckTests(unittest.TestCase):
             self.assertNotIn("Evaluation~", result.stdout)
             self.assertNotIn("unity-skills~", result.stdout)
 
+    def run_with_guid(self, guid: str, *flags: str) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory() as repo:
+            write(repo, "SkillsForUnity/Editor/A.cs", "class A {}\n")
+            write(repo, "SkillsForUnity/Editor/A.cs.meta", meta(guid))
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            return subprocess.run([sys.executable, "-B", os.path.join(SCRIPTS, "check_meta_files.py"), repo, *flags],
+                                  capture_output=True, text=True, encoding="utf-8", env=env)
+
+    def assert_heuristic(self, guid: str, pattern: str):
+        warned = self.run_with_guid(guid)
+        self.assertEqual(warned.returncode, 0, "heuristics warn only by default\n" + warned.stdout)
+        self.assertIn("疑似伪 GUID", warned.stdout)
+        self.assertIn(pattern, warned.stdout)
+        self.assertNotEqual(self.run_with_guid(guid, "--strict").returncode, 0)
+
+    def test_random_guid_is_clean(self):
+        result = self.run_with_guid("4a81947acf6349c4b37a44f35a71d7e8", "--strict")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("疑似伪 GUID（", result.stdout)
+
+    def test_sequential_guid_flagged(self):
+        self.assert_heuristic("3f9b01234c7e4a5d8e2f6b1c9d0a7e35", "sequential:0123@4")
+
+    def test_interleaved_guid_flagged(self):
+        self.assert_heuristic("7e9fa1b2c3d4f0e85a6b93c47d2e8f1a", "interleave:a1b2c3d4@4")
+
+    def test_repeated_guid_flagged(self):
+        self.assert_heuristic("3f9b7c1e4a5dffff8e2f6b1c9d0a7e35", "repeat:ffff@12")
+
+    def test_abcdef_guid_flagged(self):
+        self.assert_heuristic("7e9f3a52abcdef905b7c4e81d6a2f3b0", "abcdef@8")
+
+    def test_wrong_length_guid_flagged(self):
+        self.assert_heuristic("4a81947acf6349c4b37a44f35a71d7", "length:30")
+
+    def test_blacklisted_guid_fails_without_strict(self):
+        result = self.run_with_guid("a2f7ae0675bf4fb478a0a1df7a3f6c64")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("已知冲突 GUID", result.stdout)
+        self.assertIn("com.coplaydev.unity-mcp", result.stdout)
+
 
 class LocaleCheckTests(unittest.TestCase):
     @staticmethod

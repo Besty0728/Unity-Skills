@@ -5,8 +5,8 @@
 skill 注册，discovery 阶段读取 frontmatter `description` 做触发匹配。
 `description` 超过 1024 字符会被直接拒绝加载（"Skipped loading N skill(s) due
 to invalid SKILL.md files"）。v2.3.0 发布曾因超限 skill 被发现器拒载而翻车，
-此前完全靠人工用 /skillcheck 步骤 3k 复核。本脚本把其中可自动化的硬性部分
-落成 CI 门槛。
+本脚本把其中可自动化的硬性部分落成 CI 门槛；/skillcheck 经 skill_inventory.py
+调用它，不另写一套。
 
 校验范围：
   - SkillsForUnity/unity-skills~/SKILL.md（顶层入口）
