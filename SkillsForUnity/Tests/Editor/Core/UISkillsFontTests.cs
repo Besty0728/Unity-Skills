@@ -48,6 +48,24 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
+        /// The Chinese All-tasks prompt is agent text built in EvaluationState, outside the scanned UI sources, yet the
+        /// Evaluation tab shows it in this font, so its characters must be baked too.
+        /// </summary>
+        [Test]
+        public void CustomFont_ContainsEveryChineseGroupPromptCharacter()
+        {
+            var fontAsset = AssetDatabase.LoadAssetAtPath<FontAsset>(UISkillsFont.FontAssetPath);
+            Assert.That(fontAsset, Is.Not.Null);
+
+            var baked = new HashSet<uint>(fontAsset.characterTable.Select(character => character.unicode));
+            var prompt = EvaluationPanelGroupTests.GroupPromptOf("zh-CN", "BuiltIn");
+            var missing = prompt.Where(c => c > 127 && !baked.Contains(c)).Distinct().ToArray();
+
+            Assert.That(missing, Is.Empty,
+                "Missing group prompt characters: " + string.Join(" ", missing.Select(c => $"{c} (U+{(int)c:X4})")));
+        }
+
+        /// <summary>
         /// Every character in the atlas must exclusively own one glyph.
         ///
         /// HasCharacter can't see this class of failure: if incremental glyph top-up appends a character record but reuses a glyph index,

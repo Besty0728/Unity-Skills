@@ -31,6 +31,16 @@ namespace UnitySkills.Tests.Core
 
         private static readonly DateTime Started = new DateTime(2026, 10, 26, 10, 0, 0, DateTimeKind.Utc);
 
+        internal static string GroupPromptOf(string lang, string pipeline)
+        {
+            var manifest = JObject.Parse(ManifestJson);
+            return EvaluationState.BuildGroupPrompt("/usr/bin/python3", "/Pkg/Evaluation~/run_eval.py", "/Work/Proj", lang,
+                EvaluationState.AllCombos(manifest, pipeline), manifest, pipeline);
+        }
+
+        private static string[] CommandLines(string prompt) =>
+            prompt.Split('\n').Where(line => line.StartsWith("\"", StringComparison.Ordinal)).ToArray();
+
         [TestCase(9, 0, 1, "excellent")]
         [TestCase(8, 1, 1, "good")]
         [TestCase(7, 2, 1, "good")]
@@ -99,8 +109,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BuildGroupPrompt_ListsTheStartCommandsInOrder()
         {
-            var prompt = EvaluationState.BuildGroupPrompt("/usr/bin/python3", "/Pkg/Evaluation~/run_eval.py",
-                "/Work/Proj", "en", EvaluationState.AllCombos(JObject.Parse(ManifestJson), "URP"));
+            var prompt = GroupPromptOf("en", "URP");
 
             var lines = new[] { "--track ops --tier basic", "--track ops --tier standard", "--track dev --tier basic" };
             var positions = lines.Select(line => prompt.IndexOf(line, StringComparison.Ordinal)).ToArray();
@@ -108,7 +117,33 @@ namespace UnitySkills.Tests.Core
             Assert.That(positions, Is.Ordered.Ascending, "The commands follow the group's order.");
             StringAssert.Contains("\"/usr/bin/python3\" -B \"/Pkg/Evaluation~/run_eval.py\" start --track ops --tier basic " +
                                   "--mode suite --lang en --project \"/Work/Proj\"", prompt);
-            Assert.That(prompt.Where(c => c > 127).ToArray(), Is.Empty, "The agent protocol text stays ASCII.");
+            StringAssert.Contains("on its URP render pipeline (6 tasks, 3 sessions).", prompt);
+            StringAssert.DoesNotContain("The pack has", prompt, "Nothing is left out when the pipeline runs every task.");
+            Assert.That(prompt.Where(c => c > 127).ToArray(), Is.Empty, "The English protocol text stays ASCII.");
+        }
+
+        [Test]
+        public void BuildGroupPrompt_NamesTheTasksThePipelineLeavesOut()
+        {
+            var prompt = GroupPromptOf("en", "BuiltIn");
+
+            StringAssert.Contains("on its BuiltIn render pipeline (3 tasks, 2 sessions). The pack has 6 tasks; " +
+                                  "the other 3 need another render pipeline", prompt);
+            Assert.That(prompt.Where(c => c > 127).ToArray(), Is.Empty, "The English protocol text stays ASCII.");
+        }
+
+        [Test]
+        public void BuildGroupPrompt_InChineseKeepsTheCommandsAndTheCounts()
+        {
+            var zh = GroupPromptOf("zh-CN", "BuiltIn");
+            var en = GroupPromptOf("en", "BuiltIn");
+
+            StringAssert.Contains("共 3 题、2 个会话。", zh);
+            StringAssert.Contains("题包共 6 题，其余 3 题需要其他渲染管线", zh);
+            StringAssert.DoesNotContain("UnitySkills evaluation:", zh, "The header follows the prompt language.");
+            Assert.That(CommandLines(zh), Is.EqualTo(CommandLines(en).Select(line => line.Replace("--lang en ", "--lang zh-CN "))),
+                "Only the --lang value differs between the two languages' commands.");
+            StringAssert.DoesNotContain("题包共", GroupPromptOf("zh-CN", "URP"));
         }
 
         [Test]

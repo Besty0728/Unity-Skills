@@ -500,28 +500,56 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Agent protocol text, not UI copy: it is English like the command lines it carries, and <c>{0}</c> takes
-        /// the command block. Keep it ASCII so the panel can show it in the bundled font.
+        /// Agent protocol text, not UI copy: it follows the prompt language, not the panel's. <c>{0}</c> takes the
+        /// pipeline, <c>{1}</c> the task count, <c>{2}</c> the session count, <c>{3}</c> the left-out sentence or nothing,
+        /// <c>{4}</c> the command block. The panel shows it in the bundled font: the English text stays ASCII and the
+        /// Chinese one uses atlas characters only (EvaluationPanelGroupTests checks both).
         /// </summary>
-        internal const string GroupPromptTemplate =
-            "UnitySkills evaluation for all tracks and tiers. Run the sessions one at a time, in the order below.\n" +
-            "For each command: 1) run it exactly as written; 2) it prints a session prompt, so follow that prompt " +
-            "until the session's report is written; 3) only then run the next command. If a command reports " +
-            "SESSION_ACTIVE, finish that session first. Do not change the commands.\n\n" +
-            "Commands:\n{0}";
+        private const string GroupPromptEn =
+            "UnitySkills evaluation: every task this project can run on its {0} render pipeline ({1} tasks, {2} sessions).{3}\n" +
+            "Run the sessions one at a time, in the order below. For each command: 1) run it exactly as written; " +
+            "2) it prints a session prompt, so follow that prompt until the session's report is written; 3) only then " +
+            "run the next command. If a command reports SESSION_ACTIVE, finish that session first. Do not change the commands.\n\n" +
+            "Commands:\n{4}";
 
-        /// <summary>The agent-facing prompt: one start command per combo, the same python and runner the panel uses.</summary>
-        internal static string BuildGroupPrompt(string python, string runner, string projectRoot, string lang, IList<GroupCombo> combos)
+        private const string GroupLeftOutEn =
+            " The pack has {0} tasks; the other {1} need another render pipeline and are not part of this run.";
+
+        private const string GroupPromptZh =
+            "UnitySkills 评测：本工程（{0} 渲染管线）能跑的全部题目，共 {1} 题、{2} 个会话。{3}\n" +
+            "请按下面的顺序逐个运行会话。每条命令：1）原样运行；2）它会输出本会话的提示词，照做直到该会话的报告写出；" +
+            "3）之后再运行下一条。命令返回 SESSION_ACTIVE 时，先做完那个会话。不要修改命令。\n\n" +
+            "命令：\n{4}";
+
+        private const string GroupLeftOutZh = "题包共 {0} 题，其余 {1} 题需要其他渲染管线，不在本次范围内。";
+
+        /// <summary>
+        /// The agent-facing prompt: one start command per combo, the same python and runner the panel uses, under a
+        /// header that names the pipeline, the task and session counts, and the pack's tasks this pipeline leaves out.
+        /// </summary>
+        internal static string BuildGroupPrompt(string python, string runner, string projectRoot, string lang,
+            IList<GroupCombo> combos, JObject manifest, string pipeline)
         {
             var lines = new List<string>();
+            int count = 0;
             foreach (var combo in combos)
             {
                 lines.Add(string.Format(CultureInfo.InvariantCulture,
                     "\"{0}\" -B \"{1}\" start --track {2} --tier {3} --mode suite --lang {4} --project \"{5}\"",
                     python, runner, combo.Track, combo.Tier, lang, projectRoot));
+                count += ManifestTaskIds(manifest, combo.Track, combo.Tier).Count;
             }
-            return string.Format(CultureInfo.InvariantCulture, GroupPromptTemplate, string.Join("\n", lines));
+            int total = PackTaskCount(manifest);
+            bool zh = lang == "zh-CN";
+            var leftOut = total > count
+                ? string.Format(CultureInfo.InvariantCulture, zh ? GroupLeftOutZh : GroupLeftOutEn, total, total - count)
+                : string.Empty;
+            return string.Format(CultureInfo.InvariantCulture, zh ? GroupPromptZh : GroupPromptEn,
+                pipeline, count, combos.Count, leftOut, string.Join("\n", lines));
         }
+
+        /// <summary>The number of tasks in the pack, whatever their pipeline.</summary>
+        internal static int PackTaskCount(JObject manifest) => (manifest?["tasks"] as JObject)?.Count ?? 0;
 
         internal static string PanelGroupFile(string projectRoot) => Path.Combine(StateDir(projectRoot), PanelGroupFileName);
 

@@ -14,12 +14,12 @@ Before starting, ask the user in one message:
 1. Scope: one track and tier (default), all tasks, or picked tasks (task IDs).
 2. Track: `ops` or `dev` (skip when scope is all tasks).
 3. Tier: `basic`, `standard` or `challenge` (skip when scope is all tasks).
-4. Prompt language: `zh-CN`, `en` or `ru`.
+4. Prompt language: `zh-CN` or `en`.
 
 ## Start
 
 - One track and tier: `python3 -B <eval-runner> start --track <track> --tier <tier> --lang <lang>`. For picked tasks add `--tasks ID[,ID...]`; all of them must belong to the same track and tier.
-- All tasks: run six sessions one after another: ops basic, ops standard, ops challenge, dev basic, dev standard, dev challenge. Start the next only after the previous session has finished, because the runner refuses a second active session.
+- All tasks: run six sessions one after another: ops basic, ops standard, ops challenge, dev basic, dev standard, dev challenge. Start the next only after the previous session has finished, because the runner refuses a second active session. Not every tier runs on every render pipeline: when a `start` of this run is refused with `PIPELINE_UNSUPPORTED`, skip that tier and go on with the next, then tell the user at the end which tiers were skipped and why. This is the only exception to Run step 1.
 - Run from the Unity project folder, or add `--project <path to the project>`. Python 3.9 or newer; use `python` or `py -3` where `python3` is missing.
 - Optional: `--no-usage` (see Rules).
 - stdout is one JSON line: `ok`, `command`, `data`, `problems`, `next`.

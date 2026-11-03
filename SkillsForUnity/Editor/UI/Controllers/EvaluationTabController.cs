@@ -723,7 +723,8 @@ namespace UnitySkills
             var runner = EvaluationRunnerService.ResolveRunnerPath(out _);
             if (runner == null) return null;
             var lang = Pick(PromptLanguages, _group.Lang, "en");
-            return EvaluationState.BuildGroupPrompt(PythonLocator.Last.Executable, runner, _projectRoot, lang, _group.Combos);
+            return EvaluationState.BuildGroupPrompt(PythonLocator.Last.Executable, runner, _projectRoot, lang, _group.Combos,
+                _manifest, _pipeline);
         }
 
         private static string PromptLanguageOf(EvaluationState.SessionInfo session)
@@ -1163,10 +1164,17 @@ namespace UnitySkills
         private void RenderAllHint()
         {
             var combos = EvaluationState.AllCombos(_manifest, _pipeline);
+            if (combos.Count == 0)
+            {
+                SetText(_allHint, SkillsLocalization.Get("tab_eval_all_none", _pipeline));
+                return;
+            }
             var names = combos.ConvertAll(combo => combo.Track + " " + combo.Tier);
-            SetText(_allHint, combos.Count == 0
-                ? SkillsLocalization.Get("tab_eval_all_none", _pipeline)
-                : SkillsLocalization.Get("tab_eval_all_hint", SelectedTasks().Count, _pipeline, string.Join(", ", names)));
+            var count = SelectedTasks().Count;
+            var total = EvaluationState.PackTaskCount(_manifest);
+            SetText(_allHint, total > count
+                ? SkillsLocalization.Get("tab_eval_all_hint_partial", count, _pipeline, string.Join(", ", names), total, total - count)
+                : SkillsLocalization.Get("tab_eval_all_hint", count, _pipeline, string.Join(", ", names)));
         }
 
         /// <summary>The ticked tasks of the chosen tier. Every task starts ticked; the list rebuilds when the tier changes.</summary>
@@ -1204,7 +1212,7 @@ namespace UnitySkills
             if (group)
             {
                 var text = GroupPromptText();
-                SetText(_promptHint, SkillsLocalization.Get("tab_eval_prompt_hint_group"));
+                SetText(_promptHint, SkillsLocalization.Get("tab_eval_prompt_hint_group", _group.Combos.Count));
                 SetText(_promptText, text ?? string.Empty);
                 _promptScroll.SetVisible(text != null);
                 SetText(_promptNote, text == null ? SkillsLocalization.Get("tab_eval_start_needs_python") : string.Empty);
