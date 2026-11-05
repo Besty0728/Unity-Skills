@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -294,6 +295,45 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(-987654, change.Value<int>("instanceId"));
             Assert.AreEqual("-987654", change.Value<string>("entityId"));
 #endif
+        }
+
+        [Test]
+        public void Stream_CreatedAndDestroyedInOneStreamLeavesNoRecord()
+        {
+            var go = new GameObject("EctTransient");
+            string entityId = UnityObjectIdUtility.GetEntityId(go);
+            UnityEngine.Object.DestroyImmediate(go);
+            var vanished = new HashSet<string>();
+
+            Assert.IsNull(EditorChangeTrackerService.CaptureCreatedInStream(entityId, vanished));
+            Assert.IsNull(EditorChangeTrackerService.CaptureDestroyedInStream(entityId, vanished),
+                "a rolled-back create must not surface as a pathless destroy");
+            Assert.IsEmpty(vanished);
+        }
+
+        [Test]
+        public void Stream_DestroyWithoutAVanishedCreateIsStillPublished()
+        {
+            var go = new GameObject("EctCreatedAlive");
+            try
+            {
+                string entityId = UnityObjectIdUtility.GetEntityId(go);
+                var vanished = new HashSet<string>();
+
+                Assert.AreEqual("gameobject_created",
+                    EditorChangeTrackerService.CaptureCreatedInStream(entityId, vanished).Value<string>("kind"));
+                Assert.IsEmpty(vanished, "a create that still resolves is published, not paired");
+#if UNITY_6000_4_OR_NEWER
+                var unknown = EditorChangeTrackerService.CaptureDestroyedInStream("987654321", vanished);
+#else
+                var unknown = EditorChangeTrackerService.CaptureDestroyedInStream("-987654", vanished);
+#endif
+                Assert.AreEqual("gameobject_destroyed", unknown.Value<string>("kind"), "an unknown destroy still fails closed");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
         }
 
         // ===== debounced property changes =====

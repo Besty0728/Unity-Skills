@@ -350,6 +350,7 @@ namespace UnitySkills
             try
             {
                 var changes = new List<JObject>();
+                var vanished = new HashSet<string>(StringComparer.Ordinal);
                 int omitted = 0;
 
                 for (int i = 0; i < stream.length; i++)
@@ -360,18 +361,18 @@ namespace UnitySkills
                         case ObjectChangeKind.CreateGameObjectHierarchy:
                             stream.GetCreateGameObjectHierarchyEvent(i, out var createArgs);
 #if UNITY_6000_4_OR_NEWER
-                            change = CaptureCreated(UnityObjectIdUtility.EntityKey(createArgs.entityId));
+                            change = CaptureCreatedInStream(UnityObjectIdUtility.EntityKey(createArgs.entityId), vanished);
 #else
-                            change = CaptureCreated(UnityObjectIdUtility.EntityKey(createArgs.instanceId));
+                            change = CaptureCreatedInStream(UnityObjectIdUtility.EntityKey(createArgs.instanceId), vanished);
 #endif
                             break;
 
                         case ObjectChangeKind.DestroyGameObjectHierarchy:
                             stream.GetDestroyGameObjectHierarchyEvent(i, out var destroyArgs);
 #if UNITY_6000_4_OR_NEWER
-                            change = CaptureDestroyed(UnityObjectIdUtility.EntityKey(destroyArgs.entityId));
+                            change = CaptureDestroyedInStream(UnityObjectIdUtility.EntityKey(destroyArgs.entityId), vanished);
 #else
-                            change = CaptureDestroyed(UnityObjectIdUtility.EntityKey(destroyArgs.instanceId));
+                            change = CaptureDestroyedInStream(UnityObjectIdUtility.EntityKey(destroyArgs.instanceId), vanished);
 #endif
                             break;
 
@@ -656,6 +657,26 @@ namespace UnitySkills
             AddGameObjectIdentity(change, go);
             change["components"] = JArray.FromObject(SnapshotComponentTypes(go));
             return change;
+        }
+
+        /// <summary>
+        /// A GameObject created and destroyed within one change stream (a transactional batch rolled back in the same
+        /// request) left no net change, yet its create can no longer resolve the object and its destroy finds no catalog
+        /// entry, which would publish a pathless destroy. <paramref name="vanished"/> pairs the two so both are dropped.
+        /// </summary>
+        internal static JObject CaptureCreatedInStream(string entityId, HashSet<string> vanished)
+        {
+            var change = CaptureCreated(entityId);
+            if (change == null && ResolveGameObject(entityId) == null)
+                vanished.Add(entityId);
+            return change;
+        }
+
+        internal static JObject CaptureDestroyedInStream(string entityId, HashSet<string> vanished)
+        {
+            if (vanished.Remove(entityId) && !Catalog.ContainsKey(entityId))
+                return null;
+            return CaptureDestroyed(entityId);
         }
 
         internal static JObject CaptureDestroyed(string entityId)
