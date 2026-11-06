@@ -1206,6 +1206,25 @@ namespace UnitySkills
         };
 
         /// <summary>
+        /// <c>JObject.Parse</c> that leaves every JSON string a string. The default reader turns an ISO-8601 string into a Date
+        /// token, and reading that token back as a string (<c>ToObject</c>, <c>ToString</c>) yields culture-formatted text
+        /// ("2026-11-06T06:07:50Z" becomes "11/06/2026 06:07:50"). Use it for any JSON that carries caller-supplied values.
+        /// </summary>
+        internal static Newtonsoft.Json.Linq.JObject ParseObjectKeepingStrings(string json)
+        {
+            using (var reader = new JsonTextReader(new StringReader(json)) { DateParseHandling = DateParseHandling.None })
+            {
+                var parsed = Newtonsoft.Json.Linq.JObject.Load(reader);
+                while (reader.Read())
+                {
+                    if (reader.TokenType != JsonToken.Comment)
+                        throw new JsonReaderException("Additional text found in JSON string after parsing content.");
+                }
+                return parsed;
+            }
+        }
+
+        /// <summary>
         /// Gets all loaded types across every non-dynamic assembly.
         /// </summary>
         public static System.Collections.Generic.IEnumerable<System.Type> GetAllLoadedTypes()

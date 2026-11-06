@@ -27,6 +27,9 @@ namespace UnitySkills
         private static readonly ConcurrentDictionary<Type, JsonObjectContract> _itemContractCache =
             new ConcurrentDictionary<Type, JsonObjectContract>();
 
+        // An item member typed object (component_set_property_batch's value) would otherwise receive a date-like string as a DateTime.
+        private static readonly JsonSerializerSettings ItemSettings = new JsonSerializerSettings { DateParseHandling = DateParseHandling.None };
+
         private static bool HasErrorMember(Type type)
         {
             return _hasErrorMemberCache.GetOrAdd(type, static t =>
@@ -91,7 +94,7 @@ namespace UnitySkills
             List<TItem> itemList;
             try
             {
-                itemList = JsonConvert.DeserializeObject<List<TItem>>(itemsJson);
+                itemList = JsonConvert.DeserializeObject<List<TItem>>(itemsJson, ItemSettings);
                 if (itemList == null || itemList.Count == 0)
                     return new { error = "items parameter is empty or invalid JSON" };
             }

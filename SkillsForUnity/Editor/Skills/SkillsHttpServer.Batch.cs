@@ -562,7 +562,8 @@ namespace UnitySkills
                 }
 
                 JObject stepPayload;
-                try { stepPayload = JObject.Parse(stepJson); }
+                // A later step reads this through $ref, so a date-like string must reach it as the text the skill returned.
+                try { stepPayload = SkillsCommon.ParseObjectKeepingStrings(stepJson); }
                 catch { stepPayload = new JObject { ["status"] = "error", ["error"] = stepJson }; }
 
                 string stepStatus = stepPayload["status"]?.ToString();

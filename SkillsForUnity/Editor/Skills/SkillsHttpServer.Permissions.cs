@@ -461,7 +461,7 @@ namespace UnitySkills
             body = null;
             try
             {
-                body = string.IsNullOrWhiteSpace(job.Body) ? new JObject() : JObject.Parse(job.Body);
+                body = string.IsNullOrWhiteSpace(job.Body) ? new JObject() : SkillsCommon.ParseObjectKeepingStrings(job.Body);
                 return true;
             }
             catch (Exception ex)
