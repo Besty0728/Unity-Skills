@@ -358,7 +358,7 @@ namespace UnitySkills
             return result;
         }
 
-        [UnitySkill("asset_find", "Find assets by name, type, or label",
+        [UnitySkill("asset_find", "Find assets by name, type, or label across the whole project. There is no folder parameter: to search inside one folder use batch_query_assets (folder).",
             Category = SkillCategory.Asset, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "database" },
             Outputs = new[] { "count", "totalFound", "assets" },
@@ -392,7 +392,9 @@ namespace UnitySkills
             Outputs = new[] { "path", "guid" },
             RequiresInput = new[] { "folderPath" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true)]
-        public static object AssetCreateFolder(string folderPath)
+        public static object AssetCreateFolder(
+            [SkillParam("Project path starting with Assets/ (forward slashes), e.g. Assets/Art/Models. Parent folders are not created: the parent must already exist. If it already exists the call fails with 'Folder already exists' and changes nothing; that folder is ready to use.")]
+            string folderPath)
         {
             if (Validate.SafePath(folderPath, "folderPath") is object pathErr) return pathErr;
             if (Directory.Exists(folderPath))

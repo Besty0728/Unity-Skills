@@ -17,7 +17,7 @@ namespace UnitySkills
     {
         // Also used by BatchSkills' set_property preview, which resolves members and values through the same helpers.
         internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees; bool true/false/1/0/yes/no/on/off; AnimationCurve preset (linear, easeIn, easeOut, easeInOut, constant) or JSON {keys:[...]}. Omitted or 'null' = type default.";
-        internal const string PropertyNameNote = "C# property/field name (e.g. mass, isTrigger, a script field), exact then case-insensitive; for m_* serialized paths use component_set_serialized_property.";
+        internal const string PropertyNameNote = "C# property/field name (e.g. mass, isTrigger, a script field), exact then case-insensitive; list the valid names with component_get_properties (includePrivate=true for non-public fields). For m_* serialized paths use component_set_serialized_property.";
         internal const string AssetReferenceNote = "Project asset path for an object-reference member (Material, Prefab, ScriptableObject...); takes precedence over referencePath/referenceName and value.";
 
         private static readonly Dictionary<string, System.Type> _typeCache = new Dictionary<string, System.Type>();
@@ -550,7 +550,7 @@ namespace UnitySkills
             }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
-        [UnitySkill("component_get_serialized_properties", "List Inspector serialized properties on a component via SerializedObject (supports nested fields and array/list property paths)",
+        [UnitySkill("component_get_serialized_properties", "List the Inspector serialized properties of a component via SerializedObject (propertyPath, type, value; nested fields and array elements too), up to limit. There is no propertyPath filter or single-property getter: read the entry you need from the list, and pass its propertyPath to component_set_serialized_property to change it.",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "serialized", "inspector", "property", "field" },
             Outputs = new[] { "gameObject", "component", "properties" },
@@ -744,13 +744,15 @@ namespace UnitySkills
             public bool includePrivate = true;
         }
 
-        [UnitySkill("component_invoke_method", "Invoke an exact component or static C# method once as a job. Supports arguments, parameterTypes, genericTypeArguments; executionMode defaults to play. No Undo or atomicity guarantee.",
+        [UnitySkill("component_invoke_method", "Invoke an exact component or static C# method once as a job. Supports arguments, parameterTypes, genericTypeArguments; executionMode (play|edit) must match the current Editor mode and defaults to play. No Undo or atomicity guarantee.",
             Category = SkillCategory.Component, Operation = SkillOperation.Execute,
             Tags = new[] { "method", "invoke", "runtime", "job" }, Outputs = new[] { "jobId", "kind", "waitUrl" },
             RequiredParams = new[] { "componentType", "methodName" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
         public static object ComponentInvokeMethod(string componentType, string methodName, string name = null, int instanceId = 0,
             string path = null, int componentIndex = 0, bool isStatic = false, string parameterTypes = null,
-            string genericTypeArguments = null, string arguments = null, string executionMode = "play", int timeoutSeconds = 30, string assembly = null, string entityId = null)
+            string genericTypeArguments = null, string arguments = null,
+            [SkillParam("'play' (default) or 'edit', lowercase, and it must equal the Editor's current state: 'play' only while in Play Mode, 'edit' only while stopped. In Edit Mode pass 'edit'; a mismatch is rejected.")]
+            string executionMode = "play", int timeoutSeconds = 30, string assembly = null, string entityId = null)
         {
             return ComponentInvocationService.Start(new ComponentInvocationService.Request { componentType = componentType, methodName = methodName,
                 name = name, instanceId = instanceId, path = path, entityId = entityId, componentIndex = componentIndex, isStatic = isStatic,
@@ -769,7 +771,7 @@ namespace UnitySkills
             return BatchExecutor.Execute<ComponentInvocationService.Request>(items, ComponentInvocationService.Start, item => item.componentType + "." + item.methodName, atomic: false);
         }
 
-        [UnitySkill("component_get_properties", "Get all properties of a component (supports name/entityId/instanceId/path)",
+        [UnitySkill("component_get_properties", "Get all properties and fields of a component with types and current values (supports name/entityId/instanceId/path). These names are what component_set_property takes as propertyName; includePrivate=true adds non-public members.",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "property", "field", "inspect", "reflection" },
             Outputs = new[] { "gameObject", "component", "properties", "fields" },
@@ -777,7 +779,9 @@ namespace UnitySkills
             RequiredParams = new[] { "componentType" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null, string componentType = null, bool includePrivate = false, string entityId = null)
+        public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Type name of a component the object already has, as in component_add; with several of that type the first is read.")]
+            string componentType = null, bool includePrivate = false, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
 

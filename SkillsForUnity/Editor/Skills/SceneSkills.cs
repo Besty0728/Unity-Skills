@@ -133,13 +133,15 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("scene_get_hierarchy", "Get scene hierarchy tree",
+        [UnitySkill("scene_get_hierarchy", "Get the active scene's hierarchy as a JSON tree, inactive objects included. Always the whole scene: there is no rootPath or includeInactive parameter; for one parent's children use batch_query_gameobjects (queryJson parentPath).",
             Category = SkillCategory.Scene, Operation = SkillOperation.Query,
             Tags = new[] { "hierarchy", "tree", "structure" },
             Outputs = new[] { "sceneName", "hierarchy" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object SceneGetHierarchy(int maxDepth = 3)
+        public static object SceneGetHierarchy(
+            [SkillParam("Levels of children expanded below the root objects (0 = roots only). A node cut off by it reports childCount > 0 and no children.")]
+            int maxDepth = 3)
         {
             var scene = SceneManager.GetActiveScene();
             var roots = scene.GetRootGameObjects();

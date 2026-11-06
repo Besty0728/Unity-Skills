@@ -55,6 +55,12 @@ namespace UnitySkills.Tests.Core
             ("ui_set_rect_transform", "anchoredPosX"), ("ui_set_rect_transform", "offsetMinX"), ("ui_set_rect_transform", "width"),
             ("ui_create_scrollbar", "direction"), ("ui_set_image", "fillMethod"), ("ui_set_image", "fillOrigin"),
             ("ui_configure_selectable", "normalR"),
+            // Agent-eval misuses: values outside the allowed set or format, and params guessed on skills that do not take them.
+            ("console_get_logs", "type"), ("console_get_logs", "fromUtc"), ("console_get_logs", "toUtc"),
+            ("component_invoke_method", "executionMode"), ("component_get_properties", "componentType"),
+            ("asset_create_folder", "folderPath"), ("gameobject_find", "tag"),
+            ("scene_get_hierarchy", "maxDepth"),
+            ("hierarchy_describe", "maxDepth"), ("hierarchy_describe", "includeInactive"), ("hierarchy_describe", "maxItemsPerLevel"),
         };
 
         // In these classes a JSON payload parameter is a bare string in the schema, so its note is the only place its shape is stated.

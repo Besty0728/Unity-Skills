@@ -1077,13 +1077,19 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("hierarchy_describe", "Get a text tree of the scene hierarchy (like 'tree' command). Returns human-readable text. For JSON structure use scene_get_hierarchy.",
+        [UnitySkill("hierarchy_describe", "Get a text tree of the scene hierarchy (like 'tree' command). Returns human-readable text. For JSON structure use scene_get_hierarchy. Always the whole active scene: there is no rootPath parameter; for one parent's children use batch_query_gameobjects (queryJson parentPath).",
             Category = SkillCategory.Perception, Operation = SkillOperation.Query,
             Tags = new[] { "hierarchy", "tree", "scene", "structure" },
             Outputs = new[] { "sceneName", "hierarchy", "totalObjectsShown" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object HierarchyDescribe(int maxDepth = 5, bool includeInactive = false, int maxItemsPerLevel = 20)
+        public static object HierarchyDescribe(
+            [SkillParam("Levels listed below the root objects (0 = roots only); deeper objects are omitted.")]
+            int maxDepth = 5,
+            [SkillParam("false skips inactive objects together with their children; true lists them, marked [inactive].")]
+            bool includeInactive = false,
+            [SkillParam("Max root objects, and max children per object, listed; the rest collapse into a '... and N more' line.")]
+            int maxItemsPerLevel = 20)
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
             var rootObjects = scene.GetRootGameObjects()

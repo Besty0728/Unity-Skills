@@ -463,7 +463,7 @@ namespace UnitySkills
             public string path { get; set; }
         }
 
-        [UnitySkill("gameobject_find", "Find GameObjects by name/regex, tag, layer, or component",
+        [UnitySkill("gameobject_find", "Find GameObjects by name/regex, tag, layer, or component in all loaded scenes, inactive ones included. There is no includeInactive or parent filter: for those use batch_query_gameobjects (queryJson includeInactive, parentPath).",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "regex", "tag", "layer" },
             Outputs = new[] { "count", "totalMatched", "truncated", "objects" },
@@ -472,7 +472,9 @@ namespace UnitySkills
         public static object GameObjectFind(
             [SkillParam("Case-insensitive substring; with useRegex=true a case-sensitive .NET regex.")]
             string name = null,
-            bool useRegex = false, string tag = null,
+            bool useRegex = false,
+            [SkillParam("Registered tag name; an unknown one is rejected. With a tag only active objects are found (Unity's tag lookup skips inactive ones).")]
+            string tag = null,
             [SkillParam("Layer name as in Tags & Layers, not an index; an unknown name is rejected with the defined layers.")]
             string layer = null,
             [SkillParam("Component type name as in component_add; an unknown name is rejected.")]

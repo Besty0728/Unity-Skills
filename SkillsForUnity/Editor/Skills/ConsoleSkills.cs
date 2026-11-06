@@ -82,8 +82,14 @@ namespace UnitySkills
             Outputs = new[] { "count", "logs", "cursor", "nextCursor", "totalMatched", "hasMore", "complete", "dropped", "coverage" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ConsoleGetLogs(string type = "All", string filter = null, int limit = 100,
-            bool collapse = true, string fromUtc = null, string toUtc = null, string groupId = null,
+        public static object ConsoleGetLogs(
+            [SkillParam("All (default), Error, Warning or Log, case-insensitive; 'Error,Warning' combines. Exception and Assert entries are returned under Error; those words are not valid values.")]
+            string type = "All", string filter = null, int limit = 100,
+            bool collapse = true,
+            [SkillParam("Inclusive lower time bound, ISO-8601 UTC ending in Z, e.g. 2026-11-05T13:24:01Z; other formats are rejected. Entries without a recorded time are left out once either bound is set.")]
+            string fromUtc = null,
+            [SkillParam("Exclusive upper time bound, same format as fromUtc and later than it.")]
+            string toUtc = null, string groupId = null,
             string cursor = null, bool includeStackTrace = false)
         {
             const int allTypes = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
