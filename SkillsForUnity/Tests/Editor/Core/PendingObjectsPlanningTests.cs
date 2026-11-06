@@ -272,6 +272,130 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        // ---------- creates whose preview predicts no object ----------
+
+        [Test]
+        public void Scope_AnUnplannedCreateIsNameableByLaterSteps()
+        {
+            var light = _root + "_Key";
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                DryRun("gameobject_create", new JObject { ["name"] = _root });
+                var create = DryRun("light_create", new JObject { ["name"] = light });
+                Assert.That(create["valid"]?.Value<bool>(), Is.True, create.ToString(Formatting.None));
+
+                var setParent = DryRun("gameobject_set_parent", new JObject { ["childName"] = light, ["parentName"] = _root });
+                Assert.That(setParent["valid"]?.Value<bool>(), Is.True,
+                    "light_create's preview has no create entry, yet execution makes the light: " + setParent.ToString(Formatting.None));
+                Assert.That(StringArray(setParent["validation"]?["warnings"]).Any(w => w.Contains($"child '{light}'") && w.Contains("earlier step")),
+                    Is.True, setParent.ToString(Formatting.None));
+            }
+
+            DryRun("light_create", new JObject { ["name"] = light });
+            var outside = DryRun("gameobject_set_parent", new JObject { ["childName"] = light });
+            Assert.That(outside["valid"]?.Value<bool>(), Is.False, "Without a scope a preview registers nothing.");
+        }
+
+        [Test]
+        public void Scope_AnUnplannedCreateUnderAParent_IsNameableByItsPredictedPath()
+        {
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                DryRun("ui_create_canvas", new JObject { ["name"] = _root });
+                var panel = DryRun("ui_create_panel", new JObject { ["name"] = "Panel", ["parent"] = _root });
+                Assert.That(panel["valid"]?.Value<bool>(), Is.True, panel.ToString(Formatting.None));
+
+                var byPath = DryRun("gameobject_rename", new JObject { ["path"] = _root + "/Panel", ["newName"] = "Renamed" });
+                Assert.That(byPath["valid"]?.Value<bool>(), Is.True, byPath.ToString(Formatting.None));
+                Assert.That(StringArray(byPath["validation"]?["warnings"]).Any(w => w.Contains(_root + "/Panel") && w.Contains("earlier step")),
+                    Is.True, byPath.ToString(Formatting.None));
+            }
+        }
+
+        [Test]
+        public void Scope_AParentlessUiCreate_IsNameableByNameOnly()
+        {
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                DryRun("ui_create_panel", new JObject { ["name"] = _root });
+
+                var byName = DryRun("gameobject_rename", new JObject { ["name"] = _root, ["newName"] = "Renamed" });
+                Assert.That(byName["valid"]?.Value<bool>(), Is.True, byName.ToString(Formatting.None));
+
+                var byPath = DryRun("gameobject_rename", new JObject { ["path"] = _root, ["newName"] = "Renamed" });
+                Assert.That(byPath["valid"]?.Value<bool>(), Is.False,
+                    "A UI element without a parent goes under a Canvas, so no path is predicted for it.");
+            }
+        }
+
+        [Test]
+        public void Scope_AChildOfANameOnlyParent_IsNameableByNameOnly()
+        {
+            var button = _root + "_Button";
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                DryRun("ui_create_panel", new JObject { ["name"] = _root });
+                var create = DryRun("ui_create_button", new JObject { ["name"] = button, ["parent"] = _root });
+                Assert.That(create["valid"]?.Value<bool>(), Is.True, create.ToString(Formatting.None));
+
+                var byPath = DryRun("gameobject_rename", new JObject { ["path"] = _root + "/" + button, ["newName"] = "Renamed" });
+                Assert.That(byPath["valid"]?.Value<bool>(), Is.False,
+                    "The panel goes under a Canvas, so 'Panel/Button' is a path that will not exist: " + byPath.ToString(Formatting.None));
+
+                var byName = DryRun("gameobject_rename", new JObject { ["name"] = button, ["newName"] = "Renamed" });
+                Assert.That(byName["valid"]?.Value<bool>(), Is.True, byName.ToString(Formatting.None));
+                Assert.That(StringArray(byName["validation"]?["warnings"]).Any(w => w.Contains(button) && w.Contains("earlier step")),
+                    Is.True, byName.ToString(Formatting.None));
+            }
+        }
+
+        [Test]
+        public void Scope_APredictedCreateUnderANameOnlyParent_IsNameableByNameOnly()
+        {
+            var child = _root + "_Child";
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                DryRun("ui_create_panel", new JObject { ["name"] = _root });
+                var create = DryRun("gameobject_create", new JObject { ["name"] = child, ["parentName"] = _root });
+                Assert.That(create["valid"]?.Value<bool>(), Is.True, create.ToString(Formatting.None));
+
+                var byPath = DryRun("gameobject_rename", new JObject { ["path"] = _root + "/" + child, ["newName"] = "Renamed" });
+                Assert.That(byPath["valid"]?.Value<bool>(), Is.False,
+                    "gameobject_create predicts '<panel>/<child>', but the panel goes under a Canvas: " + byPath.ToString(Formatting.None));
+
+                var byName = DryRun("gameobject_rename", new JObject { ["name"] = child, ["newName"] = "Renamed" });
+                Assert.That(byName["valid"]?.Value<bool>(), Is.True, byName.ToString(Formatting.None));
+                Assert.That(StringArray(byName["validation"]?["warnings"]).Any(w => w.Contains(child) && w.Contains("earlier step")),
+                    Is.True, byName.ToString(Formatting.None));
+            }
+        }
+
+        [Test]
+        public void Scope_ComponentAddOnAMissingObject_DoesNotMakeItPending()
+        {
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                var add = DryRun("component_add", new JObject { ["name"] = _root, ["componentType"] = "BoxCollider" });
+                Assert.That(add["valid"]?.Value<bool>(), Is.False, add.ToString(Formatting.None));
+
+                var rename = DryRun("gameobject_rename", new JObject { ["name"] = _root, ["newName"] = "Renamed" });
+                Assert.That(rename["valid"]?.Value<bool>(), Is.False, "component_add's name locates its target; it creates no object.");
+            }
+        }
+
+        [Test]
+        public void Scope_AnAssetCreate_RegistersNoGameObject()
+        {
+            using (SkillPlanningService.BeginPendingObjectsScope())
+            {
+                var material = DryRun("material_create", new JObject { ["name"] = _root });
+                Assert.That(material["valid"]?.Value<bool>(), Is.True, material.ToString(Formatting.None));
+
+                var rename = DryRun("gameobject_rename", new JObject { ["name"] = _root, ["newName"] = "Renamed" });
+                Assert.That(rename["valid"]?.Value<bool>(), Is.False, "material_create names an asset, not a scene object.");
+            }
+        }
+
         // ---------- components an earlier step adds ----------
 
         [Test]

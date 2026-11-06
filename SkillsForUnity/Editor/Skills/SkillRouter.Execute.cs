@@ -574,7 +574,7 @@ namespace UnitySkills
                 var validation = ValidateParameters(skill, json);
                 var planData = SkillPlanningService.BuildPlanData(skill, validation);
                 // Inside a /skills/batch dry run, what this step would create becomes nameable by the steps after it.
-                SkillPlanningService.RegisterPendingCreates(validation, planData);
+                SkillPlanningService.RegisterPendingCreates(skill, validation, planData);
                 var resolutionNotes = MergeResolutionNotes(null);
                 var dryRunToken = issuePolicyToken && validation.Valid && DryRunGateApplies(skill)
                     ? DryRunPolicyService.IssueToken(skill.Name, DryRunPolicyService.HashSkillArgs(skill, json))
@@ -713,7 +713,7 @@ namespace UnitySkills
                 GameObjectFinder.DrainResolutionNotes();
                 var validation = ValidateParameters(skill, json);
                 var plan = SkillPlanningService.BuildPlan(skill, validation);
-                SkillPlanningService.RegisterPendingCreates(validation, plan);
+                SkillPlanningService.RegisterPendingCreates(skill, validation, plan);
                 var resolutionNotes = MergeResolutionNotes(null);
 
                 // A plan made for a skill the profile hides is a plan that can never execute, and ?mode=plan used to be the one preview

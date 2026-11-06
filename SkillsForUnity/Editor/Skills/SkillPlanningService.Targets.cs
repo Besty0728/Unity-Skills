@@ -224,26 +224,90 @@ namespace UnitySkills
 
         /// <summary>
         /// Inside a pending-objects scope, records what a call would create: its planner's <c>changes.create[]</c> entries
-        /// that carry a <c>predictedPath</c> (GameObjects) or a <c>target</c> and <c>fullTypeName</c> (components). An
-        /// invalid call registers nothing -- execution rejects it before anything exists. No-op outside a scope.
+        /// that carry a <c>predictedPath</c> (GameObjects) or a <c>target</c> and <c>fullTypeName</c> (components), and,
+        /// when no entry predicts the object, the one a <see cref="CreatesNamedSceneObject"/> skill makes. An invalid call
+        /// registers nothing -- execution rejects it before anything exists. No-op outside a scope.
         /// </summary>
-        internal static void RegisterPendingCreates(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        internal static void RegisterPendingCreates(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
             var pending = _pendingObjects;
-            if (pending == null || validation == null || !validation.Valid || plan == null)
+            if (pending == null || validation == null || !validation.Valid)
                 return;
 
-            if (!plan.TryGetValue("changes", out var changesObj) || !(changesObj is IDictionary<string, object> changes) ||
-                !changes.TryGetValue("create", out var createObj) || !(createObj is IEnumerable<object> creates))
-                return;
-
-            foreach (var entry in creates.OfType<IDictionary<string, object>>())
+            bool predictedObject = false;
+            if (plan != null && plan.TryGetValue("changes", out var changesObj) && changesObj is IDictionary<string, object> changes &&
+                changes.TryGetValue("create", out var createObj) && createObj is IEnumerable<object> creates)
             {
-                if (entry.TryGetValue("predictedPath", out var predictedPath) && entry.TryGetValue("name", out var name))
-                    pending.Register(name as string, predictedPath as string);
-                else if (entry.TryGetValue("target", out var target) && entry.TryGetValue("fullTypeName", out var fullTypeName))
-                    pending.RegisterComponent(target as string, SkillsCommon.FindTypeByName(fullTypeName as string));
+                foreach (var entry in creates.OfType<IDictionary<string, object>>())
+                {
+                    if (entry.TryGetValue("predictedPath", out var predictedPathObj) && entry.TryGetValue("name", out var name))
+                    {
+                        // Under a parent known by name only, the predicted path is a guess: keep the name alone.
+                        var predictedPath = predictedPathObj as string;
+                        int slash = predictedPath?.LastIndexOf('/') ?? -1;
+                        if (slash > 0 && pending.IsNameOnly(predictedPath.Substring(0, slash)))
+                            pending.RegisterName(name as string, predictedPath);
+                        else
+                            pending.Register(name as string, predictedPath);
+                        predictedObject = true;
+                    }
+                    else if (entry.TryGetValue("target", out var target) && entry.TryGetValue("fullTypeName", out var fullTypeName))
+                    {
+                        pending.RegisterComponent(target as string, SkillsCommon.FindTypeByName(fullTypeName as string));
+                    }
+                }
             }
+
+            if (!predictedObject && CreatesNamedSceneObject(skill))
+                RegisterUnplannedCreate(pending, skill, validation.Args);
+        }
+
+        /// <summary>
+        /// A scene create whose <c>name</c> names the GameObject it makes (light_create, camera_create, ui_create_*, ...):
+        /// Create and MutatesScene, a <c>name</c> parameter, and none of the instanceId / path / entityId locators a skill
+        /// acting on an existing object declares beside its <c>name</c> (component_add). Asset creators do not mutate the scene.
+        /// </summary>
+        private static bool CreatesNamedSceneObject(SkillRouter.SkillInfo skill)
+        {
+            var parameters = skill?.ParameterNames;
+            return parameters != null && skill.Operation.HasFlag(SkillOperation.Create) && skill.MutatesScene &&
+                parameters.Contains("name") &&
+                !parameters.Contains("instanceId") && !parameters.Contains("path") && !parameters.Contains("entityId");
+        }
+
+        /// <summary>
+        /// Registers the object such a skill makes, from its arguments alone. A skill without parent parameters puts it at
+        /// the scene root; a given parent that resolves (live or pending) puts it under that parent. Otherwise where it lands
+        /// is the skill's own choice (a UI element without a parent goes under a Canvas), so only its name is registered.
+        /// </summary>
+        private static void RegisterUnplannedCreate(PendingObjectSet pending, SkillRouter.SkillInfo skill, JObject args)
+        {
+            var name = GetStringArg(args, "name");
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            if (!skill.ParameterNames.Any(parameter => parameter.StartsWith("parent", StringComparison.Ordinal)))
+            {
+                pending.Register(name, name);
+                return;
+            }
+
+            // The parent* locator family, or the single "parent" name of ui_create_* / probuilder_create_shape / xr_add_teleport_anchor.
+            var parentName = GetStringArg(args, "parentName", "parent");
+            var parentPath = GetStringArg(args, "parentPath");
+            int parentInstanceId = GetIntArg(args, "parentInstanceId");
+            var parentEntityId = GetStringArg(args, "parentEntityId");
+            if (!string.IsNullOrEmpty(parentName) || !string.IsNullOrEmpty(parentPath) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentEntityId))
+            {
+                var parent = ResolveLocator(parentName, parentInstanceId, parentPath, parentEntityId);
+                // A parent known by name only has no path to put the child under.
+                if (parent.Error == null && !(parent.IsPending && pending.IsNameOnly(parent.PendingPath)))
+                {
+                    pending.Register(name, parent.Path + "/" + name);
+                    return;
+                }
+            }
+            pending.RegisterName(name);
         }
 
         /// <summary>
@@ -256,6 +320,7 @@ namespace UnitySkills
             private readonly Dictionary<string, string> _pathsByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             private readonly Dictionary<string, string> _paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             private readonly Dictionary<string, List<Type>> _componentsByPath = new Dictionary<string, List<Type>>(StringComparer.OrdinalIgnoreCase);
+            private readonly HashSet<string> _nameOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             public void Register(string name, string predictedPath)
             {
@@ -265,7 +330,27 @@ namespace UnitySkills
 
                 _paths[path] = path;
                 _pathsByName[name] = path;
+                _nameOnly.Remove(name);
+                _nameOnly.Remove(path);
             }
+
+            /// <summary>
+            /// An object whose place is unknown: matched by name only, and reported under its name. A planner's
+            /// <paramref name="guessedPath"/> for it is remembered too, so the objects predicted under it stay name-only.
+            /// </summary>
+            public void RegisterName(string name, string guessedPath = null)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return;
+
+                _pathsByName[name] = name;
+                _nameOnly.Add(name);
+                if (!string.IsNullOrEmpty(guessedPath))
+                    _nameOnly.Add(guessedPath);
+            }
+
+            /// <summary>Whether a match's <paramref name="pendingPath"/> is a <see cref="RegisterName"/> object's name (or guessed path) rather than a path.</summary>
+            public bool IsNameOnly(string pendingPath) => pendingPath != null && _nameOnly.Contains(pendingPath);
 
             public void RegisterComponent(string targetPath, Type componentType)
             {
@@ -294,7 +379,8 @@ namespace UnitySkills
             public bool TryMatch(string name, string path, bool liveFirst, out string pendingPath)
             {
                 pendingPath = null;
-                if (_paths.Count == 0)
+                // Every registration names its object; a name-only one has no path.
+                if (_pathsByName.Count == 0)
                     return false;
 
                 if (!string.IsNullOrEmpty(path))
