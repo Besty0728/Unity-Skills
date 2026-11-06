@@ -15,6 +15,7 @@ namespace UnitySkills.Tests.Core
     /// share bound the bottom-most one, the last loaded scene beat the first, and a path cache hit disagreed with the path
     /// walk. It now walks in Hierarchy order, an exact-case path beats one that matches only ignoring case, and an entityId
     /// or instanceId that names nothing is a miss instead of a fallback to the path or name, which could bind a same-name object.
+    /// A name containing '/' with no exact match resolves as a hierarchy path before the word/substring fallback.
     /// </summary>
     [TestFixture]
     public class GameObjectFinderOrderTests
@@ -317,6 +318,153 @@ namespace UnitySkills.Tests.Core
             var solo = Create("Solo");
 
             Assert.That(GameObjectFinder.Find(name: "Solo", entityId: entityId), Is.EqualTo(solo));
+        }
+
+        [Test]
+        public void NameWithSlash_ResolvesAsHierarchyPath_AndSaysSo()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+            var markers = Create("Markers", hall);
+
+            var (go, error) = GameObjectFinder.FindOrError(name: "Root/Hall/Markers");
+
+            Assert.That(error, Is.Null);
+            Assert.That(go, Is.EqualTo(markers));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(),
+                Has.Some.Contains("name 'Root/Hall/Markers' has no exact match; resolved as a hierarchy path (path: Root/Hall/Markers)"));
+            Assert.That(GameObjectFinder.Find(name: "Root/Hall/Markers"), Is.EqualTo(markers));
+        }
+
+        [Test]
+        public void NameWithSlash_ExactNameStillWins()
+        {
+            var root = Create("Root");
+            Create("Hall", root);
+            var literal = Create("Root/Hall");
+
+            var (go, error) = GameObjectFinder.FindOrError(name: "Root/Hall");
+
+            Assert.That(error, Is.Null);
+            Assert.That(go, Is.EqualTo(literal));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(), Has.None.Contains("hierarchy path"));
+        }
+
+        [Test]
+        public void NameWithSlash_MatchingNeitherNameNorPath_IsStillNotFound()
+        {
+            Create("Root");
+
+            var (go, error) = GameObjectFinder.FindOrError(name: "Root/Missing");
+
+            Assert.That(go, Is.Null);
+            var json = JObject.FromObject(error);
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("TARGET_NOT_FOUND"));
+            Assert.That(json["error"]?.ToString(), Is.EqualTo("GameObject not found: name 'Root/Missing'"));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(), Has.None.Contains("hierarchy path"));
+        }
+
+        [Test]
+        public void NameWithSlash_PathBeatsASubstringHit()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+            Create("xRoot/Hallx");
+
+            var (go, error) = GameObjectFinder.FindOrError(name: "Root/Hall");
+
+            Assert.That(error, Is.Null);
+            Assert.That(go, Is.EqualTo(hall));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(), Has.Some.Contains("resolved as a hierarchy path"));
+        }
+
+        [Test]
+        public void NameWithSlash_NoPathMatch_FallsBackToSubstring()
+        {
+            var lookalike = Create("xRoot/Hallx");
+
+            var (go, error) = GameObjectFinder.FindOrError(name: "Root/Hall");
+
+            Assert.That(error, Is.Null);
+            Assert.That(go, Is.EqualTo(lookalike));
+            var notes = GameObjectFinder.DrainResolutionNotes();
+            Assert.That(notes, Has.Some.Contains("resolved by substring to 'xRoot/Hallx'"));
+            Assert.That(notes, Has.None.Contains("hierarchy path"));
+        }
+
+        [Test]
+        public void NameWithSlash_ReachesInactiveObjects_ThroughALeadingSlash()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+            hall.SetActive(false);
+
+            Assert.That(GameObjectFinder.FindOrError(name: "/Root/Hall").go, Is.EqualTo(hall));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(), Has.Some.Contains("resolved as a hierarchy path (path: Root/Hall)"));
+        }
+
+        [Test]
+        public void NameWithSlash_MatchingOnlyIgnoringCase_NotesThat()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+
+            Assert.That(GameObjectFinder.FindOrError(name: "root/HALL").go, Is.EqualTo(hall));
+
+            var notes = GameObjectFinder.DrainResolutionNotes();
+            Assert.That(notes, Has.Some.Contains("resolved as a hierarchy path (path: Root/Hall)"));
+            Assert.That(notes, Has.Some.Contains("path 'root/HALL' matched 'Root/Hall' case-insensitively"));
+        }
+
+        [Test]
+        public void NameWithSlash_AfterAMissedPath_NotesBothSteps()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+
+            Assert.That(GameObjectFinder.FindOrError(name: "Root/Hall", path: "Nope/Nowhere").go, Is.EqualTo(hall));
+
+            var notes = GameObjectFinder.DrainResolutionNotes();
+            Assert.That(notes, Has.Some.Contains("resolved as a hierarchy path"));
+            Assert.That(notes, Has.Some.Contains("path 'Nope/Nowhere' not found; resolved by name 'Root/Hall' instead"));
+        }
+
+        [Test]
+        public void NameWithSlash_EntityIdStillDecidesAlone()
+        {
+            var root = Create("Root");
+            Create("Hall", root);
+            var target = Create("Target");
+            var doomed = Create("Doomed");
+            var staleId = Id(doomed);
+            Object.DestroyImmediate(doomed);
+            GameObjectFinder.InvalidateCache();
+
+            var (hit, hitError) = GameObjectFinder.FindOrError(name: "Root/Hall", entityId: Id(target));
+            Assert.That(hitError, Is.Null);
+            Assert.That(hit, Is.EqualTo(target));
+            var notes = GameObjectFinder.DrainResolutionNotes();
+            Assert.That(notes, Has.Some.Contains("outranks name 'Root/Hall'"));
+            Assert.That(notes, Has.None.Contains("hierarchy path"));
+
+            var (miss, missError) = GameObjectFinder.FindOrError(name: "Root/Hall", entityId: staleId);
+            Assert.That(miss, Is.Null, "A stale id must not fall back to the path in the name.");
+            Assert.That(JObject.FromObject(missError)["error"]?.ToString(), Is.EqualTo($"GameObject not found: entityId {staleId}"));
+        }
+
+        [Test]
+        public void NameWithoutSlash_BehavesAsBefore()
+        {
+            var root = Create("Root");
+            var hall = Create("Hall", root);
+
+            Assert.That(GameObjectFinder.FindOrError(name: "Hall").go, Is.EqualTo(hall));
+            Assert.That(GameObjectFinder.DrainResolutionNotes(), Is.Empty);
+
+            Assert.That(GameObjectFinder.FindOrError(name: "Hal").go, Is.EqualTo(hall));
+            var notes = GameObjectFinder.DrainResolutionNotes();
+            Assert.That(notes, Has.Some.Contains("resolved by substring to 'Hall'"));
+            Assert.That(notes, Has.None.Contains("hierarchy path"));
         }
 
         private static GameObject Create(string name, GameObject parent = null)

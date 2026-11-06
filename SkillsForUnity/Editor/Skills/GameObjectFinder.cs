@@ -527,12 +527,12 @@ namespace UnitySkills
 
         /// <summary>
         /// Finds a GameObject using a flexible set of parameters.
-        /// Priority order: entityId &gt; instanceId &gt; path &gt; name (exact) &gt; name (whole word, then contains) &gt; tag &gt; component type.
+        /// Priority order: entityId &gt; instanceId &gt; path &gt; name (exact) &gt; name (as a hierarchy path, only when it contains '/') &gt; name (whole word, then contains) &gt; tag &gt; component type.
         /// An id decides alone: one that names no GameObject or component returns null instead of falling back to a lower
         /// locator, which could land on a same-name object. A missed path still falls back to the name.
         /// Non-exact resolutions are recorded for <see cref="DrainResolutionNotes"/>.
         /// </summary>
-        /// <param name="name">Simple name (exact match first, falls back to whole-word, then contains match; when that fallback is ambiguous the first match is returned — <see cref="FindOrError"/> rejects it instead)</param>
+        /// <param name="name">Simple name (exact match first; a name containing '/' with no exact match is tried as a hierarchy path, e.g. "Root/Hall/Markers"; then falls back to whole-word, then contains match; when that fallback is ambiguous the first match is returned — <see cref="FindOrError"/> rejects it instead)</param>
         /// <param name="instanceId">Legacy Unity instance ID</param>
         /// <param name="path">Hierarchy path, e.g. "Parent/Child/Target"</param>
         /// <param name="tag">Look up by tag, e.g. "MainCamera", "Player"</param>
@@ -550,8 +550,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The shared lookup behind <see cref="Find"/> and <see cref="FindOrError"/>. When the name's word/substring
-        /// fallback matches several objects, <paramref name="ambiguousMatches"/> lists them and the first is returned.
+        /// The shared lookup behind <see cref="Find"/> and <see cref="FindOrError"/>. A name with no exact match that
+        /// contains '/' is resolved as a hierarchy path (<see cref="FindByPath"/>: inactive objects, a leading '/' and a
+        /// scene-name prefix are accepted) before the word/substring fallback runs, and the note says so. Ids never get here.
+        /// When the name's word/substring fallback matches several objects, <paramref name="ambiguousMatches"/> lists
+        /// them and the first is returned.
         /// When a given id names no GameObject, null is returned and <paramref name="idMissError"/> is the error to report.
         /// </summary>
         private static GameObject Resolve(string name, int instanceId, string path, string tag, string componentType, string entityId,
@@ -582,10 +585,22 @@ namespace UnitySkills
                 pathMissed = true;
             }
 
-            // Priority 4: look up by simple name, exact match first, then whole-word, then substring.
+            // Priority 4: look up by simple name, exact match first, then a hierarchy path (only for a name containing '/'),
+            // then whole-word, then substring.
             if (!string.IsNullOrEmpty(name))
             {
                 var go = FindByExactName(name);
+                // Callers often pass "Root/Hall/Markers" as a name. Unity names may contain '/', so an exact match wins;
+                // trying the path before the fuzzy tiers keeps a substring hit from binding the wrong object.
+                if (go == null && name.IndexOf('/') >= 0)
+                {
+                    go = FindByPath(name);
+                    if (go != null)
+                    {
+                        AddResolutionNote($"name '{name}' has no exact match; resolved as a hierarchy path (path: {GetPath(go)})");
+                        NoteInexactPath(name, go);
+                    }
+                }
                 if (go == null)
                 {
                     var matches = FindByNameFallback(name, out var strategy);
@@ -973,6 +988,7 @@ namespace UnitySkills
         /// <summary>
         /// Finds an object, returning an error with close-match suggestions when it can't be found, or with every
         /// candidate when a name has no exact match and its whole-word/substring fallback matches more than one object.
+        /// A name containing '/' with no exact match is first resolved as a hierarchy path, so "Root/Hall/Markers" passed as a name works.
         /// An entityId or instanceId that names no GameObject is an error of its own (the id may be stale), never a
         /// fallback to the path or name.
         /// </summary>
