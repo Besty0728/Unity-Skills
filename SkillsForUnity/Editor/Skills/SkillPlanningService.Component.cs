@@ -153,23 +153,33 @@ namespace UnitySkills
             if (go != null)
             {
                 var components = go.GetComponents(type);
-                if (components.Length == 0)
+                // None live: what earlier steps add is what execution will find, known by type and count only.
+                var pending = components.Length == 0 ? PendingComponentsOf(go, type) : null;
+                int found = pending?.Count ?? components.Length;
+                if (found == 0)
                 {
                     AddSemanticError(validation, "component", $"Component not found on {go.name}: {componentType}");
                     return;
                 }
 
-                if (componentIndex < 0 || componentIndex >= components.Length)
+                if (componentIndex < 0 || componentIndex >= found)
                 {
-                    AddSemanticError(validation, "componentIndex", $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}");
+                    AddSemanticError(validation, "componentIndex", $"Component index {componentIndex} out of range. Found {found} components of type {componentType}");
                     return;
                 }
 
-                var requiredBy = ComponentSkills.FindBlockingDependents(go, new[] { components[componentIndex] });
-                if (requiredBy.Length > 0)
+                if (pending != null)
                 {
-                    AddSemanticError(validation, "component", $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
-                    return;
+                    WarnPendingComponent(validation, pending[componentIndex], target.Path);
+                }
+                else
+                {
+                    var requiredBy = ComponentSkills.FindBlockingDependents(go, new[] { components[componentIndex] });
+                    if (requiredBy.Length > 0)
+                    {
+                        AddSemanticError(validation, "component", $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
+                        return;
+                    }
                 }
             }
             else
@@ -213,6 +223,8 @@ namespace UnitySkills
             var deletes = new List<object>();
             // What earlier items remove, so each item is judged against the object as execution will find it.
             var removedSoFar = new HashSet<Component>();
+            // Per live path, the components earlier steps add that earlier items have not removed yet.
+            var pendingLeft = new Dictionary<string, List<Type>>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < ctx.Items.Count; i++)
             {
                 var item = ctx.GetItem(i);
@@ -228,6 +240,8 @@ namespace UnitySkills
 
                 Type type = null;
                 Component[] toRemove = null;
+                List<Type> pendingLeftOnTarget = null;
+                List<Type> pendingToRemove = null;
                 var componentIndex = GetOptionalIntArg(item, "componentIndex");
                 if (errors.Count == 0)
                 {
@@ -235,6 +249,19 @@ namespace UnitySkills
                     var go = target.LiveObject;
                     if (type == null)
                         errors.Add($"Component type not found: {componentType}");
+                    else if (go != null && go.GetComponents(type).Length == 0)
+                    {
+                        // None live: as in component_remove, what earlier steps add is what execution will find.
+                        if (!pendingLeft.TryGetValue(target.Path, out pendingLeftOnTarget))
+                            pendingLeft[target.Path] = pendingLeftOnTarget = PendingComponentsOf(go, typeof(Component));
+                        var matching = pendingLeftOnTarget.Where(t => type.IsAssignableFrom(t)).ToList();
+                        if (matching.Count == 0)
+                            errors.Add($"Component not found: {componentType}");
+                        else if (componentIndex.HasValue && (componentIndex.Value < 0 || componentIndex.Value >= matching.Count))
+                            errors.Add($"Component index {componentIndex.Value} out of range. Found {matching.Count} components of type {componentType}");
+                        else
+                            pendingToRemove = componentIndex.HasValue ? new List<Type> { matching[componentIndex.Value] } : matching;
+                    }
                     else if (go != null)
                     {
                         var components = go.GetComponents(type).Where(c => !removedSoFar.Contains(c)).ToArray();
@@ -254,7 +281,11 @@ namespace UnitySkills
 
                 ctx.ReportItemErrors(i, errors);
                 if (errors.Count == 0)
+                {
                     WarnIfPending(validation, "target", target, i);
+                    if (pendingToRemove != null)
+                        WarnPendingComponent(validation, pendingToRemove[0], target.Path, i);
+                }
 
                 ctx.AddItemPlan(i,
                     target.Error == null ? target.Path : InferPrimaryTarget(item),
@@ -273,6 +304,12 @@ namespace UnitySkills
                     {
                         removed["count"] = toRemove.Length;
                         removedSoFar.UnionWith(toRemove);
+                    }
+                    else if (pendingToRemove != null)
+                    {
+                        removed["count"] = pendingToRemove.Count;
+                        foreach (var pendingType in pendingToRemove)
+                            pendingLeftOnTarget.Remove(pendingType);
                     }
                     if (componentIndex.HasValue)
                         removed["componentIndex"] = componentIndex.Value;
@@ -313,8 +350,13 @@ namespace UnitySkills
             {
                 if (go.GetComponent(type) == null)
                 {
-                    AddSemanticError(validation, "component", $"Component not found: {componentType}");
-                    return;
+                    var pending = PendingOrRequiredComponentOf(go, type);
+                    if (pending == null)
+                    {
+                        AddSemanticError(validation, "component", $"Component not found: {componentType}");
+                        return;
+                    }
+                    WarnPendingComponent(validation, pending, target.Path);
                 }
             }
             else
