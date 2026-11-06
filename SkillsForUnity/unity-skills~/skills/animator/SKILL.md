@@ -3,7 +3,7 @@ name: unity-animator
 description: Edit Unity Animator Controllers and drive runtime parameters
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Setting up or wiring an Animator
@@ -212,13 +212,19 @@ unity_skills.call_skill("animator_add_parameter",
     paramName="Jump", paramType="trigger"
 )
 
-# 3. Assign to character
+# 3. Add the state that step 5 plays (a new controller has no states)
+unity_skills.call_skill("animator_add_state",
+    controllerPath="Assets/Animations/PlayerController.controller",
+    stateName="Idle"
+)
+
+# 4. Assign to character
 unity_skills.call_skill("animator_assign_controller",
     name="Player",
     controllerPath="Assets/Animations/PlayerController.controller"
 )
 
-# 4. Control at runtime
+# 5. Control at runtime
 unity_skills.call_skill("animator_set_parameter",
     name="Player", paramName="Speed", paramType="float", floatValue=5.0
 )

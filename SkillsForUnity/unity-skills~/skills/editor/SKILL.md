@@ -25,7 +25,7 @@ Observe and control the Unity Editor without parsing scene YAML. Parameters come
 - **Play-mode jobs**: `editor_play`, `editor_play_capture`, `editor_playmode_step` and `editor_run_scenario` return jobs; poll `job_status`. Never `job_wait` for jobs that depend on `EditorApplication.update` ticks (it blocks the main thread those ticks need).
 - **Identifiers**: `editor_select` and `editor_playmode_inspect` accept one of `name` / `entityId` / `instanceId` / `path`; prefer `entityId` (the only id on Unity 6000.4+). Use `editor_get_context` to get entityIds for batch operations.
 - **Undo**: `editor_undo` / `editor_redo` make experimentation safe.
-- **Menus**: `editor_execute_menu` needs the exact menu path; typos fail silently, and reload-triggering items make the server briefly unreachable.
+- **Menus**: `editor_execute_menu` needs the exact menu path; a typo returns `TARGET_NOT_FOUND`, and reload-triggering items make the server briefly unreachable.
 - **Routing**: compilation check → `debug_check_compilation` (debug module); console errors → `debug_get_errors`; scene save → `scene_save` (scene module) or `editor_execute_menu` menuPath `"File/Save"`.
 - **Pause on error**: provided by the console module, not this one — use `console_set_pause_on_error` from [console/SKILL.md](../console/SKILL.md).
 
@@ -47,7 +47,7 @@ Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` —
 - `editor_run` does not exist → use `editor_play` to enter play mode
 - `editor_compile` / `editor_recompile` do not exist → use `debug_force_recompile`
 - `editor_save` does not exist → use `editor_execute_menu` with menuPath `"File/Save"`
-- `editor_execute_menu` requires exact menu path — typos cause silent failure
+- `editor_execute_menu` requires exact menu path — a typo returns `TARGET_NOT_FOUND`
 
 ## Exact Signatures
 

@@ -16,7 +16,7 @@ Create and tune Cinemachine Virtual Cameras, camera managers, target groups, ext
 ## Operating Mode
 `cinemachine_inspect_vcam`, `cinemachine_list_components` and `cinemachine_get_brain_info` are `SemiAuto` (read-only) and run directly under Approval; every other skill (create, set, configure, ...) is `FullAuto` and needs a user grant, after which the server runs it in one step and returns the result. Under Auto / Bypass, skills not on the forbidden list run directly.
 
-`cinemachine_set_component` (replaces or removes a pipeline component), `cinemachine_target_group_remove_member` and `cinemachine_remove_extension` are `Operation.Delete`, hence NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+`cinemachine_set_component` (removes the stage's existing pipeline component before adding the requested one), `cinemachine_target_group_remove_member` and `cinemachine_remove_extension` carry `Operation.Delete`, hence NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md). The gate is static: it follows the attribute flags, not the arguments, so every `cinemachine_set_component` call is blocked, a switch to another component as well as `componentType="None"`.
 
 ## Shared rules
 

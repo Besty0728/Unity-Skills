@@ -3,7 +3,7 @@ name: unity-history
 description: Manage undo/redo history over the native undo stack
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Reviewing or navigating undo history
@@ -23,7 +23,7 @@ Manage Unity Editor undo/redo history.
 
 **DO NOT** (common hallucinations):
 - `history_list` / `history_get` do not exist → use `history_get_current` for current undo group
-- `history_clear` does not exist → Unity undo history cannot be cleared via API
+- `history_clear` does not exist → Unity has no API to clear the whole undo history (only the per-object `Undo.ClearUndo(Object)`, which no skill wraps)
 - `history_save` does not exist → undo history is managed by Unity automatically
 
 **Routing**:

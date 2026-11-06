@@ -36,7 +36,7 @@ One call, targeting by `name` (or the exact `path` / `entityId`):
 Invoke-Skill "/skill/gameobject_set_transform$q" @{ name = 'Crate'; posX = 4; posY = 1.5; posZ = -2 }
 ```
 
-DryRun first (deletes, high risk, reloads, approval mode; see the root doc):
+DryRun first (deletes: `operation` has `Delete`, i.e. any `*_delete*` / `*_remove*`, asset or folder cleanup; script/compile reloads; non-transactional multi-step batches; approval mode or a `dryRunPolicy`; or when unsure; see the root doc):
 
 ```powershell
 Invoke-Skill "/skill/gameobject_delete$q&mode=dryRun&wire=v2" @{ name = 'Crate' }

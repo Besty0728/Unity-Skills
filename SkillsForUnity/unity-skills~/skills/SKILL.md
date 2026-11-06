@@ -15,7 +15,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 
 > **Multi-instance**: For version-specific projects, call `unity_skills.set_unity_version(...)` first.
 > **Schema-first**: Exact signatures come from the root quick reference, from `GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` (`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")`), or from `GET /skills/schema?names=a,b&wire=v2` when the name is known; the full `GET /skills/schema` (`unity_skills.get_skill_schema()`) is ~707 KB. Load module docs for workflow guidance and guardrails.
-> **Split modules**: `gameobject`, `component`, `batch`, `script`, `material`, `editor`, `cinemachine` and `particle` keep their shared rules and skill list in `SKILL.md` and each skill's parameter table, item fields and return shape in `reference/<skill_name>.md` (one small file per skill), rarely needed once the schema's parameter notes are in hand.
+> **Split modules**: `gameobject`, `component`, `batch`, `script`, `material`, `editor`, `cinemachine`, `particle` and `workflow` keep their shared rules and skill list in `SKILL.md` and each skill's parameter table, item fields and return shape in `reference/<skill_name>.md` (one small file per skill), rarely needed once the schema's parameter notes are in hand.
 
 ## Modules
 

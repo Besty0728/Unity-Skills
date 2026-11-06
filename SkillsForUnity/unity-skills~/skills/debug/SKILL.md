@@ -3,7 +3,7 @@ name: unity-debug
 description: Inspect debug, diagnostics and compile state
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Diagnosing compile failures
@@ -18,9 +18,8 @@ Debug utilities for error checking and diagnostics.
 
 ## Operating Mode
 
-- **Approval**: 只读类 skill（`unity_diagnose` / `debug_get_errors` / `debug_get_logs` / `debug_check_compilation` / `debug_get_system_info` / `debug_get_stack_trace` / `debug_get_assembly_info` / `debug_get_defines` / `debug_get_memory_info`，全部标 `SkillMode.SemiAuto`）直接执行；`debug_force_recompile` / `debug_set_defines` 默认 `SkillMode.FullAuto`，需用户 grant，grant 后一步执行返结果。
-- **Auto / Bypass**: 直接执行。
-- **本模块含 Reload 类高危 skill**：`debug_force_recompile`（标 `MayTriggerReload=true`）必然触发 Domain Reload；`debug_set_defines` 修改 `PlayerSettings` 的 scripting defines 也会触发重编译 —— 这些 skill 在 Approval / Auto 下会被 `IsForbiddenInSemi` 自动拦截，**仅 Bypass 或 Allowlist 命中可执行**，调用后服务端会短暂不可用。
+- **Approval / Auto / Bypass**: the read skills (`unity_diagnose`, `debug_get_errors`, `debug_get_logs`, `debug_check_compilation`, `debug_get_system_info`, `debug_get_stack_trace`, `debug_get_assembly_info`, `debug_get_defines`, `debug_get_memory_info`; all `SkillMode.SemiAuto`) run directly in every mode.
+- **NeverInSemi** (`MODE_FORBIDDEN` under Approval and Auto; only Bypass or an Allowlist hit can call them; the grant flow does not apply, do not attempt it): `debug_force_recompile` and `debug_set_defines` (both `MayTriggerReload`). They stay `FullAuto`, but the reload flag classifies them as NeverInSemi. Each triggers a Domain Reload, so the server is briefly unavailable afterwards.
 
 **DO NOT** (common hallucinations):
 - `debug_compile` / `debug_recompile` do not exist → use `debug_force_recompile`

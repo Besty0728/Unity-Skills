@@ -3,7 +3,7 @@ name: unity-qframework
 description: Editor automation for QFramework (github.com/liangxiegame/QFramework) — architecture-layer code generation (Architecture/System/Model/Command/Utility/Query via ArchitectureCodeGenerator), ViewController and UIKit panel code generation bound to a GameObject/prefab, UIKit project settings, ResKit AssetBundle marking/build/clear, ResKit SimulationMode and build options, runtime architecture scanning (IArchitecture/ISystem/IModel/ICommand/IQuery/IController), QFramework's built-in API-documentation-attribute query, and LocaleKit editor-locale / language-define configuration. QFramework has no UPM package — detection is reflection-only against whichever install form is present (Toolkits unitypackage or single-file QFramework.cs) — so every skill except qframework_get_status returns MISSING_PACKAGE when the required anchor type cannot be resolved.
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Generating QFramework architecture-layer code — Architecture/System/Model/Command/Utility/Query classes

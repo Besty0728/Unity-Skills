@@ -3,7 +3,7 @@ name: unity-addressables
 description: Manage Addressables groups, entries, profiles and content builds (com.unity.addressables, reflection-based)
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Checking whether Addressables is installed and configured
@@ -18,7 +18,7 @@ Editor-side automation for [Addressables](https://docs.unity3d.com/Packages/com.
 
 **This module holds zero direct references to the package.** Every call resolves through reflection against the `Unity.Addressables.Editor` assembly, so the UnitySkills Editor assembly compiles identically whether or not Addressables is installed — there is no scripting define to set and no recompile needed after installing.
 
-> **Requires**: `com.unity.addressables` (API anchored to **2.x** Editor source; the 1.22.x API surface used here is identical).
+> **Requires**: `com.unity.addressables` (API anchored to **2.x** Editor source; 1.22.x is not verified, and the two versions differ — see the matrix in addressables-design. Members are resolved by reflection at call time, so a missing one returns an error such as `CreateGroup method not found on AddressableAssetSettings`; read `version` from `addressables_check_installed` first).
 > **Companion modules**: [addressables-design](../addressables-design/SKILL.md) for the runtime loading contract and the 1.22.3 / 2.9.1 migration table, [yooasset](../yooasset/SKILL.md) if the project ships hot updates through YooAsset instead, [package](../package/SKILL.md) to install the package.
 
 ## Guardrails

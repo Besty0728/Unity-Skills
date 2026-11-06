@@ -3,7 +3,7 @@ name: unity-scene
 description: Manage Unity scenes
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Opening or saving scenes
@@ -71,7 +71,9 @@ Save the current scene.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scenePath` | string | No | Save path (null = save current) |
+| `scenePath` | string | No | Omit to overwrite the active scene's own file; a different path re-associates the active scene with that file (Save As), not a copy. An untitled scene has no path, so it needs `scenePath` |
+
+Undo restores the on-disk `.unity` file when the scene is closed; while the scene is open, undo leaves the file alone and marks the scene dirty, so save again to apply it.
 
 ### scene_get_info
 Get current scene information.

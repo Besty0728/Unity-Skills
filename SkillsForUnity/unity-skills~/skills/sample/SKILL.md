@@ -3,7 +3,7 @@ name: unity-sample
 description: Sample and demo skills for API connectivity testing
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
 
 ## Triggers
 - Testing REST server reachability
@@ -28,8 +28,8 @@ Basic examples for testing the API.
 
 **DO NOT** (common hallucinations):
 - Sample skills are basic test/demo skills — do not use them for production work
-- `sample_create` is a simplified version of `gameobject_create` — prefer the full gameobject module
-- `sample_hello` / `sample_ping` are connectivity test skills only
+- `sample_create` / `sample_hello` / `sample_ping` do not exist → the module's real skills are `create_cube`, `create_sphere`, `delete_object`, `find_objects_by_name`, `set_object_position`, `set_object_rotation`, `set_object_scale`, `get_scene_info` (no `sample_` prefix)
+- `create_cube` / `create_sphere` are simplified primitives; prefer `gameobject_create` from the gameobject module
 
 **Routing**:
 - For actual GameObject operations → use `gameobject` module

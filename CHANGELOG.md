@@ -17,7 +17,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 代码体量 | — | **1028 文件**，约 **+141.5k / −6.9k** 行 |
 | 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **426 文件 / +85k** 行 |
 | 其中 Editor C# | 2.9.1 能力面 | 约 **202 文件 / +31k / −4.7k**（Workflow、Particle、Evaluation、entityId、Console…） |
-| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7936 B**；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
+| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7936 B**（评测驱动补规则后 8188 B）；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
 | 技能数 | 839 | **872（+33）** |
 | 用户侧公开题 | 无 | **41 题 / pack 1.2.0** |
 | Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
@@ -55,6 +55,17 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 通过数 | 21/21 | **21/21** |
 | 处理 token 总均值 | 646K | **625K（约 0.97×）** |
 
+- **文档遵守度实测**（Claude Code 无头模式 + Haiku 5.5，四档 effort，2022.3 URP，运维与开发的基础、标准题共 25 题，每档每题 1 次）：基线的 100 个会话没有一次打开模块文档，Agent 只读根 `SKILL.md`、schema / recommend 的参数说明与错误响应，所以本轮改动集中在这三处（见 Changed / Fixed / Docs）。改动前后：
+
+| effort | 通过（前 → 后） | 处理 token/题 | 请求/题 | `TARGET_NOT_FOUND` 次数 | 失败调用/题 |
+|---|---:|---:|---:|---:|---:|
+| low | 25 → 24 | 273K → 239K | 12.2 → 10.9 | 12 → 5 | 1.72 → 1.88 |
+| medium | 23 → 25 | 293K → 277K | 12.5 → 9.9 | 8 → 1 | 0.88 → 0.52 |
+| high | 24 → 23 | 372K → 311K | 15.5 → 11.2 | 13 → 2 | 0.92 → 0.92 |
+| xhigh | 25 → 25 | 578K → 460K | 19.3 → 13.9 | 14 → 4 | 1.32 → 0.60 |
+
+通过数每档最多差 1 题；处理 token 下降 5%–20%，请求数下降 11%–28%；console `type` 传非法值 7 → 0。未改善的两项不再为指标改文档：T4 仍会先猜一个不存在的技能名（错误响应给出正确名称后下一步就改对），xhigh 读 / 写比 1.91 → 2.26（绝对读次数 25.4 → 21.6，写入更多合并进 batch）。
+
 - **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2614 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
@@ -74,7 +85,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Changed
 
-- **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口压到 **7936** 字节（相对 v2.9.1 的 8189）：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
+- **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口压到 **7936** 字节（相对 v2.9.1 的 8189；之后按评测补上路径、盘点、删除前 dryRun 等规则，最终 8188 字节）：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
 - **面板石墨配色** — 深浅两套配色换成石墨色系，控件高度与圆角统一（4 / 6 / 8 三档），横幅、提示与状态统一为淡色底加同色描边，删除类按钮改为红色描边的空心按钮；标签栏保持原样式。
 - **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
 - **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
@@ -88,12 +99,19 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`scene_save` 的撤销** — 场景关闭时恢复磁盘上的 `.unity` 文件；场景正打开时不改写文件，只把场景标脏，保存后生效。
 - **编辑器变更日志** — 轮转成分段文件而不是丢弃旧记录，记录调用的 agent、Play 状态与对象 entity id；单次超过 200 项的变更拆成多条连续记录，不再折叠成 `omitted`；遥测与审计在域重载和退出前落盘。
 - **安装器清理退役文件** — 每次安装写 `scripts/install_manifest.json`；重装与卸载会删除模板已不再提供、且内容未被改动的旧文件，用户自己加的文件不动。
+- **`name` 可以写层级路径** — `name` 里含 `/`、又没有对象恰好叫这个名字时，按层级路径查找，并在 `resolutionNotes` 里注明；这一步在整词 / 子串模糊匹配之前，精确同名仍然优先。`parentName`、`childName` 等按名字定位的参数，以及 batch dryRun 的预检，都按同样的规则处理。评测里约三成错误是把 `Root/Hall/Markers` 这样的路径当作 `name` 传入。
+- **根 `SKILL.md` 的 dryRun 规则收窄** — 只在删除（`operation` 含 `Delete`：任何 `*_delete*` / `*_remove*` 与资源、文件夹清理）、`mayTriggerReload`（脚本 / 编译）、非事务的多步 batch、approval 模式或拿不准时先 dryRun；`riskLevel` high 与 `mayEnterPlayMode` 的技能（如 `scene_save`、`editor_play`）拿到签名后直接执行。另外几处补充：
+  - 新增一行：盘点「某节点下的所有 X」只需调用一次 `batch_query_gameobjects`；
+  - 写入返回的回读就是验证，不要再逐个读取；
+  - `waitUrl` 里已经有 `?wait=90`，其他参数用 `&` 追加。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed
 
+- **ISO 时间字符串被改写**（v2.9.1 起）— 请求参数里的 ISO-8601 时间以前在解析时被转成日期、再输出成本地格式：`console_get_logs` 的 `fromUtc:"2026-11-06T06:07:50Z"` 变成 `11/06/2026 06:07:50` 后被判为非法值，`fromUtc` / `toUtc` 实际无法使用。直接调用、dryRun、`/skills/batch` 的步骤参数与 `$ref` 引用的上一步结果、`*_batch` 的条目（如 `component_set_property_batch` 的 `value`）现在都原样收到字符串。
+- **batch dryRun 把前面步骤要加的组件判为不存在** — 前一步 `component_add` 要加的组件，后一步 `component_set_property`、`component_remove` 在 dryRun 中以前直接报 `Component not found`，一次 17 步的 batch 有 15 步因此失败；现在改为警告，提示依赖实时组件的检查已跳过。`component_set_property` 还认得该组件通过 `RequireComponent` 自动带上的组件（如 HingeJoint 带上的 Rigidbody）。单独调用的 dryRun 不受影响。
 - **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。
-- **Console 历史满后每秒整份重写**（Issue #65）— 历史满后改为只追加，累计到上限的四分之一才压缩，Play Mode 下延后压缩。
+- **Console 历史满后每秒整份重写**（Issue #65）— 历史满后改为只追加，累计到上限的四分之一才压缩，Play Mode 下延后压缩。每条记录只序列化一次（写入时算出的那一行直接用于追加）；压缩时从旧文件按字节复制留下的行，文件与内存对不上（缺失、截断、被外部改动）时才整份重新序列化。
 - **Console 历史拖慢每次域重载** — 以前每次重载都要逐行解析整个 `console_log_history.jsonl`（上限 5 万行 / 64 MB），还为计字节把每行再序列化一遍，34.5 MB 的历史让每次重载多花约 530 ms；现在重载只解析文件末尾约 1 MiB，更早的记录等查询用到时才读入，读入时按行长计字节、复用同一个反序列化器；淘汰与压缩判断不必先读全量，导入原生 Console 条目时查托管重复改用计数表，不再逐条扫描整个历史。读失败时保留未解析的文件头，避免半截历史被当成空窗。
 - **回滚后变更日志里的「无名删除」** — transactional 批处理失败回滚时，同一请求里刚创建又被撤掉的物体，创建事件发布时已找不到对象而被跳过，删除事件却因目录里没有它而记成没有路径的 `gameobject_destroyed`，评测判分会把它当成越界修改；现在同一批变更里创建又销毁的物体，创建与删除都不记录。
 - **评测页「全部题目」的提示词** — 以前开头固定是英文，写着 "all tracks and tiers"，在 Built-in 工程只跑 12 题时，Agent 会报告题数对不上；现在开头跟随提示语言（中文 / 英文），写明本管线可跑的题数、会话数，以及因渲染管线被排除的题数。面板上的会话数不再写死为 6。`/unity-skills-eval` 只列评测器支持的 `zh-CN` / `en`，跑全部题目时遇到 `PIPELINE_UNSUPPORTED` 就跳过该等级继续。
@@ -108,6 +126,12 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Docs
 
+- **参数说明与模块文档订正（评测驱动）** — 补上 Agent 实际会读到的参数说明（schema 与 recommend 中可见）：
+  - `console_get_logs` 的 `type` 合法值，`fromUtc` / `toUtc` 的 ISO-8601 格式；
+  - `component_invoke_method.executionMode`、`asset_create_folder.folderPath`、`component_get_properties.componentType`；
+  - `gameobject_find`、`scene_get_hierarchy`、`hierarchy_describe`、`asset_find`、`component_get_serialized_properties` 的描述写明哪些参数不存在，应改用哪个技能。
+
+  模块文档订正了 sample、debug、editor、animator、cinemachine、history、addressables、script、scene 及模块索引里与代码不符的说法；72 个模块开头的提示不再要求先 dryRun。
 - **根 Skill 与试点模块（产品主线）** — 见 Changed：入口变薄、参考按需加载、去掉 `SKILL_FULL`；Workflow 模块文档按「检查点优先」重写（回退协议、`workflow_list` 行格式、检查点、回退契约、「撤销单步与 scope」、已知局限）。
 - **评测集** — README 新增评测集一节：题目位置（`SkillsForUnity/Evaluation~/pack/`）、运行方式与题目总览。`eval/docs/` 收纳 v3 合约、已知缺陷与协议；v1 的模型对照与用量结论不再保留（旧题库与旧插件下的结果，对新题库没有参考价值），新题库的模型成绩另行发布。
 - 技能计数与模块数同步到 **872** 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
