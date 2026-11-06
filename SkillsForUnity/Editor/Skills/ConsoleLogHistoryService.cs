@@ -49,6 +49,8 @@ namespace UnitySkills
         private static readonly Dictionary<(string type, string message), int> ManagedCounts = new Dictionary<(string type, string message), int>();
         // One serializer for every row a load reads, configured as JsonConvert.DeserializeObject configures its own per call.
         private static readonly JsonSerializer RowSerializer = CreateRowSerializer();
+        private static readonly byte[] NewLineBytes = Encoding.ASCII.GetBytes(Environment.NewLine);
+        private const string RowSeqPrefix = "{\"seq\":";
         private static string _sessionId;
         private static string _logPath;
         private static string _statePath;
@@ -85,6 +87,7 @@ namespace UnitySkills
         private static long _tailBytes = TailReadBytes;
         private static int _headChunkBytes = ReadChunkBytes;
         private static long _parsedRows;
+        private static long _serializedRows;
         private static bool _failReadsForTests;
 
         static ConsoleLogHistoryService()
@@ -136,6 +139,8 @@ namespace UnitySkills
             public string source;
             [JsonProperty] internal string nativeKey;
             internal long ApproximateBytes;
+            // The row as serialized on add, held only until a flush writes it.
+            internal string PendingLine;
         }
 
         private sealed class PersistedState
@@ -550,13 +555,16 @@ namespace UnitySkills
             // block of headroom), so a kill can never lead to its reuse. CLR-only file I/O, safe on this thread.
             if (_seq > _reservedSeq && !_finalFlushDone)
                 ReserveSeqLocked();
-            record.ApproximateBytes = ApproximateBytes(record);
+            string line = SerializeRow(record);
+            record.ApproximateBytes = RowBytes(line);
             AppendRecordLocked(record);
             // After a tail-only load the oldest rows are still in the file; evicting them reads their sizes from it.
             EvictOverCapLocked();
             if (persistAppend)
             {
                 _dirty = true;
+                // The flush writes this line instead of serializing the record a second time.
+                record.PendingLine = line;
                 PendingPersistence.Add(record);
             }
         }
@@ -1118,6 +1126,7 @@ namespace UnitySkills
                         else if (_needsCompact)
                         {
                             // Only a rewrite is safe now and the file cannot be read: keep everything in memory, retry later.
+                            ReleasePendingLinesLocked();
                             _persistenceFailed = true;
                             _nextFlushUtcTicks = DateTime.UtcNow.Ticks + FlushIntervalTicks;
                             return;
@@ -1127,6 +1136,7 @@ namespace UnitySkills
                             // The compaction waits for a readable file; meanwhile the rows are appended as before it was due.
                             AppendPendingPersistenceLocked();
                         }
+                        ReleasePendingLinesLocked();
                         PendingPersistence.Clear();
                         _needsCompact = false;
                     }
@@ -1150,6 +1160,7 @@ namespace UnitySkills
                     // A later editor tick retries. An append may have landed in part, so the retry rewrites the file
                     // from memory instead of appending the same records twice. Do not log from here because this can
                     // be entered while Unity itself is processing a log callback.
+                    ReleasePendingLinesLocked();
                     _persistenceFailed = true;
                     _needsCompact = true;
                     _dirty = true;
@@ -1168,24 +1179,28 @@ namespace UnitySkills
             return !defer && (_evictedSinceCompact >= CompactEvictionCount || _evictedBytesSinceCompact >= CompactEvictionBytes);
         }
 
+        /// <summary>
+        /// Rewrites the file to hold exactly the retained rows. The ones the file ends with are copied from it byte for byte
+        /// (issue #65: serializing 50,000 rows stalled the editor); any doubt about that copy writes every row from memory.
+        /// </summary>
         private static void RewritePersistenceLocked()
         {
             if (string.IsNullOrEmpty(_logPath)) return;
             var sizes = new long[Records.Count];
-            // Temp file + rename: a kill or a reload mid-compaction leaves the previous file, never a truncated one.
-            LibraryStateFile.Write(_logPath, stream =>
+            int copied = CopyableRowsLocked(out long copyFrom);
+            if (copied > 0)
             {
-                using (var writer = new StreamWriter(stream, SkillsCommon.Utf8NoBom, 1 << 16))
+                try
                 {
-                    for (int i = 0; i < Records.Count; i++)
-                    {
-                        string line = JsonConvert.SerializeObject(Records[i], Formatting.None, SkillsCommon.JsonSettings);
-                        writer.Write(line);
-                        writer.Write(Environment.NewLine);
-                        sizes[i] = RowBytes(line);
-                    }
+                    WriteRetainedRowsLocked(copied, copyFrom, sizes);
                 }
-            });
+                catch
+                {
+                    // The file is not what this writer left, or cannot be read right now.
+                    copied = 0;
+                }
+            }
+            if (copied == 0) WriteRetainedRowsLocked(0, 0, sizes);
             // Rows read from an older file can serialize differently; the sizes now match the file a tail load walks.
             _bytes = 0;
             for (int i = 0; i < Records.Count; i++)
@@ -1198,12 +1213,98 @@ namespace UnitySkills
             _fileLastSeq = Records.Count == 0 ? 0 : Records[Records.Count - 1].seq;
         }
 
+        /// <summary>
+        /// How many of the oldest records are rows the file ends with, so a rewrite can copy them; <paramref name="copyFrom"/>
+        /// is where the first of them starts. 0 while the file may hold anything but what this writer left. Eviction takes the
+        /// oldest first and pending rows are newer than every row in the file, so the retained file rows are its last ones.
+        /// </summary>
+        private static int CopyableRowsLocked(out long copyFrom)
+        {
+            copyFrom = 0;
+            if (_fileRows < 0) return 0;
+            int rows = 0;
+            long bytes = 0;
+            while (rows < Records.Count && Records[rows].seq <= _fileLastSeq)
+                bytes += Records[rows++].ApproximateBytes;
+            if (rows == 0 || rows > _fileRows || bytes > _fileBytes || Records[rows - 1].seq != _fileLastSeq) return 0;
+            copyFrom = _fileBytes - bytes;
+            return rows;
+        }
+
+        /// <summary>Writes the first <paramref name="copied"/> records by copying them from <paramref name="copyFrom"/> on, the rest from memory.</summary>
+        private static void WriteRetainedRowsLocked(int copied, long copyFrom, long[] sizes)
+        {
+            // Temp file + rename: a kill or a reload mid-compaction leaves the previous file, never a truncated one.
+            LibraryStateFile.Write(_logPath, stream =>
+            {
+                if (copied > 0) CopyFileRowsLocked(stream, copyFrom, copied, sizes);
+                using (var writer = new StreamWriter(stream, SkillsCommon.Utf8NoBom, 1 << 16))
+                {
+                    for (int i = copied; i < Records.Count; i++)
+                    {
+                        string line = RowLine(Records[i]);
+                        writer.Write(line);
+                        writer.Write(Environment.NewLine);
+                        sizes[i] = RowBytes(line);
+                    }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Copies the file from <paramref name="from"/> to its end, which must be exactly the lines of the first
+        /// <paramref name="rows"/> records, each of its record's size and seq. Throws on any difference or read failure.
+        /// </summary>
+        private static void CopyFileRowsLocked(Stream output, long from, int rows, long[] sizes)
+        {
+            using (var source = OpenLogForRead())
+            {
+                if (source.Length != _fileBytes) throw new InvalidDataException("The history file changed length.");
+                if (from > 0)
+                {
+                    source.Seek(from - 1, SeekOrigin.Begin);
+                    if (source.ReadByte() != '\n') throw new InvalidDataException("No row starts where the retained rows do.");
+                }
+                var row = new byte[ReadChunkBytes];
+                for (int i = 0; i < rows; i++)
+                {
+                    int length = (int)Records[i].ApproximateBytes;
+                    if (row.Length < length) row = new byte[Math.Max(length, row.Length * 2)];
+                    for (int read = 0; read < length;)
+                    {
+                        int n = source.Read(row, read, length - read);
+                        if (n <= 0) throw new EndOfStreamException();
+                        read += n;
+                    }
+                    if (!IsRowOf(row, length, Records[i].seq)) throw new InvalidDataException("A row differs from its record.");
+                    output.Write(row, 0, length);
+                    sizes[i] = length;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether the first <paramref name="length"/> bytes of <paramref name="row"/> are one line as this writer ends it,
+        /// with <paramref name="seq"/> first: the object closes, then the line's only newline ends it as Environment.NewLine.
+        /// </summary>
+        private static bool IsRowOf(byte[] row, int length, long seq)
+        {
+            string start = RowSeqPrefix + seq.ToString(CultureInfo.InvariantCulture) + ",";
+            int end = length - NewLineBytes.Length;
+            if (end <= start.Length || row[end - 1] != '}' || Array.IndexOf(row, (byte)'\n', 0, length) != length - 1) return false;
+            for (int i = 0; i < start.Length; i++)
+                if (row[i] != start[i]) return false;
+            for (int i = 0; i < NewLineBytes.Length; i++)
+                if (row[end + i] != NewLineBytes[i]) return false;
+            return true;
+        }
+
         private static void AppendPendingPersistenceLocked()
         {
             if (PendingPersistence.Count == 0 || string.IsNullOrEmpty(_logPath)) return;
             var lines = new StringBuilder();
             foreach (var record in PendingPersistence)
-                lines.Append(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)).Append(Environment.NewLine);
+                lines.Append(RowLine(record)).Append(Environment.NewLine);
             byte[] bytes = SkillsCommon.Utf8NoBom.GetBytes(lines.ToString());
             LibraryStateFile.AppendLines(_logPath, bytes);
             if (_fileRows < 0) return;
@@ -1323,9 +1424,20 @@ namespace UnitySkills
             return string.Concat(type ?? string.Empty, "\u001f", message ?? string.Empty, "\u001f", file ?? string.Empty, "\u001f", line.ToString(CultureInfo.InvariantCulture));
         }
 
-        private static long ApproximateBytes(ConsoleLogHistoryRecord record)
+        private static string SerializeRow(ConsoleLogHistoryRecord record)
         {
-            return RowBytes(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings));
+            _serializedRows++;
+            return JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings);
+        }
+
+        /// <summary>The record's row: the line serialized on add while it is pending, else serialized again.</summary>
+        private static string RowLine(ConsoleLogHistoryRecord record) => record.PendingLine ?? SerializeRow(record);
+
+        /// <summary>Pending records let go of their lines once written, or once a write failed; a retry serializes them again.</summary>
+        private static void ReleasePendingLinesLocked()
+        {
+            foreach (var record in PendingPersistence)
+                record.PendingLine = null;
         }
 
         /// <summary>A row's size in the file: its UTF-8 line plus the newline this writer ends it with.</summary>
@@ -1535,6 +1647,23 @@ namespace UnitySkills
         internal static long ParsedRowsForTests
         {
             get { lock (SyncRoot) return _parsedRows; }
+        }
+
+        /// <summary>Rows serialized so far, by adds and by rewrites that could not copy a row from the file.</summary>
+        internal static long SerializedRowsForTests
+        {
+            get { lock (SyncRoot) return _serializedRows; }
+        }
+
+        /// <summary>A flush that compacts, as one does once enough evicted rows have piled up in the file.</summary>
+        internal static void CompactForTests()
+        {
+            lock (SyncRoot)
+            {
+                _needsCompact = true;
+                _dirty = true;
+            }
+            FlushNow(final: false);
         }
 
         internal static void RecordForTests(string message, string stackTrace = "", LogType type = LogType.Log, DateTime? utc = null)

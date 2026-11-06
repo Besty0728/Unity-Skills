@@ -746,6 +746,118 @@ namespace UnitySkills.Tests.Core
             Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - before, 30, "Once the full load has described the file again, the tail is enough.");
         }
 
+        [Test]
+        public void Add_SerializesEachRecordOnceAndTheFlushAppendsThatLine()
+        {
+            long before = ConsoleLogHistoryService.SerializedRowsForTests;
+            Fill(20);
+            Assert.AreEqual(20L, ConsoleLogHistoryService.SerializedRowsForTests - before, "One serialization per add.");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(20L, ConsoleLogHistoryService.SerializedRowsForTests - before, "The flush appends the line serialized on add.");
+            Assert.AreEqual(RewrittenFromMemory(), File.ReadAllText(_path));
+        }
+
+        [Test]
+        public void Compaction_CopiesTheRetainedRowsAndMatchesARewriteFromMemory()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            long before = ConsoleLogHistoryService.SerializedRowsForTests;
+            Fill(ConsoleLogHistoryService.CompactEvictionCount, "late-");
+            ConsoleLogHistoryService.FlushForTests();
+
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows(), "The flush compacted the file.");
+            Assert.AreEqual((long)ConsoleLogHistoryService.CompactEvictionCount, ConsoleLogHistoryService.SerializedRowsForTests - before,
+                "Only the adds serialize: the compaction copies the file's rows and writes the pending ones from their lines.");
+            Assert.AreEqual(RewrittenFromMemory(), File.ReadAllText(_path));
+        }
+
+        [Test]
+        public void CompactionByCopy_ReloadYieldsTheSameRecords()
+        {
+            Fill(30);
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(5, "pending-");
+            string records = AllRecords();
+            long before = ConsoleLogHistoryService.SerializedRowsForTests;
+            ConsoleLogHistoryService.CompactForTests();
+
+            Assert.AreEqual(0L, ConsoleLogHistoryService.SerializedRowsForTests - before);
+            Assert.AreEqual(RewrittenFromMemory(), File.ReadAllText(_path));
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.AreEqual(records, AllRecords());
+        }
+
+        [Test]
+        public void CompactionAfterATailOnlyReload_CopiesTheRowsOnlyTheFileHeld()
+        {
+            Fill(200);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+            Fill(5, "after-");
+            long before = ConsoleLogHistoryService.SerializedRowsForTests;
+            ConsoleLogHistoryService.CompactForTests();
+
+            Assert.AreEqual(0L, ConsoleLogHistoryService.SerializedRowsForTests - before, "The head the tail-only load skipped is copied, not serialized.");
+            Assert.AreEqual(205, FileRows());
+            Assert.AreEqual(RewrittenFromMemory(), File.ReadAllText(_path));
+            string records = AllRecords();
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.AreEqual(records, AllRecords());
+        }
+
+        [Test]
+        public void Compaction_FileMissing_RewritesEveryRowFromMemory()
+        {
+            AssertCompactionRewritesFromMemory(() => File.Delete(_path));
+        }
+
+        [Test]
+        public void Compaction_FileTruncatedMidRow_RewritesEveryRowFromMemory()
+        {
+            AssertCompactionRewritesFromMemory(() =>
+            {
+                using (var stream = new FileStream(_path, FileMode.Open, FileAccess.Write))
+                    stream.SetLength(stream.Length - 10);
+            });
+        }
+
+        [Test]
+        public void Compaction_CorruptTrailingLine_RewritesEveryRowFromMemory()
+        {
+            AssertCompactionRewritesFromMemory(ConsoleLogHistoryService.AppendCorruptTailForTests);
+        }
+
+        [Test]
+        public void Compaction_ForeignRowOfTheSameLength_RewritesEveryRowFromMemory()
+        {
+            AssertCompactionRewritesFromMemory(() => File.WriteAllText(_path, File.ReadAllText(_path).Replace("\"seq\":20,", "\"seq\":29,")));
+        }
+
+        /// <summary>Twenty flushed rows, <paramref name="damage"/> to the file, five pending rows, then a compaction.</summary>
+        private void AssertCompactionRewritesFromMemory(Action damage)
+        {
+            Fill(20);
+            ConsoleLogHistoryService.FlushForTests();
+            damage();
+            Fill(5, "pending-");
+            long before = ConsoleLogHistoryService.SerializedRowsForTests;
+            ConsoleLogHistoryService.CompactForTests();
+
+            Assert.AreEqual(20L, ConsoleLogHistoryService.SerializedRowsForTests - before,
+                "The rows the file held are serialized again; the pending ones are written from their lines.");
+            Assert.AreEqual(RewrittenFromMemory(), File.ReadAllText(_path));
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.AreEqual(25, ConsoleLogHistoryService.ReadWindow(0).totalMatched);
+        }
+
+        /// <summary>The file a rewrite serializing every retained row writes; managed rows only, since a snapshot drops nativeKey.</summary>
+        private static string RewrittenFromMemory() => string.Concat(ConsoleLogHistoryService.SnapshotAll(true, out _, out _)
+            .Select(log => JsonConvert.SerializeObject(log, Formatting.None, SkillsCommon.JsonSettings) + Environment.NewLine));
+
+        private static string AllRecords() => JsonConvert.SerializeObject(ConsoleLogHistoryService.SnapshotAll(true, out _, out _));
+
         private static void Fill(int count, string prefix = "row-")
         {
             for (int i = 0; i < count; i++)
