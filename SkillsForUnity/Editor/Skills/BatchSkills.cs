@@ -17,10 +17,10 @@ namespace UnitySkills
         private static readonly Regex MultiWhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MultiUnderscoreRegex = new Regex(@"_+", RegexOptions.Compiled);
 
-        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (.NET regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), caseSensitive (false), limit (500; a cut shows as truncated + totalMatched in the response). name and namePattern ignore case unless caseSensitive:true; (?-i) inside a pattern works too. Unknown keys and an unresolvable tag/layer/componentType/namePattern are rejected; active:false implies includeInactive.";
+        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (.NET regex), path/parentPath (exact), underPath (descendants at any depth), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), caseSensitive (false), limit (500; a cut shows as truncated + totalMatched in the response). name and namePattern ignore case unless caseSensitive:true; (?-i) inside a pattern works too. Unknown keys and an unresolvable tag/layer/componentType/namePattern are rejected; active:false implies includeInactive.";
         private const string MaterialPathNote = "Project path of a material asset, assigned as each Renderer's sharedMaterial.";
 
-        [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
+        [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/underPath/prefabSource/includeInactive/limit.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "gameobject", "filter" },
             Outputs = new[] { "count", "totalMatched", "truncated", "objects", "summary" },
@@ -1297,6 +1297,12 @@ namespace UnitySkills
                 results = results.Where(go =>
                     go.transform.parent != null &&
                     string.Equals(GameObjectFinder.GetCachedPath(go.transform.parent.gameObject), query.parentPath, StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrWhiteSpace(query.underPath))
+            {
+                // Descendants at any depth, not the node itself.
+                var prefix = query.underPath.Trim().Trim('/') + "/";
+                results = results.Where(go => GameObjectFinder.GetCachedPath(go).StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
             }
             if (!string.IsNullOrWhiteSpace(query.prefabSource))
             {

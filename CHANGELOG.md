@@ -82,6 +82,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **按项目保存的设置** — 令牌档位、运行模式、面板审批、允许列表、确认要求、首选端口、请求超时、遥测、启动时装包、Workflow 历史上限与 Evaluation 页配置存到 `UserSettings/UnitySkills/settings.json`；工程没有自己的值时读取旧的全局值，升级后行为不变。
 - **`GET /analytics?agent=`** — 按 agent 过滤分析数据，`(unknown)` 匹配没有 agent 的记录；失败调用的遥测行带脱敏后的错误文本 `err` 与参数摘要 `target`（工程根目录写作 `<project>`，用户主目录写作 `~`）。
 - **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
+- **`queryJson.underPath`** — `batch_query_gameobjects`、`batch_query_components` 等共用查询的新键：某路径下任意深度的后代，不含该节点本身，不区分大小写，与 `parentPath` 同时给时两者都要满足；在 `limit` 截断之前过滤。
 
 ### Changed
 

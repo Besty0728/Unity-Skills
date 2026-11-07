@@ -213,6 +213,82 @@ namespace UnitySkills.Tests.Core
             Assert.That(json["sampleChanges"]?[0]?["after"]?.ToString(), Is.EqualTo("BQ"), json.ToString(Formatting.None));
         }
 
+        // ---------- underPath ----------
+
+        [Test]
+        public void Query_UnderPath_MatchesDescendantsAtAnyDepth_NotTheNodeOrAPrefixSibling()
+        {
+            BuildSlotTree();
+
+            var json = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"namePattern\":\"^Slot_\"}"));
+
+            Assert.That(json["count"]?.Value<int>(), Is.EqualTo(2), json.ToString(Formatting.None));
+            Assert.That(json["totalMatched"]?.Value<int>(), Is.EqualTo(2));
+            Assert.That(json["objects"].Select(o => o["path"].ToString()), Is.EquivalentTo(new[] { "Root/A/Slot_1", "Root/B/C/Slot_2" }));
+
+            var subtree = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"/Root/B/\"}"));
+            Assert.That(subtree["objects"].Select(o => o["path"].ToString()), Is.EquivalentTo(new[] { "Root/B/C", "Root/B/C/Slot_2" }),
+                "Only what is below Root/B, at any depth; surrounding slashes are tolerated.");
+        }
+
+        [Test]
+        public void Query_UnderPath_HonorsIncludeInactive()
+        {
+            BuildSlotTree();
+            GameObject.Find("Root/B").SetActive(false);
+            GameObjectFinder.InvalidateCache();
+
+            var active = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"namePattern\":\"^Slot_\"}"));
+            var all = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"namePattern\":\"^Slot_\",\"includeInactive\":true}"));
+
+            Assert.That(active["count"]?.Value<int>(), Is.EqualTo(1), active.ToString(Formatting.None));
+            Assert.That(all["count"]?.Value<int>(), Is.EqualTo(2), all.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void Query_UnderPathWithParentPath_IsTheIntersection()
+        {
+            BuildSlotTree();
+
+            var json = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"parentPath\":\"Root/B/C\"}"));
+            var disjoint = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"parentPath\":\"Other\"}"));
+
+            Assert.That(json["objects"].Select(o => o["path"].ToString()), Is.EqualTo(new[] { "Root/B/C/Slot_2" }), json.ToString(Formatting.None));
+            Assert.That(disjoint["count"]?.Value<int>(), Is.EqualTo(0), disjoint.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void Query_UnderPath_IsAppliedBeforeTheLimit_AndInComponentQueries()
+        {
+            BuildSlotTree();
+
+            var limited = ToJson(BatchSkills.BatchQueryGameObjects("{\"underPath\":\"Root\",\"namePattern\":\"^Slot_\",\"limit\":1}"));
+            Assert.That(limited["count"]?.Value<int>(), Is.EqualTo(1), limited.ToString(Formatting.None));
+            Assert.That(limited["totalMatched"]?.Value<int>(), Is.EqualTo(2), "totalMatched counts the filtered set, not the scene.");
+            Assert.That(limited["truncated"]?.Value<bool>(), Is.True);
+
+            var components = ToJson(BatchSkills.BatchQueryComponents("{\"underPath\":\"Root\",\"namePattern\":\"^Slot_\"}", componentType: "Transform"));
+            Assert.That(components["count"]?.Value<int>(), Is.EqualTo(2), components.ToString(Formatting.None));
+        }
+
+        /// <summary>Root/A/Slot_1, Root/B/C/Slot_2, Other/Slot_3 and RootX/Slot_4 (a sibling whose name starts with "Root").</summary>
+        private static void BuildSlotTree()
+        {
+            var root = new GameObject("Root");
+            Child("Slot_1", Child("A", root));
+            Child("Slot_2", Child("C", Child("B", root)));
+            Child("Slot_3", new GameObject("Other"));
+            Child("Slot_4", new GameObject("RootX"));
+            GameObjectFinder.InvalidateCache();
+        }
+
+        private static GameObject Child(string name, GameObject parent)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent.transform, false);
+            return go;
+        }
+
         private static JObject ToJson(object result) => JObject.Parse(JsonConvert.SerializeObject(result));
     }
 }

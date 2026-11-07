@@ -18,6 +18,7 @@ namespace UnitySkills
         public string componentType;
         public string sceneName;
         public string parentPath;
+        public string underPath;
         public string prefabSource;
         public bool includeInactive;
         public int limit = 500;
