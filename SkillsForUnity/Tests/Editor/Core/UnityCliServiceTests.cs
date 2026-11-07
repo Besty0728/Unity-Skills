@@ -233,6 +233,60 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        [Test]
+        [Platform("Unix,Linux,MacOsX")]
+        public void TryGetVersion_JsonOutput_ReturnsLaunchFailed()
+        {
+            AssertProbeOutput("echo '{\"success\":true,\"data\":{\"version\":\"1.0.0-beta.17\"}}'", false, null);
+        }
+
+        [Test]
+        [Platform("Unix,Linux,MacOsX")]
+        public void TryGetVersion_NonVersionOutput_ReturnsLaunchFailed()
+        {
+            AssertProbeOutput("echo 'Unity Editor 2022.3.40f1'", false, null);
+        }
+
+        [Test]
+        [Platform("Unix,Linux,MacOsX")]
+        public void TryGetVersion_InheritedUnityFormat_IsStrippedFromProbe()
+        {
+            string previous = Environment.GetEnvironmentVariable("UNITY_FORMAT");
+            Environment.SetEnvironmentVariable("UNITY_FORMAT", "json");
+            try
+            {
+                AssertProbeOutput(
+                    "if [ -n \"$UNITY_FORMAT\" ] || [ \"$UNITY_NO_UPDATE_CHECK\" != 1 ] || [ \"$UNITY_NO_CLI_INVOKED_TELEMETRY\" != 1 ]; " +
+                    "then echo '{\"version\":\"1.0.0-beta.17\"}'; else echo 1.0.0-beta.17; fi",
+                    true, "1.0.0-beta.17");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("UNITY_FORMAT", previous);
+            }
+        }
+
+        private static void AssertProbeOutput(string body, bool expectSuccess, string expectVersion)
+        {
+            string script = Path.Combine(Path.GetTempPath(), $"unity_cli_probe_{Guid.NewGuid()}.sh");
+            File.WriteAllText(script, "#!/bin/sh\n" + body + "\nexit 0\n");
+            MakeExecutable(script);
+
+            try
+            {
+                var (success, version, error) = TryGetVersion(script);
+                Assert.That(success, Is.EqualTo(expectSuccess), $"error={error}");
+                if (expectSuccess)
+                    Assert.That(version, Is.EqualTo(expectVersion));
+                else
+                    Assert.That(error, Is.EqualTo(UnityCliService.CliErrorLaunchFailed));
+            }
+            finally
+            {
+                try { File.Delete(script); } catch { }
+            }
+        }
+
         private static void MakeExecutable(string path)
         {
             using (var chmod = Process.Start(new ProcessStartInfo("chmod", "+x " + path)

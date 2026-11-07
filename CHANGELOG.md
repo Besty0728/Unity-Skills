@@ -109,6 +109,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`MODE_FORBIDDEN` 写明谁能解除** — 执行与 dryRun 授权预览共用同一句 hint：只有用户能解除，切到 Bypass 或把该技能加入面板的允许列表；不再建议「换一个技能」。
 - **dryRun v2 的 `note` 说明 `valid:true`** — v2 响应写明 `valid:true` 只表示没有校验错误、警告不拦截；技能没有规划器且校验通过时追加「target was not looked up」，免得把 `valid:true` 当成目标存在。v1 响应逐字节不变。
 - **`waitUrl` 带实例钉** — `script_*`、`asset_refresh` 等返回的 `waitUrl` 变为 `/jobs/<id>?wait=90&expectInstance=<instanceId>`，端口换人后照原样 GET 会得到 409 `INSTANCE_MISMATCH` 而不是别的编辑器的 404。Python 客户端自己拼查询串，不受影响。
+- **Unity CLI 探测与安装命令加固** — `--version` 探测进程清掉继承来的 `UNITY_FORMAT` / `HUB_FORMAT`，并设 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`、`UNITY_NO_UPDATE_CHECK=1`；输出必须是版本号（如 `1.0.0-beta.17`），JSON 或别的程序的输出按 `launch_failed` 处理。Windows 候选路径加上 `UNITY_CLI_HOME\bin\unity.exe` 与 `%LOCALAPPDATA%\Unity\bin\unity.exe`（未在 Windows 实测）。面板里的两条安装命令加 `UNITY_CLI_SKIP_SETUP=1`，不让安装器把 Unity 的技能写进用户的 agent 客户端（beta15 引入；beta16 之后的安装脚本是否仍认这个变量未验证）。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed

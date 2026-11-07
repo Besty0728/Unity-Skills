@@ -13,11 +13,13 @@ namespace UnitySkills
     {
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/Tabs/UnityCliTab.uxml";
         private const string UssPath = "Packages/com.besty.unity-skills/Editor/UI/UnityCliWindow.uss";
-        private const string InstallCmdUnix = "curl -fsSL https://cli.unity.com/install.sh | UNITY_CLI_CHANNEL=beta bash";
+        // UNITY_CLI_SKIP_SETUP=1: the installer (beta15+) otherwise writes Unity's own skills into every agent client it finds.
+        private const string InstallCmdUnix = "curl -fsSL https://cli.unity.com/install.sh | UNITY_CLI_CHANNEL=beta UNITY_CLI_SKIP_SETUP=1 bash";
         private const string DocsUrl = "https://docs.unity.com/unity-cli";
 
 #if UNITY_EDITOR_WIN
-        private const string InstallCmd = "powershell -c \"irm https://cli.unity.com/install.ps1 | iex\"";
+        // No `$env:` here: pasted into PowerShell, the outer shell would expand it inside the double quotes.
+        private const string InstallCmd = "powershell -c \"[Environment]::SetEnvironmentVariable('UNITY_CLI_SKIP_SETUP','1'); irm https://cli.unity.com/install.ps1 | iex\"";
 #else
         private const string InstallCmd = InstallCmdUnix;
 #endif

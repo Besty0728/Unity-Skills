@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -85,6 +86,12 @@ namespace UnitySkills
 
         private static CliConfig _cached;
 
+        // What `unity --version` prints: a bare semver such as 1.0.0-beta.17 (or 1.0.0 once a stable ships).
+        // Anything else is not the Unity CLI: a JSON document (UNITY_FORMAT=json) or another executable named `unity`.
+        private static readonly Regex VersionPattern = new Regex(
+            @"^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?$",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         // ===== Detection =====
 
         /// <summary>
@@ -144,11 +151,16 @@ namespace UnitySkills
 
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 #if UNITY_EDITOR_WIN
+            // UNITY_CLI_HOME is the install root of the official installer (binary at <root>\bin\unity.exe);
+            // the default root is %LOCALAPPDATA%\Unity. A freshly installed CLI is often not on this process's PATH yet.
+            string cliHome = Environment.GetEnvironmentVariable("UNITY_CLI_HOME");
+            if (!string.IsNullOrEmpty(cliHome))
+                yield return Path.Combine(cliHome, "bin", "unity.exe");
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             yield return Path.Combine(home, ".unity", "bin", "unity.exe");
             yield return ShellCommandResolver.Resolve("where unity", winWhere: true);
-            yield return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Unity", "cli", "unity.exe");
+            yield return Path.Combine(localAppData, "Unity", "bin", "unity.exe");
+            yield return Path.Combine(localAppData, "Unity", "cli", "unity.exe");
             yield return "unity.exe";
 #else
             // The official install.sh's default install location (its PATH injection goes
@@ -195,6 +207,12 @@ namespace UnitySkills
                     RedirectStandardError = true,
                     CreateNoWindow = true,
                 };
+                // UNITY_FORMAT / HUB_FORMAT (e.g. json) would turn the bare version string into a JSON document;
+                // a version probe must not add a usage ping or an update check either.
+                psi.EnvironmentVariables.Remove("UNITY_FORMAT");
+                psi.EnvironmentVariables.Remove("HUB_FORMAT");
+                psi.EnvironmentVariables["UNITY_NO_CLI_INVOKED_TELEMETRY"] = "1";
+                psi.EnvironmentVariables["UNITY_NO_UPDATE_CHECK"] = "1";
                 using (var p = System.Diagnostics.Process.Start(psi))
                 {
                     // Start the async reads first, to prevent WaitForExit from hanging forever due to a full pipe buffer.
@@ -213,7 +231,7 @@ namespace UnitySkills
                         return new VersionAttempt(false, error: CliErrorLaunchFailed);
                     }
                     string version = (stdout ?? "").Trim();
-                    if (string.IsNullOrEmpty(version))
+                    if (!VersionPattern.IsMatch(version))
                         return new VersionAttempt(false, error: CliErrorLaunchFailed);
                     return new VersionAttempt(true, version);
                 }
