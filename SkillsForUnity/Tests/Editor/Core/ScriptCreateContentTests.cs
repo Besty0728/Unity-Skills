@@ -111,6 +111,29 @@ namespace UnitySkills.Tests.Core
             Assert.That(missing?.Select(m => m.ToString()), Has.Member(parameter),
                 $"{skillName} returns MISSING_PARAM for an empty {parameter}; dryRun must report it instead of valid:true. {dryRun}");
         }
+
+        // Only arguments script_create itself also refuses before writing, so a regressed router guard still writes nothing.
+        [TestCase("Sub/Bad", null)]
+        [TestCase("NoWriteProbe", "NoSuchTemplate")]
+        public void Execute_WithArgumentsThePlannerRejects_RunsNothing_AndReportsWhatDryRunDoes(string scriptName, string template)
+        {
+            var folder = "Assets/UnitySkillsNoWriteProbe_" + Guid.NewGuid().ToString("N");
+            var body = new JObject { ["scriptName"] = scriptName, ["folder"] = folder };
+            if (template != null)
+                body["template"] = template;
+            var json = body.ToString(Newtonsoft.Json.Formatting.None);
+
+            var dryRun = JObject.Parse(SkillRouter.DryRun("script_create", json));
+            var executed = JObject.Parse(SkillRouter.Execute("script_create", json));
+
+            Assert.That(dryRun["valid"]?.Value<bool>(), Is.False, dryRun.ToString());
+            Assert.That(executed["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"), executed.ToString());
+            Assert.That(JToken.DeepEquals(executed["details"]?["validation"], dryRun["validation"]), Is.True,
+                "Execute must refuse with the same validation report a dryRun gives.\nexecute: " +
+                executed["details"]?["validation"] + "\ndryRun: " + dryRun["validation"]);
+            Assert.That(executed["jobId"], Is.Null);
+            Assert.That(Directory.Exists(folder), Is.False, "Nothing may be written.");
+        }
     }
 }
 

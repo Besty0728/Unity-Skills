@@ -17,7 +17,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 代码体量 | — | **1028 文件**，约 **+141.5k / −6.9k** 行 |
 | 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **426 文件 / +85k** 行 |
 | 其中 Editor C# | 2.9.1 能力面 | 约 **202 文件 / +31k / −4.7k**（Workflow、Particle、Evaluation、entityId、Console…） |
-| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7936 B**（评测驱动补规则后 8188 B）；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
+| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7433 B**（7936 B 起步，评测补规则到 8188 B，发布前逐句重写）；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
 | 技能数 | 839 | **872（+33）** |
 | 用户侧公开题 | 无 | **41 题 / pack 1.2.0** |
 | Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
@@ -66,7 +66,18 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 通过数每档最多差 1 题；处理 token 下降 5%–20%，请求数下降 11%–28%；console `type` 传非法值 7 → 0。未改善的两项不再为指标改文档：T4 仍会先猜一个不存在的技能名（错误响应给出正确名称后下一步就改对），xhigh 读 / 写比 1.91 → 2.26（绝对读次数 25.4 → 21.6，写入更多合并进 batch）。
 
-- **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2614 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **根文档重写后的复测**（D 版，条件同上；「前」是上表的「后」，即 cand 组）：
+
+| effort | 通过（cand → D） | 处理 token/题 | 请求/题 | 失败调用/题 | 脚本写入前 dryRun |
+|---|---:|---:|---:|---:|---:|
+| low | 24 → 24 | 239K → 211K | 10.9 → 8.3 | 1.88 → 0.60 | 9 → 0 |
+| medium | 25 → 24 | 277K → 213K | 9.9 → 9.0 | 0.52 → 0.16 | 13 → 0 |
+| high | 23 → 25 | 311K → 316K | 11.2 → 11.3 | 0.92 → 0.68 | 12 → 0 |
+| xhigh | 25 → 24 | 460K → 428K | 13.9 → 11.7 | 0.60 → 1.16 | 12 → 2 |
+
+合计通过 97 → 97，脚本题（dev）47 → 47；删除前不 dryRun、`scene_save` 的 dryRun 都是 0。xhigh 的失败调用上升来自 T7 一个会话：它逐个查 21 个本来就没有 BoxCollider 的箱子，每次都是 `TARGET_NOT_FOUND`，题目仍然通过，去掉这个会话为 0.32。auto 模式抽查（Haiku medium，不计分）：删除与建脚本拿到 `MODE_FORBIDDEN` 后如实转告用户、给出 Bypass / 允许列表两条路，没有绕路直接写文件；普通移动直接执行。
+
+- **回归**：2022.3.62f2 Built-in 工程的完整 EditMode 2680 个测试，0 失败（93 个按环境跳过）；URP 工程在上一轮是 2614 个、0 失败，本轮未重跑；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
 
@@ -86,7 +97,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Changed
 
-- **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口压到 **7936** 字节（相对 v2.9.1 的 8189；之后按评测补上路径、盘点、删除前 dryRun 等规则，最终 8188 字节）：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
+- **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口先压到 **7936** 字节（相对 v2.9.1 的 8189），按评测补规则涨到 8188 字节后，再按下一条重写为 **7433** 字节：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
 - **面板石墨配色** — 深浅两套配色换成石墨色系，控件高度与圆角统一（4 / 6 / 8 三档），横幅、提示与状态统一为淡色底加同色描边，删除类按钮改为红色描边的空心按钮；标签栏保持原样式。
 - **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
 - **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
@@ -101,10 +112,12 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **编辑器变更日志** — 轮转成分段文件而不是丢弃旧记录，记录调用的 agent、Play 状态与对象 entity id；单次超过 200 项的变更拆成多条连续记录，不再折叠成 `omitted`；遥测与审计在域重载和退出前落盘。
 - **安装器清理退役文件** — 每次安装写 `scripts/install_manifest.json`；重装与卸载会删除模板已不再提供、且内容未被改动的旧文件，用户自己加的文件不动。
 - **`name` 可以写层级路径** — `name` 里含 `/`、又没有对象恰好叫这个名字时，按层级路径查找，并在 `resolutionNotes` 里注明；这一步在整词 / 子串模糊匹配之前，精确同名仍然优先。`parentName`、`childName` 等按名字定位的参数，以及 batch dryRun 的预检，都按同样的规则处理。评测里约三成错误是把 `Root/Hall/Markers` 这样的路径当作 `name` 传入。
-- **根 `SKILL.md` 的 dryRun 规则收窄** — 只在删除（`operation` 含 `Delete`：任何 `*_delete*` / `*_remove*` 与资源、文件夹清理）、`mayTriggerReload`（脚本 / 编译）、非事务的多步 batch、approval 模式或拿不准时先 dryRun；`riskLevel` high 与 `mayEnterPlayMode` 的技能（如 `scene_save`、`editor_play`）拿到签名后直接执行。另外几处补充：
-  - 新增一行：盘点「某节点下的所有 X」只需调用一次 `batch_query_gameobjects`；
-  - 写入返回的回读就是验证，不要再逐个读取；
-  - `waitUrl` 里已经有 `?wait=90`，其他参数用 `&` 追加。
+- **根 `SKILL.md` 按评测逐句重写（8188 → 7433 字节）** — 依据 base / cand / cand2 三组共 214 个评测会话与 C# 实现逐句归类，删去响应已经说明的规则，留出 759 字节余量：
+  - **dryRun 只用于**删除（`operation` 含 `Delete`：任何 `*_delete*` / `*_remove*` 与资源、文件夹清理）、其余会触发重载的技能（包、宏定义、`script_rename` / `script_move` / `script_create_batch` 等）、非事务的多步 batch、approval 模式或拿不准时；`script_create`、`script_append`、`script_replace` **改为直接执行**——`script_create` 执行时跑同一个规划器，校验失败什么都不执行并返回与 dryRun 相同的报告，另两个没有规划器，dryRun 查到的不比执行多。`riskLevel` high 与 `mayEnterPlayMode` 的技能（如 `scene_save`、`editor_play`）拿到签名后直接执行。
+  - 权限与 dryRun 分开写：`auto` / `approval` 对 schema 里 `approvalBehavior` 为 `forbid` 的技能返回 `MODE_FORBIDDEN`，只有用户能解除（Bypass 或允许列表）。
+  - 速查表的盘点行改用 `underPath`，一次调用拿到某节点下的所有 X；删去 rename / duplicate 与 `light_set_properties` 两行（需要时走一次 recommend）；写入返回的回读就是验证。
+  - 一行命令示例去掉 dryRun 一步，`waitUrl` 直接 GET（已带实例钉，grep `/jobs/[^"]*`）；删去「其他参数用 `&` 追加」与 `valid:true` 的解释，这两件事分别由路由与 dryRun 响应自己处理。
+  - `references/` 同步：`protocol-operating-mode.md` 补 `approvalBehavior` 的 `forbid` / `grant` / `allow`；`windows.md` 镜像新的一行命令（PowerShell 直接读 `$r.result.waitUrl`）；`protocol-discovery.md` 写明 v2 note 的含义与「值里的 `?` / `&` 写成 `%3F` / `%26`」；`protocol-error-codes.md` 补新的 fix 与 hint。
 - **`MISSING_PACKAGE` 先请用户决定** — 四条返回路径（通用依赖错误、路由缺包响应、Particle、Behavior）的 `suggestedFixes` 第一条改为 `ask_user`：告诉用户缺哪个包，用户要求时才安装。`package_install` / `package_check` 两条照留。cinemachine、particle 模块文档同步。
 - **`MODE_FORBIDDEN` 写明谁能解除** — 执行与 dryRun 授权预览共用同一句 hint：只有用户能解除，切到 Bypass 或把该技能加入面板的允许列表；不再建议「换一个技能」。
 - **dryRun v2 的 `note` 说明 `valid:true`** — v2 响应写明 `valid:true` 只表示没有校验错误、警告不拦截；技能没有规划器且校验通过时追加「target was not looked up」，免得把 `valid:true` 当成目标存在。v1 响应逐字节不变。
@@ -115,6 +128,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Fixed
 
 - **查询串里的第二个 `?`** — `?wait=90?expectInstance=X` 这类写法以前把 `wait` 读成 `"90?expectInstance=X"`，实例钉被悄悄丢掉（评测中出现 4 次）；现在 `&` 与 `?` 都当分隔符，`%3F` 在切分之后才解码，仍是字面 `?`。值里没编码的 `?` 会把这个值截断，协议文档已写明。
+- **根 `SKILL.md` 关于 `auto` 模式的事实错误** — 旧文写 `auto` 下写操作都直接执行；实际删除、触发重载、进 Play 模式与 `riskLevel` high 的技能在 `auto` / `approval` 下返回 `MODE_FORBIDDEN`，而新装插件默认就是 `auto`。`protocol-operating-mode.md` 里「The server will not stop you in Auto」与同文件的模式表矛盾，一并改正。
 - **ISO 时间字符串被改写**（v2.9.1 起）— 请求参数里的 ISO-8601 时间以前在解析时被转成日期、再输出成本地格式：`console_get_logs` 的 `fromUtc:"2026-11-06T06:07:50Z"` 变成 `11/06/2026 06:07:50` 后被判为非法值，`fromUtc` / `toUtc` 实际无法使用。直接调用、dryRun、`/skills/batch` 的步骤参数与 `$ref` 引用的上一步结果、`*_batch` 的条目（如 `component_set_property_batch` 的 `value`）现在都原样收到字符串。
 - **batch dryRun 把前面步骤要加的组件判为不存在** — 前一步 `component_add` 要加的组件，后一步 `component_set_property`、`component_remove` 在 dryRun 中以前直接报 `Component not found`，一次 17 步的 batch 有 15 步因此失败；现在改为警告，提示依赖实时组件的检查已跳过。`component_set_property` 还认得该组件通过 `RequireComponent` 自动带上的组件（如 HingeJoint 带上的 Rigidbody）。dryRun 结果里不预测对象的场景创建技能（`light_create`、`camera_create`、`ui_create_*`、`prefab_instantiate`、Cinemachine 的 `*_create_*` 等约 40 个）建的对象，后续步骤按名字引用时同样只给警告，以前会报 `GameObject not found`：没有父节点参数的放在场景根，父节点能解析的放在它下面，落点无法预测的（如不指定父节点的 UI 元素）只按名字匹配，它的子对象也只按名字匹配。单独调用的 dryRun 不受影响。
 - **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。

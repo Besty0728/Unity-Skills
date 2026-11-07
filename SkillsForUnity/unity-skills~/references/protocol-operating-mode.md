@@ -100,7 +100,7 @@ What `summaryAutoTruncate` / `summaryPageSize` actually do: in brief mode (`verb
 | **Auto** | ≈ `acceptEdits` | Executes directly (audit written); **you must self-assess** sensitive cases | `MODE_FORBIDDEN` |
 | **Bypass** | ≈ `bypassPermissions` | Executes directly | Executes directly (only `ConfirmationToken` still gates high-risk) |
 
-`NeverInSemi` is derived automatically by `IsForbiddenInSemi()` — there is no manual marker. See "Skill Mode Annotation" below.
+`NeverInSemi` is derived automatically by `IsForbiddenInSemi()` — there is no manual marker. See "Skill Mode Annotation" below. Every schema and recommend entry states the verdict as `approvalBehavior`: `forbid` (NeverInSemi: `MODE_FORBIDDEN` under Auto and Approval), `grant` (FullAuto: a grant under Approval, direct under Auto) or `allow` (SemiAuto: direct in every mode). The Allowlist and Bypass lift `forbid`.
 
 **Previewing the gate.** A dryRun (`POST /skill/<name>?mode=dryRun`) shows the verdict without consuming a grant or writing an audit entry: its top-level `authorization` is `{allowed, blockedBy, currentMode, allowlisted, hint}` (plus `surfaceProfile` when `blockedBy` is `SURFACE_EXCLUDED`), and `blockedBy` is `MODE_RESTRICTED`, `MODE_FORBIDDEN`, `SURFACE_EXCLUDED`, or null when the call would run. It is a prediction, not a reservation: the mode or the Allowlist can change before the execute call. The root `SKILL.md` asks for a dryRun first in approval mode for this reason.
 
@@ -125,7 +125,7 @@ On `MODE_RESTRICTED`, branch on `details.approvalChannel`:
 
 > Note: panel approval no longer auto-routes the result back to the AI. The Approve click only flips the request into the Granted state; AI must follow up with one `/permission/grant` call to fetch the execution result.
 
-On `MODE_FORBIDDEN`: the skill is auto-classified as NeverInSemi (Delete / Domain Reload / Play Mode / high-risk). It is callable only under Bypass, **or** if the user has explicitly added it to the Allowlist (see below). **Do not attempt the grant flow** — tell the user the action requires Bypass mode, an Allowlist entry, or offer an alternative skill.
+On `MODE_FORBIDDEN` (under Auto or Approval): the skill is auto-classified as NeverInSemi (Delete / Domain Reload / Play Mode / high-risk). It is callable only under Bypass, **or** if the user has explicitly added it to the Allowlist (see below); `details.hint` says the same. **Do not attempt the grant flow** — tell the user the action requires Bypass mode or an Allowlist entry, or offer an alternative that does not do the same thing.
 
 ## Allowlist (user-managed permanent bypass)
 
@@ -142,13 +142,13 @@ The Allowlist is a **user-managed** permanent whitelist of skill names, configur
 
 ## Auto Mode Self-Assessment
 
-Under Auto, FullAuto skills run directly. You **must pause and confirm with the user** in chat when any of the following apply:
+Under Auto, FullAuto skills run directly, except the NeverInSemi ones (`approvalBehavior: "forbid"`), which answer `MODE_FORBIDDEN` until the user switches to Bypass or allowlists them. For the skills that do run, you **must pause and confirm with the user** in chat when any of the following apply:
 
 - Batch operation touching ≥ `5` objects
 - Prefab apply / scene-level mutation / asset overwrite
 - Dry-run shows irreversible changes (deletes, overrides, cascading edits)
 
-This confirmation is a chat-level check (explain plan + risk + ask), independent of the server-side mode gate. The server will not stop you in Auto — the audit log records the call regardless.
+This confirmation is a chat-level check (explain plan + risk + ask), independent of the server-side mode gate: apart from `MODE_FORBIDDEN`, the server will not stop you in Auto — the audit log records the call regardless.
 
 ## Relationship with `ConfirmationTokenService`
 

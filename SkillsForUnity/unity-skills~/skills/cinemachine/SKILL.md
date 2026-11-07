@@ -60,7 +60,7 @@ Names, parameters, defaults and required flags come from `GET /skills/schema?cat
 
 | Error | Trigger → fix |
 |---|---|
-| `MISSING_PACKAGE` | Cinemachine not installed → install 2.x or 3.x via `package_*`. |
+| `MISSING_PACKAGE` | Cinemachine not installed → tell the user; installing 2.x or 3.x (`package_*`) is their call. |
 | `MODE_FORBIDDEN` | A Delete-class skill under Approval/Auto → needs Bypass or an Allowlist hit. |
 | `SEMANTIC_INVALID` | Invalid `mode` / blend style / unresolved animator or bounding shape → fix per `validValues` / the message; nothing was written. |
 

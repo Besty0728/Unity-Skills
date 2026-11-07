@@ -29,7 +29,7 @@ After you write the C# (through `script_create` with the full `content`, or by a
 Recommended agent flow:
 1. Check the name is free: `GET /skills?q=<prefix>` or read `GET /skills/schema?names=<cand>&wire=v2`.
 2. `script_create { scriptName, folder: "Assets/...", content: <full source> }` — returns `{ path, jobId, waitUrl }`.
-3. Wait for compile: `GET /jobs/<jobId>?wait=90` (retry through the reload); inspect `resultData.compilation.errors`. `script_get_compile_feedback(scriptPath)` gives on-demand diagnostics.
+3. Wait for compile: GET the returned `waitUrl` as is (`/jobs/<jobId>?wait=90&expectInstance=…`; retry through the reload); inspect `resultData.compilation.errors`. `script_get_compile_feedback(scriptPath)` gives on-demand diagnostics.
 4. Confirm registration: `GET /skills/schema?names=<your_skill>&wire=v2` should return your skill with its description and parameters.
 5. First real call with `?mode=dryRun`.
 

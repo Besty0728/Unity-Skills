@@ -36,7 +36,7 @@ One call, targeting by `name` (or the exact `path` / `entityId`):
 Invoke-Skill "/skill/gameobject_set_transform$q" @{ name = 'Crate'; posX = 4; posY = 1.5; posZ = -2 }
 ```
 
-DryRun first (deletes: `operation` has `Delete`, i.e. any `*_delete*` / `*_remove*`, asset or folder cleanup; script/compile reloads; non-transactional multi-step batches; approval mode or a `dryRunPolicy`; or when unsure; see the root doc):
+DryRun first (deletes: `operation` has `Delete`, i.e. any `*_delete*` / `*_remove*`, asset or folder cleanup; every `mayTriggerReload` skill except the script writes `script_create` / `script_append` / `script_replace`, which execute directly; non-transactional multi-step batches; approval mode or a `dryRunPolicy`; or when unsure; see the root doc):
 
 ```powershell
 Invoke-Skill "/skill/gameobject_delete$q&mode=dryRun&wire=v2" @{ name = 'Crate' }
@@ -54,7 +54,7 @@ Invoke-Skill "/skills/batch$q" $steps
 
 Add `&mode=dryRun&wire=v2` to preview, `&mode=transactional` for all-or-nothing.
 
-A script: dryRun, create, then one GET that waits out compile and domain reload. During the reload the port refuses or answers 503, so the wait is retried:
+A script: create (a failed validation writes nothing), then one GET of the returned `waitUrl`, already pinned to this Editor, that waits out compile and domain reload. During the reload the port refuses or answers 503, so the wait is retried. Read `waitUrl` from the response object, not from `ConvertTo-Json` text (Windows PowerShell 5.1 serializes with `JavaScriptSerializer`, which may escape the `&` in it):
 
 ```powershell
 $source = @'
@@ -62,9 +62,9 @@ using UnityEngine;
 public class Spin : MonoBehaviour { public float speed = 9f; void Update() { transform.Rotate(0, speed * Time.deltaTime, 0); } }
 '@
 $body = @{ scriptName = 'Spin'; content = $source }
-if ((Invoke-Skill "/skill/script_create$q&mode=dryRun" $body | ConvertTo-Json -Depth 10 -Compress) -match '"valid":true') {
-    $r = Invoke-Skill "/skill/script_create$q" $body
-    $wait = [regex]::Match(($r | ConvertTo-Json -Depth 10 -Compress), '/jobs/[^"]*=90').Value
+$r = Invoke-Skill "/skill/script_create$q" $body
+$wait = $r.result.waitUrl
+if ($wait) {
     for ($i = 0; $i -lt 30; $i++) {
         try { $job = Invoke-RestMethod "$u$wait" -TimeoutSec 150; if (-not $job.waitTimedOut) { break } }
         catch { Start-Sleep -Seconds 2 }
@@ -90,4 +90,5 @@ python unity_skills.py --params-file params.json gameobject_create
 
 - `curl` alias: [curl on Windows](https://learn.microsoft.com/windows/curl/); native argument quoting: [about_Parsing](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters)
 - Body encoding: [Invoke-RestMethod (5.1)](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod?view=powershell-5.1), [Invoke-RestMethod (7.x)](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod)
+- `ConvertTo-Json` serializer: [ConvertTo-Json (5.1)](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/convertto-json?view=powershell-5.1)
 - BOM: [about_Character_Encoding](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding)

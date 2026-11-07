@@ -19,7 +19,7 @@ Read-only `SemiAuto` skills run directly in every mode: `script_read`, `script_l
 
 ## Compile and reload
 - Every write returns at once: `{success, status: "accepted", path, jobId, waitUrl, serverAvailability}`; compilation follows, and the server is briefly unreachable during the domain reload.
-- One call gets the compile result: GET the returned `waitUrl` (`/jobs/<jobId>?wait=90`), e.g. `curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "http://localhost:<port>/jobs/<jobId>?wait=90&expectProject=<project>"`. It answers once compilation settles: job `status` `completed`, or `failed` on compile errors, with diagnostics in `resultData.compilation` (`isCompiling`, `hasErrors`, `errorCount`, `errors: [{type, message, file, line}]`). During the reload it may refuse or return `503`: repeat the same URL; `waitTimedOut: true` means GET it again.
+- One call gets the compile result: GET the returned `waitUrl` as is (`/jobs/<jobId>?wait=90&expectInstance=<instanceId>`, already pinned to this Editor), e.g. `curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "http://localhost:<port><waitUrl>"`. It answers once compilation settles: job `status` `completed`, or `failed` on compile errors, with diagnostics in `resultData.compilation` (`isCompiling`, `hasErrors`, `errorCount`, `errors: [{type, message, file, line}]`). During the reload it may refuse or return `503`: repeat the same URL; `waitTimedOut: true` means GET it again.
 - `script_get_compile_feedback(scriptPath)` returns the same diagnostics on demand. Fix errors first: `component_add` finds a new MonoBehaviour only after a clean compile.
 - `checkCompile: false` skips the diagnostics; `diagnosticLimit` caps them (default 20).
 
