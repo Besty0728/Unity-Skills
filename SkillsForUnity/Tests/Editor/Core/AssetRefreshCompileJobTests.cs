@@ -16,7 +16,7 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class AssetRefreshCompileJobTests
     {
-        private const string WaitUrlPattern = @"^/jobs/[0-9a-f]{8}\?wait=90$";
+        private const string WaitUrlPattern = @"^/jobs/[0-9a-f]{8}\?wait=90&expectInstance=[^&?]+$";
 
         private readonly List<string> _jobIds = new List<string>();
 

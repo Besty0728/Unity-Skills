@@ -624,7 +624,7 @@ namespace UnitySkills
                         authorization = BuildAuthorizationPreview(skill),
                         steps = planData?["steps"],
                         changes = planData?["changes"],
-                        note = "No execution performed"
+                        note = DryRunV2Note(validation.Valid && planData == null)
                     }, resolutionNotes, dryRunToken);
                 }
                 return SerializeWithResolutionNotes(new
@@ -697,6 +697,15 @@ namespace UnitySkills
                     retryStrategy: SkillErrorResponse.Abort);
             }
         }
+
+        /// <summary>
+        /// The v2 dryRun note says what valid:true covers. A valid preview without planner output checked parameters only,
+        /// so it must not read as "the target exists". An invalid one keeps the short note; its errors say the rest
+        /// (a planner that rejects a missing target also returns no output).
+        /// </summary>
+        private static string DryRunV2Note(bool validWithoutPlan) => validWithoutPlan
+            ? "No execution performed. valid:true = no validation errors; warnings never block; this skill has no planner, so the target was not looked up."
+            : "No execution performed. valid:true = no validation errors; warnings never block.";
 
         // ========== Correction report and resolution notes ==========
 

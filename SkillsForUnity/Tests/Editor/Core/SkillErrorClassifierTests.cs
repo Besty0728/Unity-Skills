@@ -29,6 +29,30 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(SkillErrorCode.MissingPackage, SkillErrorClassifier.Classify(message).Code);
         }
 
+        [Test]
+        public void MissingPackage_FirstFixAsksTheUser_ThenInstalls()
+        {
+            var classified = SkillErrorClassifier.Classify("Addressables package (com.unity.addressables) is not installed.");
+            var declared = SkillErrorClassifier.ForCode(SkillErrorCode.MissingPackage, "anything");
+
+            foreach (var fixes in new[] { classified.SuggestedFixes, declared.SuggestedFixes })
+            {
+                Assert.AreEqual("ask_user", fixes[0].action);
+                StringAssert.Contains("install it only if they ask", fixes[0].reason);
+                Assert.IsTrue(fixes.Exists(fix => fix.skill == "package_install"), "The install fix stays, after the question.");
+            }
+            Assert.AreEqual(SkillErrorResponse.RetryInstallAndRetry, classified.RetryStrategy);
+        }
+
+        [Test]
+        public void BehaviorNotInstalled_DeclaresItsOwnFixes_AskingTheUserFirst()
+        {
+            var fixes = (Newtonsoft.Json.Linq.JArray)Newtonsoft.Json.Linq.JObject.FromObject(BehaviorReflectionHelper.NotInstalled())["suggestedFixes"];
+
+            Assert.AreEqual("ask_user", fixes[0]["action"]?.ToString());
+            StringAssert.Contains("package_install", fixes[1].ToString(), "The install hints stay, after the question.");
+        }
+
         [TestCase("Runtime validation job 'DefaultPackage_validation_1' not found")]
         [TestCase("Job 'ContainsPackageWord' not found")]
         [TestCase("Material asset not found: Packages/com.example.fake/Materials/Nope.mat")]

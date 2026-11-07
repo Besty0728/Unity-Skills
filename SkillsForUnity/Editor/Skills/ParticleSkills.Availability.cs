@@ -48,6 +48,11 @@ namespace UnitySkills
             {
                 new Dictionary<string, object>
                 {
+                    ["action"] = "ask_user",
+                    ["reason"] = SkillErrorResponse.AskBeforeInstallReason
+                },
+                new Dictionary<string, object>
+                {
                     ["action"] = "install_package",
                     ["skill"] = "package_install",
                     ["args"] = new Dictionary<string, object> { ["packageId"] = ModulePackage },

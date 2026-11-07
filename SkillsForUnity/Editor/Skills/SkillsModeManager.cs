@@ -604,8 +604,8 @@ namespace UnitySkills
         /// <summary>
         /// Returns true when this skill must be blocked in any non-Bypass mode. The decision is driven purely by metadata.
         ///
-        /// The _explicitNeverList fallback was removed (no longer hit) — metadata now fully covers the current 75
-        /// NeverInSemi skills (all triggered by the 4 rules below, 0 relying on a list fallback).
+        /// The _explicitNeverList fallback was removed (no longer hit) — metadata now fully covers every
+        /// NeverInSemi skill (each one triggered by the 4 rules below, none relying on a list fallback).
         ///
         /// Note: <see cref="CheckAccess"/> **skips this check** on an IsInAllowlist hit, letting the user manually
         /// clear an otherwise blocked high-risk skill.

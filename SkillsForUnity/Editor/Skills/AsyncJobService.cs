@@ -452,9 +452,17 @@ namespace UnitySkills
         /// <summary>
         /// The long-poll URL for a job: GET it and the server answers once the job reaches a
         /// terminal state, with the job's resultData. A domain reload drops the connection; retry
-        /// the same URL.
+        /// the same URL. It is pinned to this Editor (expectInstance): sent to another Editor, e.g.
+        /// after a port change, it answers 409 INSTANCE_MISMATCH naming the right port.
         /// </summary>
-        internal static string BuildWaitUrl(string jobId) => $"/jobs/{jobId}?wait=90";
+        internal static string BuildWaitUrl(string jobId)
+        {
+            var url = $"/jobs/{jobId}?wait=90";
+            var instanceId = RegistryService.InstanceId;
+            return string.IsNullOrEmpty(instanceId)
+                ? url
+                : $"{url}&{SkillsHttpServer.ExpectInstanceQueryKey}={Uri.EscapeDataString(instanceId)}";
+        }
 
         /// <summary>
         /// Builds the standard progress snapshot shared by HTTP <c>GET /jobs/{id}/progress</c>

@@ -71,6 +71,35 @@ namespace UnitySkills.Tests.Core
             Assert.That(expected.Matches("Another_Editor", ServingName, ServingPath), Is.False);
         }
 
+        [Test]
+        public void ExpectationAppendedWithASecondQuestionMark_IsStillRead()
+        {
+            var expectation = SkillsHttpServer.ReadInstanceExpectation("?wait=90?expectInstance=Abc", null, null);
+
+            Assert.That(expectation, Is.Not.Null, "Dropping the pin would let the wait reach another Editor's job table.");
+            Assert.That(expectation.Instance, Is.EqualTo("Abc"));
+        }
+
+        [Test]
+        public void WaitUrl_IsPinnedToThisEditor_AndParsesAsAJobWait()
+        {
+            var url = AsyncJobService.BuildWaitUrl("ab12cd34");
+            int queryStart = url.IndexOf('?');
+            string path = url.Substring(0, queryStart), query = url.Substring(queryStart);
+
+            Assert.That(url, Is.EqualTo("/jobs/ab12cd34?wait=90&expectInstance=" + Uri.EscapeDataString(RegistryService.InstanceId)));
+            Assert.That(SkillsHttpServer.TryParseJobWait(path, query, out var jobId, out var seconds, out var error), Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(jobId, Is.EqualTo("ab12cd34"));
+            Assert.That(seconds, Is.EqualTo(90.0));
+
+            var expectation = SkillsHttpServer.ReadInstanceExpectation(query, null, null);
+            Assert.That(expectation.Matches(RegistryService.InstanceId, RegistryService.ProjectName, RegistryService.ProjectPath), Is.True,
+                "The Editor that issued the job must accept its own waitUrl.");
+            Assert.That(expectation.Matches("Another_Editor", ServingName, ServingPath), Is.False,
+                "Any other Editor must refuse it (409 INSTANCE_MISMATCH).");
+        }
+
         // ---------- matching ----------
 
         [Test]

@@ -176,6 +176,8 @@ namespace UnitySkills.Tests.Core
             Assert.That(StringArray(response["details"]?["validation"]?["missingPackages"]), Is.EqualTo(missing));
             var install = ((JArray)response["suggestedFixes"]).FirstOrDefault(fix => (string)fix["skill"] == "package_install");
             Assert.That(install?["args"]?["packageId"]?.ToString(), Is.EqualTo(missing[0]));
+            Assert.That(response["suggestedFixes"]?[0]?["action"]?.ToString(), Is.EqualTo("ask_user"),
+                "Installing changes the user's project; the first fix is to ask them.");
         }
 
         [Test]

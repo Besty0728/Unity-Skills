@@ -223,7 +223,7 @@ namespace UnitySkills
                     });
                     return SkillErrorResponse.Build(
                         SkillErrorCode.ModeForbidden,
-                        "This skill is classified as never-in-semi and is only allowed in Bypass mode.",
+                        "This skill is classified as never-in-semi: it runs only in Bypass mode or once the user allowlists it.",
                         skill: name,
                         details: new
                         {
@@ -232,7 +232,7 @@ namespace UnitySkills
                             mayEnterPlayMode = skill.MayEnterPlayMode,
                             mayTriggerReload = skill.MayTriggerReload,
                             operation = FormatOperation(skill.Operation),
-                            hint = "Switch the Unity panel to Bypass mode, or use a different skill.",
+                            hint = ModeForbiddenHint(skill.Name) + " Tell them, or offer an alternative that does not do the same thing.",
                         },
                         retryStrategy: SkillErrorResponse.Abort);
 
@@ -269,6 +269,10 @@ namespace UnitySkills
             }
             return null;
         }
+
+        /// <summary>Who can lift MODE_FORBIDDEN and how; shared by the execute refusal and the dryRun authorization preview.</summary>
+        private static string ModeForbiddenHint(string skillName) =>
+            $"Only the user can lift this: Bypass mode, or adding '{skillName}' to the Allowlist in the UnitySkills panel.";
 
         /// <summary>
         /// Returns null when this skill is allowed to execute (the token has been consumed); otherwise returns a serialized error payload

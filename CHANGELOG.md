@@ -105,6 +105,10 @@ All notable changes to **UnitySkills** will be documented in this file.
   - 新增一行：盘点「某节点下的所有 X」只需调用一次 `batch_query_gameobjects`；
   - 写入返回的回读就是验证，不要再逐个读取；
   - `waitUrl` 里已经有 `?wait=90`，其他参数用 `&` 追加。
+- **`MISSING_PACKAGE` 先请用户决定** — 四条返回路径（通用依赖错误、路由缺包响应、Particle、Behavior）的 `suggestedFixes` 第一条改为 `ask_user`：告诉用户缺哪个包，用户要求时才安装。`package_install` / `package_check` 两条照留。cinemachine、particle 模块文档同步。
+- **`MODE_FORBIDDEN` 写明谁能解除** — 执行与 dryRun 授权预览共用同一句 hint：只有用户能解除，切到 Bypass 或把该技能加入面板的允许列表；不再建议「换一个技能」。
+- **dryRun v2 的 `note` 说明 `valid:true`** — v2 响应写明 `valid:true` 只表示没有校验错误、警告不拦截；技能没有规划器且校验通过时追加「target was not looked up」，免得把 `valid:true` 当成目标存在。v1 响应逐字节不变。
+- **`waitUrl` 带实例钉** — `script_*`、`asset_refresh` 等返回的 `waitUrl` 变为 `/jobs/<id>?wait=90&expectInstance=<instanceId>`，端口换人后照原样 GET 会得到 409 `INSTANCE_MISMATCH` 而不是别的编辑器的 404。Python 客户端自己拼查询串，不受影响。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed

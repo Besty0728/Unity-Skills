@@ -14,7 +14,7 @@ namespace UnitySkills
     /// </summary>
     public sealed class SuggestedFix
     {
-        /// <summary>The action verb: "retry", "fix_param", "find_target", "install_package", "wait", "confirm".</summary>
+        /// <summary>The action verb: "retry", "fix_param", "find_target", "install_package", "wait", "confirm", "ask_user".</summary>
         public string action;
 
         /// <summary>Optional: an alternative skill suggested for the caller to consider.</summary>
@@ -110,6 +110,12 @@ namespace UnitySkills
 
         /// <summary>Envelope field naming the editor that answered, so an agent can tell which of several running editors it reached.</summary>
         internal const string InstanceField = "instance";
+
+        /// <summary>Reason of the "ask_user" fix that leads every MISSING_PACKAGE answer: installing is the user's call, not the agent's.</summary>
+        internal const string AskBeforeInstallReason =
+            "Tell the user which package is missing; install it only if they ask: installing changes their project and reloads the domain.";
+
+        internal static SuggestedFix AskUserBeforeInstall() => new SuggestedFix { action = "ask_user", reason = AskBeforeInstallReason };
 
         /// <summary>
         /// Short "productName@port" label; the folder name follows the product in parentheses only when it differs from it.
@@ -441,6 +447,7 @@ namespace UnitySkills
             RelatedSkills = new List<string> { "package_install", "package_list" },
             SuggestedFixes = new List<SuggestedFix>
             {
+                SkillErrorResponse.AskUserBeforeInstall(),
                 new SuggestedFix
                 {
                     action = "install_package",

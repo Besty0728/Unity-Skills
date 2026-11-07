@@ -88,8 +88,9 @@ namespace UnitySkills.Tests.Core
             Assert.That(v2["wire"].ToString(), Is.EqualTo("v2"));
             Assert.That(v2["status"].ToString(), Is.EqualTo("dryRun"));
             Assert.That(v2["valid"].Value<bool>(), Is.EqualTo(v1["valid"].Value<bool>()));
-            foreach (var key in new[] { "validation", "impact", "authorization", "steps", "changes", "note" })
+            foreach (var key in new[] { "validation", "impact", "authorization", "steps", "changes" })
                 Assert.That(JToken.DeepEquals(v1[key], v2[key]), Is.True, key);
+            Assert.That(v2["note"].ToString(), Does.StartWith(v1["note"].ToString()), "v2 extends the note; v1 keeps its exact text.");
 
             var skill = (JObject)v2["skill"];
             Assert.That(skill["name"].ToString(), Is.EqualTo("component_set_property"));
@@ -103,6 +104,29 @@ namespace UnitySkills.Tests.Core
             foreach (var p in parameters)
                 Assert.That(p["provided"].Value<bool>() || p["required"].Value<bool>(), Is.True, p.ToString());
             Assert.That(SkillRouter.DryRun("component_set_property", body, 2).Length, Is.LessThan(SkillRouter.DryRun("component_set_property", body).Length));
+        }
+
+        [Test]
+        public void DryRun_V2_Note_SaysAValidPreviewWithoutPlannerDidNotLookUpTheTarget()
+        {
+            const string body = "{\"name\":\"NoSuchObjectForV2NoteTests\",\"active\":false}";
+            var v2 = JObject.Parse(SkillRouter.DryRun("gameobject_set_active", body, 2));
+
+            Assert.That(v2["valid"].Value<bool>(), Is.True, v2.ToString());
+            Assert.That(v2["steps"] == null || v2["steps"].Type == JTokenType.Null, Is.True, "gameobject_set_active has no planner.");
+            Assert.That(v2["note"].ToString(), Does.Contain("valid:true = no validation errors").And.Contain("not looked up"));
+            Assert.That(JObject.Parse(SkillRouter.DryRun("gameobject_set_active", body))["note"].ToString(), Is.EqualTo("No execution performed"));
+        }
+
+        [Test]
+        public void DryRun_V2_Note_APlannerThatRejectsAMissingTarget_IsInvalid()
+        {
+            const string body = "{\"name\":\"NoSuchObjectForV2NoteTests\"}";
+            var v2 = JObject.Parse(SkillRouter.DryRun("gameobject_delete", body, 2));
+
+            Assert.That(v2["valid"].Value<bool>(), Is.False, v2.ToString());
+            Assert.That(v2["validation"]["semanticErrors"], Is.InstanceOf<JArray>().And.Not.Empty);
+            Assert.That(v2["note"].ToString(), Does.Contain("valid:true = no validation errors").And.Not.Contain("not looked up"));
         }
 
         [Test]

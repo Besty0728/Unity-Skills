@@ -125,6 +125,27 @@ namespace UnitySkills.Tests.Core
                 "The authorization preview disagrees with execution:\n" + string.Join("\n", mismatches));
         }
 
+        [Test]
+        public void ModeForbidden_TellsTheAgentOnlyTheUserCanLiftIt_InExecuteAndPreview()
+        {
+            SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Auto;
+            SkillsModeManager.RemoveFromAllowlist("gameobject_delete");
+            FreshScene();
+            var args = "{\"name\":\"" + VictimName + "\"}";
+
+            var executed = JObject.Parse(SkillRouter.Execute("gameobject_delete", args));
+            var preview = JObject.Parse(SkillRouter.DryRun("gameobject_delete", args))["authorization"];
+
+            Assert.That(executed.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.ModeForbidden.ToWireString()), executed.ToString());
+            Assert.That(GameObject.Find(VictimName), Is.Not.Null);
+            var hint = executed["details"]?["hint"]?.ToString();
+            Assert.That(hint, Does.Contain("Only the user can lift this").And.Contain("'gameobject_delete' to the Allowlist"));
+            Assert.That(executed.Value<string>("error"), Does.Contain("allowlists"), "The message must not say Bypass is the only way.");
+            Assert.That(preview?["blockedBy"]?.ToString(), Is.EqualTo(SkillErrorCode.ModeForbidden.ToWireString()));
+            Assert.That(preview?["hint"]?.ToString(), Does.Contain("'gameobject_delete' to the Allowlist"));
+        }
+
         private static void FreshScene()
         {
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);

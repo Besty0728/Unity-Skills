@@ -116,8 +116,9 @@ namespace UnitySkills
             // A code the router does not know was dropped and the message reclassified; name the real one.
             errorCode = "MISSING_PACKAGE",
             package = PackageId,
-            suggestedFixes = new[]
+            suggestedFixes = new object[]
             {
+                SkillErrorResponse.AskUserBeforeInstall(),
                 "Install it with the package_install skill: packageName=\"com.unity.behavior\"",
                 "Or install manually: Window > Package Manager > Unity Registry > Behavior",
                 "After installing, wait for the Domain Reload to finish, then call behavior_status to confirm"

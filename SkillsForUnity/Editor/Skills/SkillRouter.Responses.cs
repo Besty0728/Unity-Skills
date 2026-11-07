@@ -55,15 +55,14 @@ namespace UnitySkills
         private static string BuildMissingPackageResponse(SkillInfo skill, string name, ParameterValidationResult validation, List<string> resolutionNotes)
         {
             var missing = validation.MissingPackages.ToArray();
-            var fixes = missing
-                .Select(packageId => new SuggestedFix
-                {
-                    action = "install_package",
-                    skill = "package_install",
-                    args = new Dictionary<string, string> { ["packageId"] = packageId },
-                    reason = $"Install {packageId}, wait for the domain reload to finish, then retry {name}."
-                })
-                .ToList();
+            var fixes = new List<SuggestedFix> { SkillErrorResponse.AskUserBeforeInstall() };
+            fixes.AddRange(missing.Select(packageId => new SuggestedFix
+            {
+                action = "install_package",
+                skill = "package_install",
+                args = new Dictionary<string, string> { ["packageId"] = packageId },
+                reason = $"Install {packageId}, wait for the domain reload to finish, then retry {name}."
+            }));
             fixes.Add(new SuggestedFix
             {
                 action = "retry",
@@ -232,7 +231,7 @@ namespace UnitySkills
                     blockedBy = SkillErrorCode.ModeForbidden.ToWireString(),
                     currentMode = modeWire,
                     allowlisted,
-                    hint = "Classified as never-in-semi (delete / play mode / domain reload / high risk). Executing needs Bypass mode, or the user adding this skill to the allowlist."
+                    hint = "Classified as never-in-semi (delete / play mode / domain reload / high risk). " + ModeForbiddenHint(skill.Name)
                 };
             }
 

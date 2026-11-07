@@ -203,6 +203,7 @@ namespace UnitySkills.Tests.Core
             var direct = Json(ParticleSkills.ParticleConfigure(entityId: Id(system.gameObject), configJson: Config(new JObject { ["main"] = new JObject { ["duration"] = 2 } })));
             AssertError(direct, "MISSING_PACKAGE");
             Assert.That(direct["requiredPackage"]?.ToString(), Is.EqualTo("com.unity.modules.particlesystem"));
+            Assert.That(direct["suggestedFixes"]?[0]?["action"]?.ToString(), Is.EqualTo("ask_user"));
 
             var args = new JObject { ["entityId"] = Id(system.gameObject), ["configJson"] = ConfigObject(new JObject { ["main"] = new JObject { ["duration"] = 2 } }) };
             Assert.That(Execute("particle_configure", args)["errorCode"]?.ToString(), Is.EqualTo("MISSING_PACKAGE"));
