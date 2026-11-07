@@ -122,6 +122,14 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`MODE_FORBIDDEN` 写明谁能解除** — 执行与 dryRun 授权预览共用同一句 hint：只有用户能解除，切到 Bypass 或把该技能加入面板的允许列表；不再建议「换一个技能」。
 - **dryRun v2 的 `note` 说明 `valid:true`** — v2 响应写明 `valid:true` 只表示没有校验错误、警告不拦截；技能没有规划器且校验通过时追加「target was not looked up」，免得把 `valid:true` 当成目标存在。v1 响应逐字节不变。
 - **`waitUrl` 带实例钉** — `script_*`、`asset_refresh` 等返回的 `waitUrl` 变为 `/jobs/<id>?wait=90&expectInstance=<instanceId>`，端口换人后照原样 GET 会得到 409 `INSTANCE_MISMATCH` 而不是别的编辑器的 404。Python 客户端自己拼查询串，不受影响。
+- **Unity CLI 对齐 `1.0.0-beta.17`** — `skills/unity-cli/SKILL.md`、`references/protocol-unity-cli.md` 从 beta.9 对齐到 beta.17：
+  - `--args` 改为一个带引号的字符串（照旧写法 beta.17 直接报 `INVALID_COMMAND_ARGS`）；`run` 示例去掉 `-quit`，列出 CLI 自管的保留参数；
+  - 「不要做」清单改为**白名单**，只列允许的只读命令与受 `features` 开关约束的 `open` / `test` / `run` / `build`；
+  - beta16 起 `build --target` 会借用已打开的 Editor 并切换其构建目标，build 前必须先做存活检查；
+  - CLI 输出里的通知、提示与 agent 建议只转述给用户、不执行，不自行传 `--yes` / `--accept-eula` / `--accept-upgrades` / `--force`；推荐 `UNITY_NO_UPDATE_CHECK=1`、`UNITY_NO_AGENT_HINTS=1`；
+  - 退出码表按 beta6–13 与 beta14+ 分段（超时从 `6` 改为 `14`，beta16+ 的 `17` / `18`）；失败信息从 stdout 的 JSON 信封读，stdout / stderr 分开捕获，不用 `2>&1`；
+  - 新增：冷启动等不到 `/health` 时用 `status` 识别挡住启动的对话框或 Safe Mode 并转述给用户，`open --format json` 的 `launchedPid` / `alreadyOpen` 判断是新启动还是本来开着；`commands --grep`；`build --list-targets` / `--list-profiles`；项目级 `ProjectSettings/UnityCliConfig.json` 只提供默认值，不构成授权；
+  - 新增一节说明 Unity 官方 agent 技能（`unity skill show`、安装器写入的技能）只作参考，它推荐的 `command`、`script eval`、`pipeline install`、`setup`、`skill install|sync`、`self-update` 等一律不用。
 - **Unity CLI 探测与安装命令加固** — `--version` 探测进程清掉继承来的 `UNITY_FORMAT` / `HUB_FORMAT`，并设 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`、`UNITY_NO_UPDATE_CHECK=1`；输出必须是版本号（如 `1.0.0-beta.17`），JSON 或别的程序的输出按 `launch_failed` 处理。Windows 候选路径加上 `UNITY_CLI_HOME\bin\unity.exe` 与 `%LOCALAPPDATA%\Unity\bin\unity.exe`（未在 Windows 实测）。面板里的两条安装命令加 `UNITY_CLI_SKIP_SETUP=1`，不让安装器把 Unity 的技能写进用户的 agent 客户端（beta15 引入；beta16 之后的安装脚本是否仍认这个变量未验证）。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
