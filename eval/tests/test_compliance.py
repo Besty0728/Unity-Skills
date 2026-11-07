@@ -13,6 +13,7 @@ SCHEMA = {
     "gameobject_create": {"flags": ["tracksWorkflow", "mutatesScene"]},
     "gameobject_delete": {"operation": ["Delete"], "flags": ["tracksWorkflow", "mutatesScene"]},
     "script_create": {"flags": ["tracksWorkflow", "mutatesAssets", "mayTriggerReload"]},
+    "package_install": {"flags": ["mutatesAssets", "mayTriggerReload"]},
     "scene_save": {"riskLevel": "high", "flags": ["tracksWorkflow", "mutatesAssets"]},
     "editor_play": {"flags": ["mayEnterPlayMode"]},
 }
@@ -90,6 +91,13 @@ class StreamTests(unittest.TestCase):
         ]))
         self.assertEqual(row["errors"], {"COMPILING_RELOAD": 1, "COMPILING": 1})
 
+    def test_a_second_question_mark_in_one_query_is_counted(self):
+        row = C.stream_metrics(self.stream([
+            bash("curl 'http://127.0.0.1:8091/jobs/ab12?wait=90?expectInstance=E1'"),
+            bash("curl 'http://127.0.0.1:8091/jobs/ab12?wait=90&expectInstance=E1'"),
+        ]))
+        self.assertEqual(row["doubleQuery"], 1)
+
     def test_first_request_without_health_is_not_bundled(self):
         row = C.stream_metrics(self.stream([bash("curl http://127.0.0.1:8091/skill/x"),
                                             bash("curl http://127.0.0.1:8091/health")]))
@@ -121,13 +129,24 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(out["riskyWithoutDryRun"], 1)
         self.assertEqual(out["riskySkills"], {"gameobject_delete": 1})
 
-    def test_high_risk_and_play_mode_count_only_under_the_old_rule(self):
+    def test_each_rule_counts_its_own_risky_skills(self):
         rows = [{"skill": "scene_save", "agent": "A", "mode": "execute", "ok": True},
                 {"skill": "editor_play", "agent": "A", "mode": "execute", "ok": True},
-                {"skill": "script_create", "agent": "A", "mode": "execute", "ok": True}]
+                {"skill": "script_create", "agent": "A", "mode": "execute", "ok": True},
+                {"skill": "package_install", "agent": "A", "mode": "execute", "ok": True}]
         out = C.telemetry_metrics(rows, SCHEMA)
-        self.assertEqual((out["riskyWithoutDryRun"], out["riskyWithoutDryRunLegacy"]), (1, 3))
-        self.assertEqual(out["riskySkills"], {"script_create": 1})
+        self.assertEqual((out["riskyWithoutDryRun"], out["riskyWithoutDryRunP3"], out["riskyWithoutDryRunLegacy"]),
+                         (1, 2, 4), "script writes left the dryRun list; other reloads stayed")
+        self.assertEqual(out["riskySkills"], {"package_install": 1})
+
+    def test_dry_runs_are_counted_per_skill(self):
+        rows = [{"skill": "scene_save", "agent": "A", "mode": "dryRun", "ok": True},
+                {"skill": "script_create", "agent": "A", "mode": "batch_step_dryRun", "ok": True},
+                {"skill": "script_create", "agent": "A", "mode": "dryRun", "ok": True}]
+        out = C.telemetry_metrics(rows, SCHEMA)
+        self.assertEqual(out["dryRunSkills"], {"scene_save": 1, "script_create": 2})
+        summary = C.summarize([{"task": "T1", "status": "pass", "telemetry": out}])
+        self.assertEqual((summary["sceneSaveDryRuns"], summary["scriptWriteDryRuns"]), (1, 2))
 
 
 class LatestAttemptTests(unittest.TestCase):

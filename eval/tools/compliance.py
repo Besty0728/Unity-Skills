@@ -32,6 +32,7 @@ HALLUCINATION = ("SKILL_NOT_FOUND", "UNKNOWN_PARAM", "MISSING_PARAM", "INVALID_J
 RELOAD_503 = "Server reloading"
 DRY_MODES = ("dryRun", "batch_step_dryRun")
 EXEC_MODES = ("execute", "batch_step")
+SCRIPT_WRITES = ("script_create", "script_append", "script_replace")
 
 
 def expand(cmd):
@@ -58,7 +59,7 @@ def http_calls(cmd):
 
 def stream_metrics(path):
     row = {"skillCalls": 0, "pinned": 0, "health": 0, "healthBundled": None, "recommend": 0, "schema": 0,
-           "polls": 0, "errors": {}, "docs": []}
+           "polls": 0, "doubleQuery": 0, "errors": {}, "docs": []}
     docs = set()
     for event in M.load_events(path):
         etype = event.get("type")
@@ -79,7 +80,8 @@ def stream_metrics(path):
                 requests = [p for p in paths if p != "/health"]
                 if row["healthBundled"] is None and requests:
                     row["healthBundled"] = len(requests) < len(paths)
-                for (call_path, _query, pinned), short in zip(calls, paths):
+                for (call_path, query, pinned), short in zip(calls, paths):
+                    row["doubleQuery"] += 1 if query.count("?") > 1 else 0
                     if short == "/health":
                         row["health"] += 1
                     elif short == "/skills/recommend":
@@ -119,20 +121,22 @@ def is_read(schema, skill):
     return "readOnly" in ((schema.get(skill) or {}).get("flags") or [])
 
 
-def is_risky(schema, skill, legacy=False):
-    """Skills the root SKILL.md wants dry-run first; legacy = the earlier, wider list that also named riskLevel high
-    and mayEnterPlayMode."""
+def is_risky(schema, skill, rule="current"):
+    """Skills the root SKILL.md wants dry-run first. current: deletes and reloads other than script writes;
+    p3: deletes and every reload; legacy: p3 plus riskLevel high and mayEnterPlayMode."""
     spec = schema.get(skill) or {}
     flags = spec.get("flags") or []
-    if "Delete" in (spec.get("operation") or []) or "mayTriggerReload" in flags:
+    if "Delete" in (spec.get("operation") or []):
         return True
-    return legacy and (spec.get("riskLevel") == "high" or "mayEnterPlayMode" in flags)
+    if "mayTriggerReload" in flags and (rule != "current" or skill not in SCRIPT_WRITES):
+        return True
+    return rule == "legacy" and (spec.get("riskLevel") == "high" or "mayEnterPlayMode" in flags)
 
 
 def telemetry_metrics(rows, schema):
     out = {"reads": 0, "writes": 0, "batchWrites": 0, "dryRuns": 0, "failed": 0, "failedDryRun": 0,
-           "riskyWithoutDryRun": 0, "riskyWithoutDryRunLegacy": 0, "jobPolls": 0, "failedSkills": {},
-           "riskySkills": {}}
+           "riskyWithoutDryRun": 0, "riskyWithoutDryRunP3": 0, "riskyWithoutDryRunLegacy": 0, "jobPolls": 0,
+           "failedSkills": {}, "riskySkills": {}, "dryRunSkills": {}}
     dried = set()
     for row in rows:
         if row.get("agent") == RUNNER_AGENT:
@@ -144,6 +148,7 @@ def telemetry_metrics(rows, schema):
             out["failedSkills"][key] = out["failedSkills"].get(key, 0) + 1
         if mode in DRY_MODES:
             out["dryRuns"] += 1
+            out["dryRunSkills"][skill] = out["dryRunSkills"].get(skill, 0) + 1
             dried.add(skill)
             continue
         if mode not in EXEC_MODES:
@@ -157,8 +162,10 @@ def telemetry_metrics(rows, schema):
         out["batchWrites"] += 1 if mode == "batch_step" else 0
         if not schema or skill in dried:
             continue
-        if is_risky(schema, skill, legacy=True):
+        if is_risky(schema, skill, rule="legacy"):
             out["riskyWithoutDryRunLegacy"] += 1
+        if is_risky(schema, skill, rule="p3"):
+            out["riskyWithoutDryRunP3"] += 1
         if is_risky(schema, skill):
             out["riskyWithoutDryRun"] += 1
             out["riskySkills"][skill] = out["riskySkills"].get(skill, 0) + 1
@@ -221,6 +228,7 @@ def summarize(tasks):
     bundled = [t["healthBundled"] for t in tasks if t.get("healthBundled") is not None]
     writes = tsum("writes")
     seen_calls = total("skillCalls")
+    dry_runs = _merge(t.get("dryRunSkills") or {} for t in tele)
     return {
         "tasks": len(tasks),
         "status": {s: sum(1 for t in tasks if t["status"] == s) for s in sorted({t["status"] for t in tasks})},
@@ -241,7 +249,11 @@ def summarize(tasks):
         "readsPerWrite": (tsum("reads") / writes) if writes else None,
         "batchShare": (tsum("batchWrites") / writes) if writes else None,
         "riskyWithoutDryRun": tsum("riskyWithoutDryRun"),
+        "riskyWithoutDryRunP3": sum(t.get("riskyWithoutDryRunP3", 0) for t in tele),
         "riskyWithoutDryRunLegacy": sum(t.get("riskyWithoutDryRunLegacy", 0) for t in tele),
+        "doubleQueryCalls": total("doubleQuery"),
+        "sceneSaveDryRuns": dry_runs.get("scene_save", 0),
+        "scriptWriteDryRuns": sum(dry_runs.get(s, 0) for s in SCRIPT_WRITES),
         "failedPerTask": tsum("failed") / n,
         "failedDryRunPerTask": tsum("failedDryRun") / n,
         "failedSkills": _merge(t["failedSkills"] for t in tele),
@@ -277,18 +289,20 @@ def markdown(groups):
             s["processedMean"] / 1000, s["wallMeanSeconds"]))
     lines += ["", "| group | pinned | health bundled | health/task | discovery/task | doc-read tasks | "
                   "hallucination/task | SEMANTIC_INVALID/task | COMPILING/task | reload 503/task | polls/task | "
-                  "reads/write | batch share | risky w/o dryRun | (old rule) | failed calls/task | "
-                  "failed dryRuns/task | requests/task |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+                  "reads/write | batch share | risky w/o dryRun | (P3 rule) | (old rule) | failed calls/task | "
+                  "failed dryRuns/task | requests/task | second-? calls | scene_save dryRuns | script dryRuns |",
+              "|---|" + "---:|" * 21]
     for name, g in groups:
         s = g["summary"]
-        lines.append("| %s | %s | %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s | %s |" % (
+        lines.append("| %s | %s | %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %d | %d | %d | %s | %s | %s "
+                     "| %d | %d | %d |" % (
             name, _fmt(s["pinnedRate"], True), _fmt(s["healthBundledRate"], True), _fmt(s["healthPerTask"]),
             _fmt(s["discoveryPerTask"]), s["docReadTasks"], _fmt(s["hallucinationPerTask"]),
             _fmt(s["semanticInvalidPerTask"]), _fmt(s["compilingPerTask"]), _fmt(s["reload503PerTask"]),
             _fmt(s["pollsPerTask"]), _fmt(s["readsPerWrite"]), _fmt(s["batchShare"], True),
-            s["riskyWithoutDryRun"], s["riskyWithoutDryRunLegacy"], _fmt(s["failedPerTask"]),
-            _fmt(s["failedDryRunPerTask"]), _fmt(s["requestsPerTask"])))
+            s["riskyWithoutDryRun"], s["riskyWithoutDryRunP3"], s["riskyWithoutDryRunLegacy"],
+            _fmt(s["failedPerTask"]), _fmt(s["failedDryRunPerTask"]), _fmt(s["requestsPerTask"]),
+            s["doubleQueryCalls"], s["sceneSaveDryRuns"], s["scriptWriteDryRuns"]))
     return "\n".join(lines) + "\n"
 
 
