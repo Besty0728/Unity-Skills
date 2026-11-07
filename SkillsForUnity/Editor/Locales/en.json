@@ -643,7 +643,7 @@
   "netcode_remove_from_prefabs_list": "Remove a prefab from a NetworkPrefabsList",
   "netcode_remove_manager": "Remove the NetworkManager GameObject",
   "netcode_remove_network_object": "Remove the NetworkObject component from a GameObject",
-  "netcode_set_debug_simulator": "Set UnityTransport debug network simulator",
+  "netcode_set_debug_simulator": "Report that UnityTransport's debug simulator is non-functional (use the Network Simulator)",
   "netcode_set_player_prefab": "Assign a prefab as NetworkConfig.PlayerPrefab",
   "netcode_set_relay_server_data": "Configure UnityTransport to use Unity Relay",
   "netcode_set_transport_address": "Configure UnityTransport direct connection",

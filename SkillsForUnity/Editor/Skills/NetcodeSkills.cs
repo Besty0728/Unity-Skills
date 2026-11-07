@@ -20,25 +20,44 @@ namespace UnitySkills
     /// Netcode for GameObjects skills: NetworkManager configuration, NetworkObject/NetworkTransform
     /// management, prefab list registration, host/server/client runtime control.
     ///
-    /// Depends on com.unity.netcode.gameobjects (2.x). Degrades gracefully when the package is not
-    /// installed (every skill returns an explicit NoNetcode() error).
+    /// Depends on com.unity.netcode.gameobjects 2.x (NETCODE_GAMEOBJECTS covers [2.0,3.0), validated
+    /// against 2.13.3). Degrades gracefully without it: every skill returns an explicit NoNetcode()
+    /// error, a MISSING_PACKAGE answer when the package is absent and a structured unsupported-version
+    /// answer when a version outside the range is installed. NGO 3.x needs Unity 6000.7 and is not adapted yet.
     ///
     /// All API calls follow the NGO 2.x source as ground truth (see the netcode-design advisory
     /// module for the full contract: lifecycle, ownership, RPC, variables, spawn, scene, transport, pitfalls).
     ///
-    /// NGO 2.5+ features (AttachableBehaviour / AttachableNode / ComponentController) fall outside
+    /// NGO 2.5+ features (AttachableBehaviour / AttachableNode / ComponentController) cannot be gated by
     /// the versionDefine range this file compiles against (NETCODE_GAMEOBJECTS covers the whole
-    /// [2.0,3.0) range), so these types are never referenced at compile time and are instead probed
+    /// [2.0,3.0) range, but they exist from 2.5.0 only), so these types are never referenced at compile time and are instead probed
     /// via runtime reflection (see Has25Features()/ResolveXxxType() below) — the same optional-subfeature pattern DOTweenReflectionHelper uses for DOTween Pro-only features.
     /// </summary>
     public static class NetcodeSkills
     {
+        private const string NetcodePackageId = "com.unity.netcode.gameobjects";
+
 #if !NETCODE_GAMEOBJECTS
-        private static object NoNetcode() => new
+        private static object NoNetcode()
         {
-            error = "Netcode for GameObjects package (com.unity.netcode.gameobjects) is not installed. " +
-                    "Install via: Window > Package Manager > Unity Registry > Netcode for GameObjects"
-        };
+            var installedVersion = PackageManagerHelper.GetInstalledVersion(NetcodePackageId);
+            if (!string.IsNullOrEmpty(installedVersion) && !PackageManagerHelper.IsVersionInRange(installedVersion, "2.0", "3.0"))
+                return SkillErrorResponse.UnsupportedPackageVersion(
+                    NetcodePackageId, installedVersion, "2.x ([2.0,3.0))", UnsupportedVersionHint(installedVersion));
+
+            return new
+            {
+                error = "Netcode for GameObjects package (com.unity.netcode.gameobjects) is not installed. " +
+                        "Install via: Window > Package Manager > Unity Registry > Netcode for GameObjects"
+            };
+        }
+
+        // Must stay free of the classifier's dependency markers, or the answer is read as MISSING_PACKAGE again.
+        private static string UnsupportedVersionHint(string version) =>
+            int.TryParse((version ?? string.Empty).Split('.')[0], out var major) && major >= 3
+                ? "Netcode for GameObjects 3.x needs Unity 6000.7 and this module has not been adapted to it yet. " +
+                  "The 2.x line is still maintained, and the user can pin com.unity.netcode.gameobjects to 2.13.3."
+                : "This module targets the 2.x line of Netcode for GameObjects; the user can move the project to 2.13.3.";
 #endif
 
 #if NETCODE_GAMEOBJECTS
@@ -69,7 +88,7 @@ namespace UnitySkills
             var issues = new List<string>();
             var info = new Dictionary<string, object>();
             info["installed"] = true;
-            info["packageVersion"] = "2.x";
+            info["packageVersion"] = PackageManagerHelper.GetInstalledVersion(NetcodePackageId) ?? "2.x";
 
             var managers = FindHelper.FindAll<NetworkManager>(includeInactive: true);
             info["managerCount"] = managers.Length;
@@ -430,12 +449,11 @@ namespace UnitySkills
         }
 
         [UnitySkill("netcode_set_debug_simulator",
-            "Set UnityTransport debug network simulator (delay/jitter/drop). Dev builds only.",
-            TracksWorkflow = true,
-            Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
+            "Not functional: UnityTransport's debug simulator (packetDelay/packetJitter/dropRate) has done nothing since NGO 2.2.0, so this skill validates the parameters, writes nothing and returns an error that points to the Network Simulator of com.unity.multiplayer.tools.",
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
             Tags = new[] { "netcode", "ngo", "transport", "debug", "simulator" },
-            Outputs = new[] { "success", "packetDelay", "packetJitter", "dropRate" },
-            MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
+            Outputs = new[] { "errorCode", "suggestedFixes" },
+            RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
         public static object SetDebugSimulator(
             int packetDelay = 0,
             int packetJitter = 0,
@@ -449,17 +467,30 @@ namespace UnitySkills
             if (Validate.InRange(packetJitter, 0, 5000, "packetJitter") is object e2) return e2;
             if (Validate.InRange(dropRate, 0, 100, "dropRate") is object e3) return e3;
 
-            var nm = FindManager(name);
-            if (nm == null) return new { error = "NetworkManager not found." };
-            var utp = nm.GetComponent<UnityTransport>();
-            if (utp == null) return new { error = "UnityTransport not found on NetworkManager." };
-
-            Undo.RecordObject(utp, "Set Debug Simulator");
-            utp.SetDebugSimulatorParameters(packetDelay, packetJitter, dropRate);
-            EditorUtility.SetDirty(utp);
-            WorkflowManager.SnapshotObject(utp);
-
-            return new { success = true, packetDelay, packetJitter, dropRate };
+            // UnityTransport.DebugSimulator / SetDebugSimulatorParameters are [Obsolete] no-ops from 2.2.0 and a compile error in 3.x, so nothing is written.
+            return new
+            {
+                error = "UnityTransport's debug simulator has been non-functional since Netcode for GameObjects 2.2.0 " +
+                        "(its Inspector section was removed and its members do nothing), so this skill changes nothing. " +
+                        "Use the Network Simulator component from the Multiplayer Tools package (com.unity.multiplayer.tools) " +
+                        "to test latency, jitter and packet loss.",
+                errorCode = SkillErrorCode.SkillError.ToWireString(),
+                retryStrategy = SkillErrorResponse.Abort,
+                suggestedFixes = new[]
+                {
+                    new SuggestedFix
+                    {
+                        action = "retry",
+                        skill = "package_list",
+                        reason = "Check whether com.unity.multiplayer.tools is already part of the project."
+                    },
+                    new SuggestedFix
+                    {
+                        action = "ask_user",
+                        reason = "Adding the Multiplayer Tools package to get the Network Simulator is the user's call."
+                    }
+                }
+            };
 #endif
         }
 
@@ -948,7 +979,7 @@ namespace UnitySkills
                 success = true,
                 prefab = prefab.name,
                 prefabInList = inList,
-                warning = inList ? null : "PlayerPrefab is not in any assigned NetworkPrefabsList; Netcode 2.x may reject this at runtime."
+                warning = inList ? null : "PlayerPrefab is not in any assigned NetworkPrefabsList; NetworkManager registers it on its own when it starts, but listing it keeps the registration explicit and allows an override."
             };
 #endif
         }
@@ -1585,7 +1616,7 @@ namespace UnitySkills
                 features = new { attachableBehaviour = false, attachableNode = false, componentController = false },
                 note = installed
                     ? $"com.unity.netcode.gameobjects {version} is installed but outside the supported [2.0,3.0) range " +
-                      "(NETCODE_GAMEOBJECTS is not active), so all netcode_* skills are disabled. Legacy 1.x is unsupported by this module."
+                      "(NETCODE_GAMEOBJECTS is not active), so all netcode_* skills are disabled. " + UnsupportedVersionHint(version)
                     : "com.unity.netcode.gameobjects is not installed. Install via: Window > Package Manager > Unity Registry > Netcode for GameObjects."
             };
 #else

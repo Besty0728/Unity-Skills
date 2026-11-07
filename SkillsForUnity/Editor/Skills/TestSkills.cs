@@ -682,6 +682,15 @@ public class {testName}
                             });
                         }
 
+                        if (IsUnsupportedPackageVersion(result))
+                        {
+                            return JObject.FromObject(new
+                            {
+                                status = "skipped",
+                                error = $"Unsupported package version: {errorText}"
+                            });
+                        }
+
                         return JObject.FromObject(new
                         {
                             status = "error",
@@ -749,6 +758,18 @@ public class {testName}
                 "NetworkManager is not started", "NetworkSceneManager not initialized"
             },
         };
+
+        private static bool IsUnsupportedPackageVersion(object result)
+        {
+            try
+            {
+                return JObject.FromObject(result)["reason"]?.ToString() == SkillErrorResponse.UnsupportedPackageVersionReason;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         private static bool IsExpectedMissingSceneFixture(string skillName, string error)
         {

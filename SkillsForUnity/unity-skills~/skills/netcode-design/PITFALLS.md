@@ -90,9 +90,10 @@ A checklist of the bugs AI agents most often introduce when writing Netcode code
 - Source: `NetworkPrefab.cs:155-170`
 - ✅ Fix: attach `NetworkObject` to the prefab's root
 
-### ❌ P17. `PlayerPrefab` missing from NetworkPrefabsList / NetworkConfig.Prefabs
-- Symptom: clients log a prefab mismatch on connect and the player either fails to spawn or the client is disconnected
-- ✅ Fix: register the PlayerPrefab in the prefabs list as well (required by 2.x)
+### ❌ P17. Assuming the `PlayerPrefab` must also be listed in NetworkPrefabsList / NetworkConfig.Prefabs
+- Not required: `NetworkManager` registers the PlayerPrefab itself at start (`NetworkPrefabHandler.RegisterPlayerPrefab`, called from `NetworkManager.Initialize`, 2.13.3)
+- The real failure is a PlayerPrefab without a `NetworkObject`: an error is logged (`Player prefab ... has no NetworkObject!`) and the player cannot be set up
+- ✅ Fix: put `NetworkObject` on the PlayerPrefab's root; add a prefabs-list entry only to set an override
 
 ### ❌ P18. Nesting a NetworkObject inside another prefab
 - Symptom: runtime warning; the nested child behaves erratically
@@ -132,9 +133,9 @@ A checklist of the bugs AI agents most often introduce when writing Netcode code
 - Symptom: inconsistent behavior; the connection may fail
 - ✅ Fix: pick one — Relay or direct connect
 
-### ❌ P26. Shipping with DebugSimulator enabled
-- Symptom: end users see 100 ms latency and artificial packet loss
-- ✅ Fix: wrap in `#if DEVELOPMENT_BUILD || UNITY_EDITOR`
+### ❌ P26. Using `UnityTransport.DebugSimulator` / `SetDebugSimulatorParameters`
+- Symptom: no latency or packet loss shows up (no-op since NGO 2.2.0); on 3.x the call does not compile
+- ✅ Fix: use the Network Simulator from the Multiplayer Tools package (`com.unity.multiplayer.tools`)
 
 ## Miscellaneous
 

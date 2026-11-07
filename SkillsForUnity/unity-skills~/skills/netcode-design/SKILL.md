@@ -35,7 +35,7 @@ Load before writing or reviewing any of:
 | 2 | `OnNetworkSpawn()` runs **before** Unity `Start()` and **after** `Awake`/`OnEnable`. | `Runtime/Core/NetworkBehaviour.cs:704` + `InvokeBehaviourNetworkSpawn` callers |
 | 3 | Legacy `[ServerRpc]` method names **must** end with `ServerRpc`; `[ClientRpc]` must end with `ClientRpc` (ILPP enforced at compile time). | `Editor/CodeGen/` ILPP validators |
 | 4 | New `[Rpc(SendTo.X)]` has no naming constraint; `SendTo` has 11 values. | `Runtime/Messaging/RpcTargets/RpcTarget.cs:9-80` |
-| 5 | `PlayerPrefab` must exist in `NetworkPrefabsList` or `NetworkConfig.Prefabs` or 2.x runtime rejects it. | `Runtime/Configuration/NetworkConfig.cs:40` + `NetworkPrefabsList.cs:14` |
+| 5 | `PlayerPrefab` needs a `NetworkObject`; `NetworkManager` registers it into the prefab list itself at start, so a list entry is only needed for overrides. | `Runtime/Configuration/NetworkConfig.cs:40` + `Runtime/Spawning/NetworkPrefabHandler.cs:452` |
 | 6 | **Nested NetworkObjects are forbidden** (NetworkObject inside another NetworkObject prefab). Re-parent at runtime via `TrySetParent`. | `Runtime/Core/NetworkObject.cs:2135-2215` |
 | 7 | `NetworkVariable<T>` requires `T` to be `unmanaged` or implement `INetworkSerializable`. `string`, `List<>`, `class` are rejected. | `Runtime/NetworkVariable/NetworkVariable.cs:12` + ILPP |
 | 8 | `NetworkList<T>` requires `T: unmanaged, IEquatable<T>`. It is NOT `NetworkVariable<List<T>>`. | `Runtime/NetworkVariable/Collections/NetworkList.cs:14` |
@@ -52,7 +52,7 @@ Load before writing or reviewing any of:
 | [VARIABLES.md](./VARIABLES.md) | NetworkVariable/NetworkList init and serialization constraints |
 | [SPAWNING.md](./SPAWNING.md) | Prefab registration → Spawn → Despawn, GlobalObjectIdHash, SpawnAsPlayerObject |
 | [SCENE.md](./SCENE.md) | NetworkSceneManager, EnableSceneManagement, in-scene object sync |
-| [TRANSPORT.md](./TRANSPORT.md) | UnityTransport direct / Relay / DebugSimulator configuration |
+| [TRANSPORT.md](./TRANSPORT.md) | UnityTransport direct / Relay configuration; the removed DebugSimulator |
 | [PITFALLS.md](./PITFALLS.md) | 30 concrete hallucination pitfalls |
 
 ## Routing to Other Modules
@@ -63,4 +63,6 @@ Load before writing or reviewing any of:
 
 ## Version Scope
 
-This document targets `com.unity.netcode.gameobjects` **2.x** (validated against 2.11.0, Unity 6000.0+). Some APIs (`SendTo.Authority`, `RpcInvokePermission`, the universal `[Rpc]` attribute) do not exist in 1.x.
+This document targets `com.unity.netcode.gameobjects` **2.x** (validated against 2.13.3, Unity 6000.0+). Some APIs (`SendTo.Authority`, `RpcInvokePermission`, the universal `[Rpc]` attribute) do not exist in 1.x.
+
+NGO **3.x** needs Unity 6000.7 (beta) and the `netcode` module has not been adapted to it yet; the 2.x line is still maintained, and a project on 3.x can pin 2.13.3. Most file:line anchors were taken from earlier 2.x releases, so expect them to be off by a few lines in 2.13.3; the file and symbol names still hold.

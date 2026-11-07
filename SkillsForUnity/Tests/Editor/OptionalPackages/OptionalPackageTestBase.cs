@@ -52,6 +52,8 @@ namespace UnitySkills.Tests.OptionalPackages
             var probe = Run(ProbeSkill, ProbeArgs);
             if (probe["errorCode"]?.ToString() == "MISSING_PACKAGE")
                 Assert.Ignore($"{ProbeSkill}: package not installed ({probe["error"]})");
+            if (probe["reason"]?.ToString() == SkillErrorResponse.UnsupportedPackageVersionReason)
+                Assert.Ignore($"{ProbeSkill}: package version outside this module's range ({probe["error"]})");
         }
 
         [OneTimeTearDown]

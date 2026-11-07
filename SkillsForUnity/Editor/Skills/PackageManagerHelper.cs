@@ -173,6 +173,43 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Whether <paramref name="version"/> lies in [<paramref name="minInclusive"/>, <paramref name="maxExclusive"/>), ordered like an asmdef
+        /// versionDefine: a prerelease sorts before its release ("3.0.4-beta" &lt; "3.0.4"). Unparsable input is outside every range.
+        /// </summary>
+        public static bool IsVersionInRange(string version, string minInclusive, string maxExclusive)
+        {
+            if (!TryParseSemver(version, out var v, out var vPre) ||
+                !TryParseSemver(minInclusive, out var min, out var minPre) ||
+                !TryParseSemver(maxExclusive, out var max, out var maxPre))
+                return false;
+            return CompareSemver(v, vPre, min, minPre) >= 0 && CompareSemver(v, vPre, max, maxPre) < 0;
+        }
+
+        private static bool TryParseSemver(string text, out Version core, out bool prerelease)
+        {
+            core = null;
+            prerelease = false;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var trimmed = text.Trim();
+            int cut = trimmed.IndexOfAny(new[] { '-', '+' });
+            prerelease = cut >= 0 && trimmed[cut] == '-';
+            var numbers = (cut >= 0 ? trimmed.Substring(0, cut) : trimmed).Split('.');
+            if (numbers.Length < 2 || numbers.Length > 3) return false;
+            var parts = new int[3];
+            for (int i = 0; i < numbers.Length; i++)
+                if (!int.TryParse(numbers[i], out parts[i]) || parts[i] < 0) return false;
+            core = new Version(parts[0], parts[1], parts[2]);
+            return true;
+        }
+
+        private static int CompareSemver(Version a, bool aPre, Version b, bool bPre)
+        {
+            int byCore = a.CompareTo(b);
+            if (byCore != 0) return byCore;
+            return aPre == bPre ? 0 : (aPre ? -1 : 1);
+        }
+
+        /// <summary>
         /// Synchronous single-package query, used as a fallback while the cached list isn't ready yet.
         /// <see cref="RefreshPackageList"/> is asynchronous and has to redo its work after every domain reload,
         /// so the first call in a session inevitably lands in the window where the cache is still null. Without this fallback,

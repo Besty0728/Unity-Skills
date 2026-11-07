@@ -869,7 +869,7 @@
   "netcode_remove_from_prefabs_list": "从 NetworkPrefabsList 移除预制体",
   "netcode_remove_manager": "移除 NetworkManager GameObject",
   "netcode_remove_network_object": "从 GameObject 移除 NetworkObject 组件",
-  "netcode_set_debug_simulator": "设置 UnityTransport 调试网络模拟器",
+  "netcode_set_debug_simulator": "报告 UnityTransport 的调试模拟器已失效（请改用 Network Simulator）",
   "netcode_set_player_prefab": "指定 NetworkConfig.PlayerPrefab 预制体",
   "netcode_set_relay_server_data": "配置 UnityTransport 使用 Unity Relay",
   "netcode_set_transport_address": "配置 UnityTransport 直连地址",

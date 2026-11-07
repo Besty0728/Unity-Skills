@@ -117,6 +117,32 @@ namespace UnitySkills
 
         internal static SuggestedFix AskUserBeforeInstall() => new SuggestedFix { action = "ask_user", reason = AskBeforeInstallReason };
 
+        /// <summary>Top-level <c>reason</c> of <see cref="UnsupportedPackageVersion"/>, so callers such as the smoke test can tell a wrong version from a broken skill.</summary>
+        internal const string UnsupportedPackageVersionReason = "unsupported_package_version";
+
+        /// <summary>
+        /// An optional package is present at a version its module was not written against. Not MISSING_PACKAGE: installing again would not
+        /// help, and changing the version is the user's call. The message avoids the classifier's dependency markers; so must <paramref name="hint"/>.
+        /// </summary>
+        internal static object UnsupportedPackageVersion(string packageId, string installedVersion, string supportedRange, string hint) => new
+        {
+            error = $"{packageId} {installedVersion} is present, but this module supports {supportedRange}. {hint}".TrimEnd(),
+            errorCode = SkillErrorCode.SkillError.ToWireString(),
+            retryStrategy = Abort,
+            suggestedFixes = new[]
+            {
+                new SuggestedFix
+                {
+                    action = "ask_user",
+                    reason = "Tell the user which version is present and which range this module supports; changing the package version is their call."
+                }
+            },
+            reason = UnsupportedPackageVersionReason,
+            packageId,
+            installedVersion,
+            supportedRange
+        };
+
         /// <summary>
         /// Short "productName@port" label; the folder name follows the product in parentheses only when it differs from it.
         /// </summary>

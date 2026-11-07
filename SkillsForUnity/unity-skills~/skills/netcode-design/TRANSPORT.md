@@ -76,18 +76,18 @@ Runtime/Transports/SinglePlayer/SinglePlayerTransport.cs
 ```
 Useful when you want the NetworkBehaviour architecture offline. Rarely used.
 
-## Debug simulator
+## Debug simulator (removed)
 
 ```csharp
-public void SetDebugSimulatorParameters(int packetDelay, int packetJitter, int dropRate);
-// :919
+[Obsolete("... no longer supported and has no effect. Use Network Simulator from the Multiplayer Tools package.", false)]
+public SimulatorParameters DebugSimulator;                                              // :348
+[Obsolete("... no longer supported and has no effect. Use Network Simulator from the Multiplayer Tools package.", false)]
+public void SetDebugSimulatorParameters(int packetDelay, int packetJitter, int dropRate); // :970
 ```
 
-- `packetDelay` — milliseconds, one-way latency
-- `packetJitter` — milliseconds, latency jitter
-- `dropRate` — percentage 0-100, packet drop rate
+Since NGO 2.2.0 (CHANGELOG: the Debug Simulator section of the Unity Transport component was removed) both members compile but do nothing, and in 3.x they are `[Obsolete(error: true)]`, so a call no longer compiles. Do not generate code that uses them.
 
-Development only. Clear or guard this call before shipping.
+To test latency, jitter and packet loss, use the Network Simulator from the Multiplayer Tools package (`com.unity.multiplayer.tools`). `UnityTransport` wires the simulator stage in itself when that package is present (`:550-559`). The `netcode_set_debug_simulator` skill only reports this and writes nothing.
 
 ## Secrets (DTLS / TLS)
 
@@ -169,16 +169,13 @@ t.ConnectionData.Port = 9999;  // ignored while connected
 
 Connection parameters are latched when `StartHost/Server/Client` is called. To change them: `Shutdown()` → edit → `StartXxx()`.
 
-### 5. Forgetting to disable DebugSimulator in release builds
+### 5. Using the removed DebugSimulator
 
 ```csharp
-// ❌ Ships with 100 ms latency + 10% drop rate
+// ❌ Does nothing since NGO 2.2.0 (does not compile on 3.x), yet looks like it applies latency + packet loss
 t.SetDebugSimulatorParameters(100, 20, 10);
 
-// ✅ Guard with a platform define or strip before build
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-t.SetDebugSimulatorParameters(100, 20, 10);
-#endif
+// ✅ Use the Network Simulator from the Multiplayer Tools package (com.unity.multiplayer.tools)
 ```
 
 ### 6. Ignoring port-conflict failures

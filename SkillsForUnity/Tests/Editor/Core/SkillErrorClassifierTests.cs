@@ -53,6 +53,34 @@ namespace UnitySkills.Tests.Core
             StringAssert.Contains("package_install", fixes[1].ToString(), "The install hints stay, after the question.");
         }
 
+        [Test]
+        public void UnsupportedPackageVersion_IsASkillErrorThatAsksTheUser_NotMissingPackage()
+        {
+            var response = Newtonsoft.Json.Linq.JObject.FromObject(SkillErrorResponse.UnsupportedPackageVersion(
+                "com.tuyoogame.yooasset", "4.0.0", "[2.3.15,2.4) and [3.0.4,4.0)", "Pin a supported version."));
+
+            Assert.AreEqual("SKILL_ERROR", response["errorCode"]?.ToString());
+            Assert.AreEqual("ask_user", response["suggestedFixes"]?[0]?["action"]?.ToString());
+            Assert.AreEqual(SkillErrorResponse.UnsupportedPackageVersionReason, response["reason"]?.ToString());
+            Assert.AreEqual("4.0.0", response["installedVersion"]?.ToString());
+            Assert.AreNotEqual(SkillErrorCode.MissingPackage, SkillErrorClassifier.Classify(response["error"].ToString()).Code,
+                "Classified without the declared errorCode, the wording must still not read as a missing package.");
+        }
+
+        [TestCase("2.3.19", "2.3.15", "3.0", true)]
+        [TestCase("3.0.7", "2.3.15", "3.0", false)]
+        [TestCase("3.0.4", "3.0.4", "4.0", true)]
+        [TestCase("3.0.3-beta", "3.0.4", "4.0", false)]
+        [TestCase("3.0.4-pre.1", "3.0.4", "4.0", false)]
+        [TestCase("4.0.0-pre.1", "3.0.4", "4.0", true)]
+        [TestCase("2.13.3", "2.0", "3.0", true)]
+        [TestCase("v9.0.3", "8.12.0", "10.0", false)]
+        [TestCase("", "2.0", "3.0", false)]
+        public void IsVersionInRange_OrdersPrereleasesLikeVersionDefines(string version, string min, string max, bool expected)
+        {
+            Assert.AreEqual(expected, PackageManagerHelper.IsVersionInRange(version, min, max));
+        }
+
         [TestCase("Runtime validation job 'DefaultPackage_validation_1' not found")]
         [TestCase("Job 'ContainsPackageWord' not found")]
         [TestCase("Material asset not found: Packages/com.example.fake/Materials/Nope.mat")]

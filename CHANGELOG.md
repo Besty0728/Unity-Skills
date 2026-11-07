@@ -131,10 +131,13 @@ All notable changes to **UnitySkills** will be documented in this file.
   - 新增：冷启动等不到 `/health` 时用 `status` 识别挡住启动的对话框或 Safe Mode 并转述给用户，`open --format json` 的 `launchedPid` / `alreadyOpen` 判断是新启动还是本来开着；`commands --grep`；`build --list-targets` / `--list-profiles`；项目级 `ProjectSettings/UnityCliConfig.json` 只提供默认值，不构成授权；
   - 新增一节说明 Unity 官方 agent 技能（`unity skill show`、安装器写入的技能）只作参考，它推荐的 `command`、`script eval`、`pipeline install`、`setup`、`skill install|sync`、`self-update` 等一律不用。
 - **Unity CLI 探测与安装命令加固** — `--version` 探测进程清掉继承来的 `UNITY_FORMAT` / `HUB_FORMAT`，并设 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`、`UNITY_NO_UPDATE_CHECK=1`；输出必须是版本号（如 `1.0.0-beta.17`），JSON 或别的程序的输出按 `launch_failed` 处理。Windows 候选路径加上 `UNITY_CLI_HOME\bin\unity.exe` 与 `%LOCALAPPDATA%\Unity\bin\unity.exe`（未在 Windows 实测）。面板里的两条安装命令加 `UNITY_CLI_SKIP_SETUP=1`，不让安装器把 Unity 的技能写进用户的 agent 客户端（beta15 引入；beta16 之后的安装脚本是否仍认这个变量未验证）。
+- **可选包版本不在支持范围时如实报错** — 新增 `SkillErrorResponse.UnsupportedPackageVersion`：`SKILL_ERROR`，第一条修复是 `ask_user`，响应带 `reason:"unsupported_package_version"`、`installedVersion`、`supportedRange`，不再说「未安装」或建议装旧版。NGO 3.x（需要 Unity 6000.7，本版未适配，可钉 2.13.3）、YooAsset 3.0.0–3.0.3 beta 与 4.x、HybridCLR 8.12 以下与 10.x 都走这条；`PackageManagerHelper.IsVersionInRange` 按 versionDefine 的规则排序（预发布版在正式版之前）。冒烟测试与可选包测试夹具遇到它记为跳过。
+- **`netcode_set_debug_simulator` 改为结构化报错** — UnityTransport 的 debug simulator 自 NGO 2.2.0 起已无效（技能以前报成功却什么都没改），3.x 起该 API 直接编译报错。技能名与参数不变，不再写入，错误指向 Multiplayer Tools 的 Network Simulator。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed
 
+- **NGO 文档与警告的事实错误** — PlayerPrefab 不在 NetworkPrefabsList 时「运行时会被拒绝」不成立（NetworkManager 启动时自动注册），警告文案与 netcode / netcode-design 文档改正；版本统一写「验证于 2.13.3」（原来两处分别写 2.13.1、2.11.0）。
 - **查询串里的第二个 `?`** — `?wait=90?expectInstance=X` 这类写法以前把 `wait` 读成 `"90?expectInstance=X"`，实例钉被悄悄丢掉（评测中出现 4 次）；现在 `&` 与 `?` 都当分隔符，`%3F` 在切分之后才解码，仍是字面 `?`。值里没编码的 `?` 会把这个值截断，协议文档已写明。
 - **根 `SKILL.md` 关于 `auto` 模式的事实错误** — 旧文写 `auto` 下写操作都直接执行；实际删除、触发重载、进 Play 模式与 `riskLevel` high 的技能在 `auto` / `approval` 下返回 `MODE_FORBIDDEN`，而新装插件默认就是 `auto`。`protocol-operating-mode.md` 里「The server will not stop you in Auto」与同文件的模式表矛盾，一并改正。
 - **ISO 时间字符串被改写**（v2.9.1 起）— 请求参数里的 ISO-8601 时间以前在解析时被转成日期、再输出成本地格式：`console_get_logs` 的 `fromUtc:"2026-11-06T06:07:50Z"` 变成 `11/06/2026 06:07:50` 后被判为非法值，`fromUtc` / `toUtc` 实际无法使用。直接调用、dryRun、`/skills/batch` 的步骤参数与 `$ref` 引用的上一步结果、`*_batch` 的条目（如 `component_set_property_batch` 的 `value`）现在都原样收到字符串。
