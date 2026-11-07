@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnitySkills.Internal;
 
 namespace UnitySkills
@@ -21,15 +22,24 @@ namespace UnitySkills
     /// HybridCLR is installed. hybridclr_status works in both cases; every other skill in this module returns
     /// <see cref="NoHybridCLR"/> when the package is missing.
     ///
-    /// The APIs used via reflection are pinned to the hybridclr_unity 8.12.0 editor source
-    /// (HybridCLR.Editor.SettingsUtil, HybridCLR.Editor.Settings.HybridCLRSettings,
-    ///  HybridCLR.Editor.Commands.*, HybridCLR.Editor.Installer.InstallerController).
+    /// Two API lines are supported, both through the same editor assembly:
+    /// 8.x (anchored to hybridclr_unity 8.12.0) keeps its types under HybridCLR.Editor.* and exposes the settings
+    /// object as HybridCLRSettings.Instance; 9.x (anchored to 9.0.3) moved them to HybridCLR.* and made the settings a
+    /// ScriptableSingleton. Types resolve under either root, the settings object through SettingsUtil.HybridCLRSettings.
     /// </summary>
     public static class HybridCLRSkills
     {
         private const string EditorAssemblyName = "HybridCLR.Editor";
         private const string PackageId = "com.code-philosophy.hybridclr";
         private const string DocsUrl = "https://hybridclr.doc.code-philosophy.com/docs/beginner/quickstart";
+
+        private const string Line8 = "8.x";
+        private const string Line9 = "9.x";
+
+        // Same ordering rule as an asmdef versionDefine: [min, max).
+        private const string SupportedMinVersion = "8.12.0";
+        private const string SupportedMaxVersion = "10.0.0";
+        private const string SupportedRange = ">=8.12.0 <10.0.0 (hybridclr_unity 8.12+ and 9.x)";
 
         private const string SettingsKey = "hybridclr.settings";
         private const string GeneratedSourcesKey = "hybridclr.generatedSources";
@@ -67,17 +77,73 @@ namespace UnitySkills
 
         private static bool Installed => EditorAssembly() != null;
 
-        private static Type HclrType(string fullName)
+        // 9.x roots its types at HybridCLR.*, 8.x at HybridCLR.Editor.*; the same relative name never exists under both.
+        private static readonly string[] NamespaceRoots = { "HybridCLR.", "HybridCLR.Editor." };
+
+        /// <summary>Resolves a type by its name relative to the namespace root, e.g. "Commands.CompileDllCommand".</summary>
+        private static Type HclrType(string relativeName)
         {
             var asm = EditorAssembly();
             if (asm == null) return null;
-            try { return asm.GetType(fullName, false); }
+            foreach (var root in NamespaceRoots)
+            {
+                try
+                {
+                    var type = asm.GetType(root + relativeName, false);
+                    if (type != null) return type;
+                }
+                catch { /* try the next root */ }
+            }
+            return null;
+        }
+
+        private static string _apiLine;
+
+        /// <summary>"9.x" when SettingsUtil lives in HybridCLR, "8.x" when it lives in HybridCLR.Editor, null when neither resolves.</summary>
+        private static string ApiLine()
+        {
+            if (_apiLine != null) return _apiLine;
+            var asm = EditorAssembly();
+            if (asm == null) return null;
+            try
+            {
+                if (asm.GetType("HybridCLR.SettingsUtil", false) != null) _apiLine = Line9;
+                else if (asm.GetType("HybridCLR.Editor.SettingsUtil", false) != null) _apiLine = Line8;
+            }
+            catch { /* leave unresolved */ }
+            return _apiLine;
+        }
+
+        private static bool IsApi9 => ApiLine() == Line9;
+
+        private static Type SettingsUtilType => HclrType("SettingsUtil");
+        private static Type SettingsType => HclrType("Settings.HybridCLRSettings");
+        private static Type InstallerControllerType => HclrType("Installer.InstallerController");
+
+        private static string InstalledPackageVersion()
+        {
+            var version = PackageManagerHelper.GetInstalledVersion(PackageId);
+            if (!string.IsNullOrEmpty(version)) return version;
+            try { return UnityEditor.PackageManager.PackageInfo.FindForAssembly(EditorAssembly())?.version; }
             catch { return null; }
         }
 
-        private static Type SettingsUtilType => HclrType("HybridCLR.Editor.SettingsUtil");
-        private static Type SettingsType => HclrType("HybridCLR.Editor.Settings.HybridCLRSettings");
-        private static Type InstallerControllerType => HclrType("HybridCLR.Editor.Installer.InstallerController");
+        /// <summary>Null when the package is loaded at a supported version; otherwise the error every skill but the probe returns.</summary>
+        private static object Gate()
+        {
+            if (!Installed) return NoHybridCLR();
+
+            var version = InstalledPackageVersion();
+            // An unreadable version cannot be judged; the reflection layer then reports whatever it fails to resolve.
+            if (string.IsNullOrEmpty(version) ||
+                PackageManagerHelper.IsVersionInRange(version, SupportedMinVersion, SupportedMaxVersion))
+                return null;
+
+            var hint = PackageManagerHelper.IsVersionInRange(version, "0.0.0", SupportedMinVersion)
+                ? "The reflection anchors start at 8.12.0. Ask the user before changing the package version."
+                : "Releases from 10.0.0 have not been checked against this module. Ask the user before changing the package version.";
+            return SkillErrorResponse.UnsupportedPackageVersion(PackageId, version, SupportedRange, hint);
+        }
 
         private static object NoHybridCLR() => new
         {
@@ -90,13 +156,17 @@ namespace UnitySkills
             hint = "Call hybridclr_status first — it is the only skill in this module that works without the package."
         };
 
+        // Not MISSING_PACKAGE: the package is loaded and in range, so installing again would change nothing.
         private static object MissingApi(string member) => new
         {
-            error = $"HybridCLR.Editor is present but '{member}' could not be resolved by reflection. " +
-                    "The installed HybridCLR version likely differs from the 8.12.0 API this module targets.",
-            errorCode = "MISSING_PACKAGE",
+            error = $"HybridCLR.Editor is loaded (hybridclr_unity {InstalledPackageVersion() ?? "?"}, API line {ApiLine() ?? "?"}), " +
+                    $"but the member '{member}' could not be resolved by reflection.",
+            errorCode = SkillErrorCode.SkillError.ToWireString(),
+            retryStrategy = SkillErrorResponse.Abort,
             member,
-            hint = "Fall back to the equivalent HybridCLR menu command via unity-cli -executeMethod, or upgrade/downgrade the package.",
+            apiLine = ApiLine(),
+            hint = "This module is anchored to hybridclr_unity 8.12.0 (8.x) and 9.0.3 (9.x); a later release inside the supported range may have moved this member. " +
+                   "Report the member name, or run the equivalent HybridCLR menu command via unity-cli -executeMethod.",
             docs = DocsUrl
         };
 
@@ -135,28 +205,28 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>The settings object; SettingsUtil.HybridCLRSettings exists on both lines (Instance on 8.x, instance on 9.x).</summary>
         private static object SettingsInstance()
         {
-            var t = SettingsType;
-            if (t == null) return null;
+            var prop = SettingsUtilType?.GetProperty("HybridCLRSettings", BindingFlags.Public | BindingFlags.Static);
+            if (prop == null) return null;
             try
             {
-                var instance = t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-                // LoadOrCreate falls back with `s_Instance ?? CreateInstance()`: once a scene change has unloaded the
-                // instance and no settings file exists yet, Instance keeps returning the destroyed object, so Undo
-                // throws and Save() silently writes nothing. Drop the dead reference so Instance builds a live one.
-                if (instance is UnityEngine.Object unityObject && unityObject == null)
+                var instance = prop.GetValue(null);
+                // 8.x only: LoadOrCreate falls back with `s_Instance ?? CreateInstance()`, so once a scene change has
+                // unloaded the instance and no settings file exists yet, Instance keeps returning the destroyed object:
+                // Undo throws and Save() silently writes nothing. Drop the dead reference so Instance builds a live one.
+                // The 9.x ScriptableSingleton recreates a destroyed instance on its own.
+                if (instance is UnityEngine.Object unityObject && unityObject == null && !IsApi9)
                 {
-                    t.GetField("s_Instance", BindingFlags.NonPublic | BindingFlags.Static)?.SetValue(null, null);
-                    instance = t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-                    if (instance is UnityEngine.Object stillDead && stillDead == null)
-                        return null;
+                    SettingsType?.GetField("s_Instance", BindingFlags.NonPublic | BindingFlags.Static)?.SetValue(null, null);
+                    instance = prop.GetValue(null);
                 }
-                return instance;
+                return instance is UnityEngine.Object stillDead && stillDead == null ? null : instance;
             }
             catch (Exception ex)
             {
-                SkillsLogger.LogWarning($"[HybridCLR] HybridCLRSettings.Instance failed: {ex.Message}");
+                SkillsLogger.LogWarning($"[HybridCLR] SettingsUtil.HybridCLRSettings failed: {(ex.InnerException ?? ex).Message}");
                 return null;
             }
         }
@@ -219,8 +289,8 @@ namespace UnitySkills
             string.IsNullOrEmpty(path) ? path : path.Replace('\\', '/').TrimEnd('/');
 
         /// <summary>
-        /// HybridCLR stores its output root as a project-relative path (e.g. "HybridCLRData/HotUpdateDlls"),
-        /// but also accepts an absolute one. Both cases are resolved uniformly against the project root.
+        /// 8.x returns its output dirs as project-relative paths (e.g. "HybridCLRData/HotUpdateDlls/Android") and
+        /// accepts an absolute one; 9.x returns absolute paths. Both cases are resolved uniformly against the project root.
         /// </summary>
         private static string ResolveProjectPath(string maybeRelative)
         {
@@ -306,6 +376,8 @@ namespace UnitySkills
         // Workflow snapshot restorers (registered at domain load)
         // ==================================================================================
 
+        // Fields the 9.x settings no longer declare: they read as null there (patchAOTAssemblies included) and are
+        // skipped on restore. linkPreserveLevel is the opposite, 9.x only, and omitted from the JSON on 8.x.
         private sealed class SettingsSnapshot
         {
             public bool enable;
@@ -319,6 +391,8 @@ namespace UnitySkills
             public string[] externalHotUpdateAssembliyDirs;
             public string strippedAOTDllOutputRootDir;
             public string[] patchAOTAssemblies;
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public string linkPreserveLevel;
             public string outputLinkFile;
             public string outputAOTGenericReferenceFile;
             public int maxGenericReferenceIteration;
@@ -396,7 +470,8 @@ namespace UnitySkills
                 hotUpdateDllCompileOutputRootDir = Val<string>("hotUpdateDllCompileOutputRootDir", null),
                 externalHotUpdateAssembliyDirs = Arr("externalHotUpdateAssembliyDirs"),
                 strippedAOTDllOutputRootDir = Val<string>("strippedAOTDllOutputRootDir", null),
-                patchAOTAssemblies = Arr("patchAOTAssemblies"),
+                patchAOTAssemblies = SettingsField("patchAOTAssemblies") == null ? null : Arr("patchAOTAssemblies"),
+                linkPreserveLevel = SettingsField("linkPreserveLevel")?.GetValue(s)?.ToString(),
                 outputLinkFile = Val<string>("outputLinkFile", null),
                 outputAOTGenericReferenceFile = Val<string>("outputAOTGenericReferenceFile", null),
                 maxGenericReferenceIteration = Val("maxGenericReferenceIteration", 10),
@@ -432,6 +507,9 @@ namespace UnitySkills
             SettingsField("externalHotUpdateAssembliyDirs")?.SetValue(s, snap.externalHotUpdateAssembliyDirs ?? Array.Empty<string>());
             SettingsField("strippedAOTDllOutputRootDir")?.SetValue(s, snap.strippedAOTDllOutputRootDir);
             SettingsField("patchAOTAssemblies")?.SetValue(s, snap.patchAOTAssemblies ?? Array.Empty<string>());
+            var levelField = SettingsField("linkPreserveLevel");
+            if (levelField != null && snap.linkPreserveLevel != null && Enum.IsDefined(levelField.FieldType, snap.linkPreserveLevel))
+                levelField.SetValue(s, Enum.Parse(levelField.FieldType, snap.linkPreserveLevel));
             SettingsField("outputLinkFile")?.SetValue(s, snap.outputLinkFile);
             SettingsField("outputAOTGenericReferenceFile")?.SetValue(s, snap.outputAOTGenericReferenceFile);
             SettingsField("maxGenericReferenceIteration")?.SetValue(s, snap.maxGenericReferenceIteration);
@@ -488,8 +566,8 @@ namespace UnitySkills
 
         /// <summary>
         /// The two Assets-side artifacts HybridCLR regenerates: link.xml and AOTGenericReferences.cs.
-        /// Every other pipeline output lands under HybridCLRData/ or LocalIl2CppData-*/, which is a rebuildable
-        /// intermediate product, so it's deliberately excluded from the snapshot.
+        /// Every other pipeline output lands under the HybridCLR data dir (HybridCLRData/ on 8.x, Library/HybridCLR on 9.x),
+        /// which is a rebuildable intermediate product, so it's deliberately excluded from the snapshot.
         /// </summary>
         private static List<string> GeneratedSourceFiles()
         {
@@ -709,10 +787,10 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("hybridclr_status",
-            "Report HybridCLR installation status, package version, whether HybridCLR is enabled, the configured hot-update / AOT-patch assembly lists, and which generated artifacts already exist. Runs with or without the package installed — call this first.",
+            "Report HybridCLR installation status, package version and API line (8.x / 9.x), whether HybridCLR is enabled, the configured hot-update assembly list, the AOT-patch assembly list (patchAOTAssemblies on 8.x, the generated PatchedAOTAssemblyList on 9.x), and which generated artifacts already exist. Runs with or without the package installed — call this first.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Query,
             Tags = new[] { "hybridclr", "hotupdate", "status", "environment", "check" },
-            Outputs = new[] { "installed", "packageVersion", "enable", "hotUpdateAssemblies", "patchAOTAssemblies", "il2cppInstalled", "generatedArtifacts" },
+            Outputs = new[] { "installed", "packageVersion", "apiLine", "enable", "hotUpdateAssemblies", "patchAOTAssemblies", "patchedAOTAssemblyList", "il2cppInstalled", "installerError", "generatedArtifacts" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object Status()
@@ -729,24 +807,20 @@ namespace UnitySkills
                 };
             }
 
+            if (Gate() is object unsupported) return unsupported;
+
             var settings = SettingsInstance();
             var target = EditorUserBuildSettings.activeBuildTarget;
+            bool api9 = IsApi9;
 
             var hotUpdateNames = StaticPropStringList(SettingsUtilType, "HotUpdateAssemblyNamesExcludePreserved", out var hotUpdateError);
-            var aotNames = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _);
-
-            string packageVersion = null;
-            try
-            {
-                var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(EditorAssembly());
-                packageVersion = pkg?.version;
-            }
-            catch { /* best-effort */ }
+            // SettingsUtil.AOTAssemblyNames and the patchAOTAssemblies setting are gone on 9.x.
+            var aotNames = api9 ? null : StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _);
 
             var installer = new InstallerHandle();
-            bool il2cppInstalled = installer.HasInstalledHybridCLR() ?? false;
+            bool il2cppInstalled = installer.HasInstalledHybridCLR();
             string installedLibil2cppVersion = installer.StringMember("InstalledLibil2cppVersion");
-            packageVersion ??= installer.StringMember("PackageVersion");
+            var packageVersion = InstalledPackageVersion() ?? installer.StringMember("PackageVersion");
 
             var linkXml = LinkXmlPath();
             var aotRefs = AotGenericReferencesPath();
@@ -757,15 +831,18 @@ namespace UnitySkills
                 installed = true,
                 packageId = PackageId,
                 packageVersion,
+                apiLine = ApiLine(),
                 editorAssembly = EditorAssembly()?.GetName().Version?.ToString(),
                 enable = settings == null ? (bool?)null : StaticProp(SettingsUtilType, "Enable") as bool?,
                 scriptingBackend = ActiveScriptingBackend(),
                 activeBuildTarget = target.ToString(),
                 il2cppInstalled,
                 installedLibil2cppVersion,
+                installerError = installer.Error,
                 hotUpdateAssemblies = hotUpdateNames?.ToArray() ?? Array.Empty<string>(),
                 hotUpdateAssemblyResolveError = hotUpdateError,
-                patchAOTAssemblies = aotNames?.ToArray() ?? Array.Empty<string>(),
+                patchAOTAssemblies = api9 ? null : aotNames?.ToArray() ?? Array.Empty<string>(),
+                patchedAOTAssemblyList = ReadGeneratedPatchedAotList(out _),
                 generatedArtifacts = new
                 {
                     linkXml = FileInfoPayload(linkXml),
@@ -782,58 +859,93 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_install_status",
-            "Report the local il2cpp_plus installation state via HybridCLR.Editor.Installer.InstallerController — whether libil2cpp has been patched, the installed libil2cpp version vs the package version, the expected hybridclr / il2cpp_plus branches, and Unity-version compatibility.",
+            "Report the local il2cpp_plus installation state via InstallerController — whether libil2cpp has been patched, the installed libil2cpp version vs the package version, the expected hybridclr / il2cpp_plus branches (tags on 9.x), the Unity versions the installed release supports, and whether the running editor is one of them.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Query,
             Tags = new[] { "hybridclr", "installer", "il2cpp", "libil2cpp", "status" },
-            Outputs = new[] { "hasInstalled", "packageVersion", "installedLibil2cppVersion", "versionMatched", "compatibility", "localIl2CppDir" },
+            Outputs = new[] { "hasInstalled", "packageVersion", "apiLine", "installedLibil2cppVersion", "versionMatched", "compatibility", "unityVersionSupported", "supportedUnityVersions", "installerError", "localIl2CppDir" },
             ReadOnly = true,
             RequiresPackages = new[] { PackageId },
             Mode = SkillMode.SemiAuto)]
         public static object InstallStatus()
         {
-            if (!Installed) return NoHybridCLR();
-            if (InstallerControllerType == null) return MissingApi("HybridCLR.Editor.Installer.InstallerController");
+            if (Gate() is object unavailable) return unavailable;
+            if (InstallerControllerType == null) return MissingApi("Installer.InstallerController");
 
             var installer = new InstallerHandle();
-            if (installer.Error != null)
+            // A NotSupportedException from the constructor means this release has no entry for the running Unity version;
+            // that is an answer about the editor, so it is reported below instead of being treated as a broken installer.
+            if (installer.Error != null && !installer.UnsupportedUnity)
             {
                 return new
                 {
                     error = $"InstallerController could not be constructed: {installer.Error}",
-                    hint = "This usually means the package's Data~/hybridclr_version.json is missing or the Unity version is unrecognised. Open HybridCLR/Installer... to inspect.",
+                    hint = "This usually means the package's Data~/hybridclr_version.json or package.json could not be read. Open HybridCLR/Installer... to inspect.",
                     docs = DocsUrl
                 };
             }
 
-            var packageVersion = installer.StringMember("PackageVersion");
+            var packageVersion = installer.StringMember("PackageVersion") ?? InstalledPackageVersion();
             var installedVersion = installer.StringMember("InstalledLibil2cppVersion");
-            bool hasInstalled = installer.HasInstalledHybridCLR() ?? false;
+            bool hasInstalled = installer.HasInstalledHybridCLR();
             var localIl2CppDir = StaticPropString(SettingsUtilType, "LocalIl2CppDir");
+            var expectedHybridclr = installer.StringMember("HybridclrLocalVersion");
+            bool unityVersionSupported = installer.Error == null && !string.IsNullOrEmpty(expectedHybridclr);
 
             return new
             {
                 hasInstalled,
                 packageVersion,
+                apiLine = ApiLine(),
                 installedLibil2cppVersion = installedVersion,
                 versionMatched = hasInstalled && !string.IsNullOrEmpty(packageVersion) &&
                                  string.Equals(packageVersion, installedVersion?.Trim(), StringComparison.Ordinal),
-                unityMajorVersion = installer.Member("MajorVersion"),
+                unityMajorVersion = installer.Member("MajorVersion") ?? UnityMajorVersion(),
                 unityVersion = Application.unityVersion,
-                compatibility = installer.Invoke("GetCompatibleType")?.ToString(),
+                // 9.x dropped GetCompatibleType(); whether the installer accepted this editor is the same answer.
+                compatibility = installer.Invoke("GetCompatibleType")?.ToString() ?? (unityVersionSupported ? "Compatible" : "Incompatible"),
+                unityVersionSupported,
+                supportedUnityVersions = SupportedUnityVersions(),
                 minCompatibleUnityVersion = installer.Invoke("GetCurrentUnityVersionMinCompatibleVersionStr") as string,
-                expectedHybridclrBranch = installer.StringMember("HybridclrLocalVersion"),
+                expectedHybridclrBranch = expectedHybridclr,
                 expectedIl2cppPlusBranch = installer.StringMember("Il2cppPlusLocalVersion"),
+                installerError = installer.Error,
                 localIl2CppDir = Normalize(localIl2CppDir),
                 localVersionFile = Normalize(installer.StringMember("LocalVersionFile")),
-                note = hasInstalled
-                    ? "Installation present. A versionMatched=false result means the package was upgraded after installing — re-run HybridCLR/Installer."
-                    : "libil2cpp has not been patched yet. Installation clones two git repos and copies the editor's il2cpp tree; it is intentionally NOT exposed as a skill (long-running network + filesystem operation). Run it from HybridCLR/Installer... in the Editor.",
+                note = installer.UnsupportedUnity
+                    ? $"Unity {Application.unityVersion} is not supported by this hybridclr_unity release; pick an editor from supportedUnityVersions or a release that lists this one. The installer cannot run here."
+                    : hasInstalled
+                        ? "Installation present. A versionMatched=false result means the package was upgraded after installing — re-run HybridCLR/Installer."
+                        : "libil2cpp has not been patched yet. Installation clones two git repos and copies the editor's il2cpp tree; it is intentionally NOT exposed as a skill (long-running network + filesystem operation). Run it from HybridCLR/Installer... in the Editor.",
                 docs = "https://hybridclr.doc.code-philosophy.com/docs/beginner/install"
             };
         }
 
+        private static int? UnityMajorVersion() =>
+            int.TryParse(Application.unityVersion.Split('.')[0], out var major) ? major : (int?)null;
+
+        /// <summary>The "unity_version" entries of the package's Data~/hybridclr_version.json; null when the file cannot be read.</summary>
+        private static string[] SupportedUnityVersions()
+        {
+            try
+            {
+                var packagePath = UnityEditor.PackageManager.PackageInfo.FindForAssembly(EditorAssembly())?.resolvedPath;
+                if (string.IsNullOrEmpty(packagePath)) return null;
+                var manifest = Path.Combine(packagePath, "Data~", "hybridclr_version.json");
+                if (!File.Exists(manifest)) return null;
+                return (JObject.Parse(File.ReadAllText(manifest))["versions"] as JArray)
+                    ?.Select(v => v["unity_version"]?.ToString())
+                    .Where(v => !string.IsNullOrEmpty(v))
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose($"[HybridCLR] hybridclr_version.json read failed: {ex.Message}");
+                return null;
+            }
+        }
+
         [UnitySkill("hybridclr_get_paths",
-            "Resolve every HybridCLR input/output path for a build target — HybridCLRData root, local il2cpp dir, hot-update DLL output dir, stripped AOT assemblies dir, link.xml and AOTGenericReferences.cs. Use this to wire HybridCLR outputs into a YooAsset collector directory.",
+            "Resolve every HybridCLR input/output path for a build target — the HybridCLR data root (HybridCLRData on 8.x, Library/HybridCLR on 9.x), local il2cpp dir, hot-update DLL output dir, stripped AOT assemblies dir, link.xml and AOTGenericReferences.cs. Use this to wire HybridCLR outputs into a YooAsset collector directory.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Query,
             Tags = new[] { "hybridclr", "paths", "output", "directory", "yooasset" },
             Outputs = new[] { "projectDir", "hotUpdateDllsDir", "strippedAotDir", "linkXml", "aotGenericReferences" },
@@ -842,8 +954,8 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object GetPaths(string buildTarget = null)
         {
-            if (!Installed) return NoHybridCLR();
-            if (SettingsUtilType == null) return MissingApi("HybridCLR.Editor.SettingsUtil");
+            if (Gate() is object unavailable) return unavailable;
+            if (SettingsUtilType == null) return MissingApi("SettingsUtil");
             if (!TryParseBuildTarget(buildTarget, out var target, out var targetError)) return targetError;
 
             var dllDir = ResolveProjectPath(HotUpdateDllsDirFor(target));
@@ -857,6 +969,7 @@ namespace UnitySkills
                 localUnityDataDir = Normalize(StaticPropString(SettingsUtilType, "LocalUnityDataDir")),
                 localIl2CppDir = Normalize(StaticPropString(SettingsUtilType, "LocalIl2CppDir")),
                 generatedCppDir = Normalize(StaticPropString(SettingsUtilType, "GeneratedCppDir")),
+                // 9.x dropped the setting and the member: the output root is fixed under the data dir.
                 hotUpdateDllsRootOutputDir = ResolveProjectPath(StaticPropString(SettingsUtilType, "HotUpdateDllsRootOutputDir")),
                 hotUpdateDllsDir = new
                 {
@@ -872,7 +985,9 @@ namespace UnitySkills
                 },
                 linkXml = FileInfoPayload(LinkXmlPath()),
                 aotGenericReferences = FileInfoPayload(AotGenericReferencesPath()),
-                note = "hotUpdateDllsRootOutputDir and strippedAOTDllOutputRootDir are stored project-relative in HybridCLRSettings; the absolute forms above are resolved against projectDir."
+                note = IsApi9
+                    ? "hybridclr_unity 9.x fixes both output roots under hybridCLRDataDir, so hotUpdateDllsRootOutputDir is null; use hotUpdateDllsDir and strippedAotDir."
+                    : "hotUpdateDllsRootOutputDir and strippedAOTDllOutputRootDir are stored project-relative in HybridCLRSettings; the absolute forms above are resolved against projectDir."
             };
         }
 
@@ -881,19 +996,19 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("hybridclr_settings_get",
-            "Read HybridCLRSettings (ProjectSettings/HybridCLRSettings.asset) — every configuration field plus the resolved hot-update assembly name/file lists that SettingsUtil derives from asmdef assets and raw names.",
+            "Read HybridCLRSettings (ProjectSettings/HybridCLRSettings.asset) — every configuration field plus the resolved hot-update assembly name/file lists that SettingsUtil derives from asmdef assets and raw names. Fields this hybridclr_unity release no longer declares (patchAOTAssemblies and the two output-root dirs on 9.x) read as null and are listed in unsupportedFields.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Query,
             Tags = new[] { "hybridclr", "settings", "config", "assemblies", "read" },
-            Outputs = new[] { "settings", "resolved", "settingsAssetPath" },
+            Outputs = new[] { "settings", "resolved", "settingsAssetPath", "unsupportedFields" },
             ReadOnly = true,
             RequiresPackages = new[] { PackageId },
             Mode = SkillMode.SemiAuto)]
         public static object SettingsGet()
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
 
             var snap = CaptureSettings();
-            if (snap == null) return MissingApi("HybridCLR.Editor.Settings.HybridCLRSettings.Instance");
+            if (snap == null) return MissingApi("SettingsUtil.HybridCLRSettings");
 
             var namesExcl = StaticPropStringList(SettingsUtilType, "HotUpdateAssemblyNamesExcludePreserved", out var exclError);
             var namesIncl = StaticPropStringList(SettingsUtilType, "HotUpdateAssemblyNamesIncludePreserved", out var inclError);
@@ -902,6 +1017,7 @@ namespace UnitySkills
             var missingAsmdefs = (snap.hotUpdateAssemblyDefinitions ?? Array.Empty<string>())
                 .Where(p => AssetDatabase.LoadAssetAtPath<AssemblyDefinitionAsset>(p) == null)
                 .ToArray();
+            var unsupportedFields = UnsupportedSettingFields();
 
             return new
             {
@@ -916,17 +1032,20 @@ namespace UnitySkills
                     resolveErrors = new[] { exclError, inclError }.Where(e => !string.IsNullOrEmpty(e)).ToArray(),
                     unresolvedAssemblyDefinitions = missingAsmdefs
                 },
+                unsupportedFields,
                 notes = new[]
                 {
                     "HybridCLRSettings is a ScriptableObject serialized to ProjectSettings/, not an AssetDatabase asset — it will not appear in asset_* skills.",
-                    "outputLinkFile and outputAOTGenericReferenceFile are relative to Assets/; the two output root dirs are relative to the project directory.",
+                    unsupportedFields.Length > 0
+                        ? "outputLinkFile and outputAOTGenericReferenceFile are relative to Assets/. unsupportedFields were removed upstream: the output dirs are fixed (hybridclr_get_paths) and the AOT metadata list is the generated PatchedAOTAssemblyList (hybridclr_aot_generic_refs)."
+                        : "outputLinkFile and outputAOTGenericReferenceFile are relative to Assets/; the two output root dirs are relative to the project directory.",
                     "The field name 'externalHotUpdateAssembliyDirs' is spelled that way upstream (typo in HybridCLR source); the skill parameter is spelled 'externalHotUpdateAssemblyDirs'."
                 }
             };
         }
 
         [UnitySkill("hybridclr_settings_set",
-            "Write HybridCLRSettings fields (enable, hot-update assembly names/asmdefs, preserved + AOT-patch assemblies, output dirs, iteration limits, repo URLs) and persist to ProjectSettings/HybridCLRSettings.asset. Only the parameters you pass are changed; the full prior settings object is snapshotted for workflow undo.",
+            "Write HybridCLRSettings fields (enable, hot-update assembly names/asmdefs, preserved + AOT-patch assemblies, output dirs, iteration limits, repo URLs) and persist to ProjectSettings/HybridCLRSettings.asset. Only the parameters you pass are changed; the full prior settings object is snapshotted for workflow undo. On hybridclr_unity 9.x patchAOTAssemblies, hotUpdateDllCompileOutputRootDir and strippedAOTDllOutputRootDir no longer exist: passing one is rejected (SEMANTIC_INVALID) and nothing is written.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Modify,
             Tags = new[] { "hybridclr", "settings", "config", "assemblies", "write" },
             Outputs = new[] { "changed", "settings", "unresolvedAssemblyDefinitions", "unsupportedFields" },
@@ -950,13 +1069,32 @@ namespace UnitySkills
             string hybridclrRepoURL = null,
             string il2cppPlusRepoURL = null)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
 
             var settings = SettingsInstance();
-            if (settings == null) return MissingApi("HybridCLR.Editor.Settings.HybridCLRSettings.Instance");
+            if (settings == null) return MissingApi("SettingsUtil.HybridCLRSettings");
 
             var before = CaptureSettings();
             if (before == null) return MissingApi("HybridCLRSettings public fields");
+
+            // Rejected as a whole rather than half-applied: a caller that still passes these has the 8.x workflow in mind.
+            var removed = new List<string>();
+            if (patchAOTAssemblies != null) removed.Add("patchAOTAssemblies");
+            if (hotUpdateDllCompileOutputRootDir != null) removed.Add("hotUpdateDllCompileOutputRootDir");
+            if (strippedAOTDllOutputRootDir != null) removed.Add("strippedAOTDllOutputRootDir");
+            removed.RemoveAll(f => SettingsField(f) != null);
+            if (removed.Count > 0)
+            {
+                return new
+                {
+                    error = $"{string.Join(", ", removed)} no longer exist{(removed.Count == 1 ? "s" : "")} in hybridclr_unity {InstalledPackageVersion() ?? "9.x"}; nothing was written. " +
+                            string.Join(" ", removed.Select(Api9Replacement)),
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = removed[0],
+                    unsupportedFields = removed.ToArray(),
+                    apiLine = ApiLine()
+                };
+            }
 
             if (maxGenericReferenceIteration.HasValue &&
                 Validate.InRange(maxGenericReferenceIteration.Value, 1, 20, "maxGenericReferenceIteration") is object genErr)
@@ -1070,6 +1208,28 @@ namespace UnitySkills
             };
         }
 
+        // Settings fields hybridclr_unity 9.x removed (the 8.x declarations are the reference); absent on 9.x, present on 8.x.
+        private static readonly string[] Api9RemovedSettingFields =
+            { "patchAOTAssemblies", "hotUpdateDllCompileOutputRootDir", "strippedAOTDllOutputRootDir" };
+
+        private static string[] UnsupportedSettingFields() =>
+            Api9RemovedSettingFields.Where(f => SettingsField(f) == null).ToArray();
+
+        private static string Api9Replacement(string field)
+        {
+            switch (field)
+            {
+                case "patchAOTAssemblies":
+                    return "patchAOTAssemblies: replaced by the generated AOTGenericReferences.PatchedAOTAssemblyList (read it with hybridclr_aot_generic_refs).";
+                case "hotUpdateDllCompileOutputRootDir":
+                    return "hotUpdateDllCompileOutputRootDir: removed; hot-update DLLs always compile into a fixed per-target directory (hybridclr_get_paths, hotUpdateDllsDir).";
+                case "strippedAOTDllOutputRootDir":
+                    return "strippedAOTDllOutputRootDir: removed; stripped AOT DLLs always go to a fixed per-target directory (hybridclr_get_paths, strippedAotDir).";
+                default:
+                    return $"{field}: removed.";
+            }
+        }
+
         private static string[] CleanNames(string[] values) =>
             (values ?? Array.Empty<string>())
                 .Where(v => !string.IsNullOrWhiteSpace(v))
@@ -1081,7 +1241,7 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("hybridclr_validate_setup",
-            "Pre-flight check of the whole HybridCLR setup for a build target — package present, enable flag, IL2CPP backend, libil2cpp patched and version-matched, hot-update assemblies configured and resolvable, generated artifacts present and newer than the last compile. Returns categorised errors and warnings with fixes.",
+            "Pre-flight check of the whole HybridCLR setup for a build target — package present, enable flag, IL2CPP backend, libil2cpp patched and version-matched for a supported Unity version, hot-update assemblies configured and resolvable, generated artifacts present and newer than the last compile. Returns categorised errors and warnings with fixes.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Analyze,
             Tags = new[] { "hybridclr", "validate", "diagnose", "preflight", "check" },
             Outputs = new[] { "ok", "errors", "warnings", "checks" },
@@ -1090,7 +1250,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object ValidateSetup(string buildTarget = null)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
             if (!TryParseBuildTarget(buildTarget, out var target, out var targetError)) return targetError;
 
             var errors = new List<object>();
@@ -1111,7 +1271,7 @@ namespace UnitySkills
 
             var settings = SettingsInstance();
             if (settings == null)
-                return MissingApi("HybridCLR.Editor.Settings.HybridCLRSettings.Instance");
+                return MissingApi("SettingsUtil.HybridCLRSettings");
 
             bool enabled = (StaticProp(SettingsUtilType, "Enable") as bool?) ?? false;
             Check("enable", enabled,
@@ -1125,12 +1285,19 @@ namespace UnitySkills
                 "HybridCLR requires IL2CPP. Set it in Project Settings > Player > Other Settings > Scripting Backend.");
 
             var installer = new InstallerHandle();
-            bool hasInstalled = installer.HasInstalledHybridCLR() ?? false;
+            if (installer.UnsupportedUnity)
+            {
+                Check("unityVersionSupported", false,
+                    $"Unity {Application.unityVersion} is not supported by this hybridclr_unity release: {installer.Error}",
+                    "Use an editor listed in hybridclr_install_status.supportedUnityVersions, or a hybridclr_unity release that supports this one.");
+            }
+
+            bool hasInstalled = installer.HasInstalledHybridCLR();
             Check("il2cppInstalled", hasInstalled,
                 hasInstalled ? "libil2cpp is patched with hybridclr." : "libil2cpp has NOT been patched.",
                 "Open HybridCLR/Installer... in the Editor and run the install once (clones two git repos).");
 
-            if (hasInstalled)
+            if (hasInstalled && installer.Error == null)
             {
                 var pkgVersion = installer.StringMember("PackageVersion");
                 var installedVersion = installer.StringMember("InstalledLibil2cppVersion")?.Trim();
@@ -1164,10 +1331,14 @@ namespace UnitySkills
                 brokenAsmdefs.Length == 0 ? "All asmdef references resolve." : $"{brokenAsmdefs.Length} null entries at index {string.Join(", ", brokenAsmdefs)}",
                 "A referenced asmdef asset was deleted or moved. Re-set hotUpdateAssemblyDefinitions.");
 
-            var aotNames = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _);
-            Warn("patchAOTAssemblies", (aotNames?.Count ?? 0) > 0,
-                $"{aotNames?.Count ?? 0} AOT assemblies listed for metadata supplementation",
-                "Run hybridclr_generate_step(step=\"aot_generic_reference\") and copy PatchedAOTAssemblyList into patchAOTAssemblies, or generic instantiations will throw at runtime.");
+            // 9.x has no patchAOTAssemblies: the generated PatchedAOTAssemblyList is the list, checked below as AOTGenericReferences.cs.
+            if (!IsApi9)
+            {
+                var aotNames = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _);
+                Warn("patchAOTAssemblies", (aotNames?.Count ?? 0) > 0,
+                    $"{aotNames?.Count ?? 0} AOT assemblies listed for metadata supplementation",
+                    "Run hybridclr_generate_step(step=\"aot_generic_reference\") and copy PatchedAOTAssemblyList into patchAOTAssemblies, or generic instantiations will throw at runtime.");
+            }
 
             var linkXml = LinkXmlPath();
             var aotRefs = AotGenericReferencesPath();
@@ -1224,7 +1395,7 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("hybridclr_compile_dlls",
-            "Compile the hot-update assemblies for a build target via HybridCLR.Editor.Commands.CompileDllCommand.CompileDll(target, developmentBuild). Writes DLL/PDB into HybridCLRData/HotUpdateDlls/<target>. BLOCKS the Editor main thread for the duration of a full player-script compile (tens of seconds to minutes on large projects); prior output is backed up for workflow undo.",
+            "Compile the hot-update assemblies for a build target via CompileDllCommand.CompileDll(target, developmentBuild). Writes DLL/PDB into the per-target hot-update directory (hybridclr_get_paths: HybridCLRData/HotUpdateDlls on 8.x, Library/HybridCLR/HotUpdateDlls on 9.x). BLOCKS the Editor main thread for the duration of a full player-script compile (tens of seconds to minutes on large projects); prior output is backed up for workflow undo.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "compile", "hotupdate", "dll", "build" },
             Outputs = new[] { "success", "buildTarget", "outputDir", "files", "elapsedSeconds" },
@@ -1234,11 +1405,11 @@ namespace UnitySkills
             LongRunning = true)]
         public static object CompileDlls(string buildTarget = null, bool developmentBuild = false)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
             if (!TryParseBuildTarget(buildTarget, out var target, out var targetError)) return targetError;
 
-            var commandType = HclrType("HybridCLR.Editor.Commands.CompileDllCommand");
-            if (commandType == null) return MissingApi("HybridCLR.Editor.Commands.CompileDllCommand");
+            var commandType = HclrType("Commands.CompileDllCommand");
+            if (commandType == null) return MissingApi("Commands.CompileDllCommand");
 
             var method = commandType.GetMethod("CompileDll",
                 BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(BuildTarget), typeof(bool) }, null);
@@ -1303,7 +1474,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_generate_all",
-            "Run the full HybridCLR prebuild pipeline via HybridCLR.Editor.Commands.PrebuildCommand.GenerateAll() — compile hot-update DLLs, Il2CppDef, link.xml, stripped AOT DLLs, method bridges, and AOTGenericReferences.cs, in that order, for the active build target. BLOCKS the Editor main thread for several minutes and rewrites generated C# under Assets/, which triggers a domain reload.",
+            "Run the full HybridCLR prebuild pipeline via PrebuildCommand.GenerateAll() — compile hot-update DLLs, Il2CppDef, link.xml, (9.x: an empty method bridge,) stripped AOT DLLs, method bridges, and AOTGenericReferences.cs, in that order, for the active build target. BLOCKS the Editor main thread for several minutes and rewrites generated C# under Assets/, which triggers a domain reload.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "generate", "prebuild", "pipeline", "build" },
             Outputs = new[] { "success", "buildTarget", "elapsedSeconds", "generatedArtifacts" },
@@ -1313,10 +1484,10 @@ namespace UnitySkills
             LongRunning = true)]
         public static object GenerateAll()
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
 
-            var commandType = HclrType("HybridCLR.Editor.Commands.PrebuildCommand");
-            if (commandType == null) return MissingApi("HybridCLR.Editor.Commands.PrebuildCommand");
+            var commandType = HclrType("Commands.PrebuildCommand");
+            if (commandType == null) return MissingApi("Commands.PrebuildCommand");
 
             var method = commandType.GetMethod("GenerateAll",
                 BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
@@ -1379,7 +1550,9 @@ namespace UnitySkills
                 success = true,
                 buildTarget = target.ToString(),
                 elapsedSeconds = Math.Round(elapsed, 2),
-                steps = new[] { "compile_dll", "il2cpp_def", "link_xml", "aot_dlls", "method_bridge", "aot_generic_reference" },
+                steps = HasEmptyMethodBridgeStep()
+                    ? new[] { "compile_dll", "il2cpp_def", "link_xml", "method_bridge_empty", "aot_dlls", "method_bridge", "aot_generic_reference" }
+                    : new[] { "compile_dll", "il2cpp_def", "link_xml", "aot_dlls", "method_bridge", "aot_generic_reference" },
                 generatedArtifacts = new
                 {
                     linkXml = FileInfoPayload(LinkXmlPath()),
@@ -1387,26 +1560,48 @@ namespace UnitySkills
                     hotUpdateDlls = ListDllArtifacts(outputDir)
                 },
                 warning = "AOTGenericReferences.cs was rewritten under Assets/ — a domain reload is imminent and the REST server will be briefly unreachable.",
-                next = "Copy PatchedAOTAssemblyList from hybridclr_aot_generic_refs into settings.patchAOTAssemblies, then rebuild the player."
+                next = IsApi9
+                    ? "Load the AOT DLLs in PatchedAOTAssemblyList (hybridclr_aot_generic_refs) with RuntimeApi.LoadMetadataForAOTAssembly; stage them with hybridclr_copy_hotupdate_dlls(includeAotAssemblies=true). Then rebuild the player."
+                    : "Copy PatchedAOTAssemblyList from hybridclr_aot_generic_refs into settings.patchAOTAssemblies, then rebuild the player."
             };
         }
 
         // Step order matches PrebuildCommand.GenerateAll. "aot_dlls" is the most time-consuming step:
         // it runs a scripts-only BuildPipeline.BuildPlayer against a temp project, temporarily flipping
         // several EditorUserBuildSettings flags along the way and restoring them in a finally block.
-        private static readonly Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets)> GenerateSteps =
-            new Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets)>(StringComparer.OrdinalIgnoreCase)
+        // OnlyLine restricts a step to one API line: 9.x added method_bridge_empty and dropped clean_il2cpp_cache.
+        private static readonly Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets, string OnlyLine)> GenerateSteps =
+            new Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets, string OnlyLine)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["il2cpp_def"]            = ("HybridCLR.Editor.Commands.Il2CppDefGeneratorCommand", "GenerateIl2CppDef", false, false),
-                ["link_xml"]              = ("HybridCLR.Editor.Commands.LinkGeneratorCommand", "GenerateLinkXml", true, true),
-                ["aot_dlls"]              = ("HybridCLR.Editor.Commands.StripAOTDllCommand", "GenerateStripedAOTDlls", true, false),
-                ["method_bridge"]         = ("HybridCLR.Editor.Commands.MethodBridgeGeneratorCommand", "GenerateMethodBridgeAndReversePInvokeWrapper", true, false),
-                ["aot_generic_reference"] = ("HybridCLR.Editor.Commands.AOTReferenceGeneratorCommand", "GenerateAOTGenericReference", true, true),
-                ["clean_il2cpp_cache"]    = ("HybridCLR.Editor.Commands.MethodBridgeGeneratorCommand", "CleanIl2CppBuildCache", false, false),
+                ["il2cpp_def"]            = ("Commands.Il2CppDefGeneratorCommand", "GenerateIl2CppDef", false, false, null),
+                ["link_xml"]              = ("Commands.LinkGeneratorCommand", "GenerateLinkXml", true, true, null),
+                ["method_bridge_empty"]   = ("Commands.MethodBridgeGeneratorCommand", "GenerateEmptyMethodBridgeAndReversePInvokeWrapper", true, false, Line9),
+                ["aot_dlls"]              = ("Commands.StripAOTDllCommand", "GenerateStripedAOTDlls", true, false, null),
+                ["method_bridge"]         = ("Commands.MethodBridgeGeneratorCommand", "GenerateMethodBridgeAndReversePInvokeWrapper", true, false, null),
+                ["aot_generic_reference"] = ("Commands.AOTReferenceGeneratorCommand", "GenerateAOTGenericReference", true, true, null),
+                ["clean_il2cpp_cache"]    = ("Commands.MethodBridgeGeneratorCommand", "CleanIl2CppBuildCache", false, false, Line8),
             };
 
+        // 9.0.0 and 9.0.1 predate the empty-bridge step, so the 9.x line alone does not imply it.
+        private static bool HasEmptyMethodBridgeStep()
+        {
+            var spec = GenerateSteps["method_bridge_empty"];
+            return IsApi9 && HclrType(spec.Type)?.GetMethod(spec.Method,
+                BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(BuildTarget) }, null) != null;
+        }
+
+        private static string[] ValidStepNames()
+        {
+            var line = ApiLine();
+            return GenerateSteps
+                .Where(kv => kv.Value.OnlyLine == null || kv.Value.OnlyLine == line)
+                .Select(kv => kv.Key)
+                .OrderBy(k => k, StringComparer.Ordinal)
+                .ToArray();
+        }
+
         [UnitySkill("hybridclr_generate_step",
-            "Run a single step of the HybridCLR prebuild pipeline instead of the whole thing: il2cpp_def, link_xml, aot_dlls, method_bridge, aot_generic_reference, or clean_il2cpp_cache. Steps that write C#/XML under Assets/ trigger an AssetDatabase refresh and may cause a domain reload. Assumes hot-update DLLs are already compiled — run hybridclr_compile_dlls first.",
+            "Run a single step of the HybridCLR prebuild pipeline instead of the whole thing: il2cpp_def, link_xml, aot_dlls, method_bridge, aot_generic_reference, plus clean_il2cpp_cache (8.x only) or method_bridge_empty (9.x only; generates the empty bridge GenerateAll runs before aot_dlls). Steps that write C#/XML under Assets/ trigger an AssetDatabase refresh and may cause a domain reload. Assumes hot-update DLLs are already compiled — run hybridclr_compile_dlls first.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "generate", "step", "linkxml", "methodbridge", "aot" },
             Outputs = new[] { "success", "step", "buildTarget", "elapsedSeconds" },
@@ -1417,16 +1612,22 @@ namespace UnitySkills
             LongRunning = true)]
         public static object GenerateStep(string step, string buildTarget = null)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
             if (Validate.Required(step, "step") is object stepErr) return stepErr;
 
             if (!GenerateSteps.TryGetValue(step.Trim(), out var spec))
+                return SkillParamUtil.InvalidValueError(step, "step", ValidStepNames());
+
+            if (spec.OnlyLine != null && spec.OnlyLine != ApiLine())
             {
+                var valid = ValidStepNames();
                 return new
                 {
-                    error = $"Unknown step '{step}'.",
-                    available = GenerateSteps.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray(),
-                    hint = "Use hybridclr_generate_all to run every step in the correct order."
+                    error = $"Invalid value '{step}' for parameter 'step': it exists only on hybridclr_unity {spec.OnlyLine}, and the installed package uses the {ApiLine()} API line. Valid values: {string.Join(", ", valid)}.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "step",
+                    validValues = valid,
+                    apiLine = ApiLine()
                 };
             }
 
@@ -1507,7 +1708,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object GetHotUpdateDlls(string buildTarget = null)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
             if (!TryParseBuildTarget(buildTarget, out var target, out var targetError)) return targetError;
 
             var outputDir = ResolveProjectPath(HotUpdateDllsDirFor(target));
@@ -1575,10 +1776,10 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_copy_hotupdate_dlls",
-            "Stage compiled hot-update DLLs (and optionally the stripped AOT DLLs) into a directory under Assets/, renaming them to an importable extension (default .bytes) so a YooAsset collector can pack them. Existing files in the destination are backed up for workflow undo.",
+            "Stage compiled hot-update DLLs (and optionally the stripped AOT DLLs) into a directory under Assets/, renaming them to an importable extension (default .bytes) so a YooAsset collector can pack them. includeAotAssemblies stages the stripped AOT DLLs named by patchAOTAssemblies (8.x) or by the generated PatchedAOTAssemblyList (9.x; run hybridclr_generate_all first). Existing files in the destination are backed up for workflow undo.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Create,
             Tags = new[] { "hybridclr", "copy", "stage", "yooasset", "bytes", "hotupdate" },
-            Outputs = new[] { "destination", "copied", "skipped" },
+            Outputs = new[] { "destination", "copied", "skipped", "aotAssemblies" },
             RequiresInput = new[] { "destination" },
             RequiresPackages = new[] { PackageId },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
@@ -1591,7 +1792,7 @@ namespace UnitySkills
             bool includeAotAssemblies = false,
             bool clearDestination = false)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
             if (Validate.Required(destination, "destination") is object destErr) return destErr;
             if (Validate.SafePath(destination, "destination") is object safeErr) return safeErr;
             if (!TryParseBuildTarget(buildTarget, out var target, out var targetError)) return targetError;
@@ -1625,7 +1826,13 @@ namespace UnitySkills
                 return new
                 {
                     error = $"Hot-update DLL directory does not exist: {ToProjectRelative(sourceDir) ?? "(unresolved)"}",
-                    hint = $"Run hybridclr_compile_dlls(buildTarget=\"{target}\") first."
+                    hint = $"Run hybridclr_compile_dlls(buildTarget=\"{target}\") first.",
+                    // Declared: the classifier would read "does not exist" as a lookup miss and offer asset_find.
+                    relatedSkills = new[] { "hybridclr_compile_dlls" },
+                    suggestedFixes = new[]
+                    {
+                        new SuggestedFix { action = "retry", skill = "hybridclr_compile_dlls", reason = "The DLLs to stage are produced by hybridclr_compile_dlls for this build target." }
+                    }
                 };
             }
 
@@ -1646,10 +1853,40 @@ namespace UnitySkills
                 else skipped.Add(new { name = fileName, reason = "not found in hot-update DLL output" });
             }
 
+            object aotAssemblies = null;
             if (includeAotAssemblies)
             {
                 var aotDir = ResolveProjectPath(StrippedAotDirFor(target));
-                var aotNames = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _) ?? new List<string>();
+                // 9.x has no patchAOTAssemblies setting: the generated PatchedAOTAssemblyList names the supplementary-metadata DLLs.
+                List<string> aotNames;
+                string aotSource;
+                if (IsApi9)
+                {
+                    var generated = ReadGeneratedPatchedAotList(out var listProblem);
+                    if (generated == null)
+                    {
+                        return new
+                        {
+                            error = $"includeAotAssemblies needs the generated PatchedAOTAssemblyList, but {listProblem}.",
+                            hint = "Run hybridclr_generate_all (or hybridclr_generate_step step=\"aot_generic_reference\") first, then retry. Nothing was copied.",
+                            apiLine = ApiLine(),
+                            relatedSkills = new[] { "hybridclr_generate_all", "hybridclr_generate_step" },
+                            suggestedFixes = new[]
+                            {
+                                new SuggestedFix { action = "retry", skill = "hybridclr_generate_all", reason = "It writes AOTGenericReferences.cs, whose PatchedAOTAssemblyList names the AOT DLLs to stage." }
+                            }
+                        };
+                    }
+                    aotNames = generated.ToList();
+                    aotSource = "PatchedAOTAssemblyList";
+                }
+                else
+                {
+                    aotNames = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _) ?? new List<string>();
+                    aotSource = "patchAOTAssemblies";
+                }
+
+                int stagedBefore = sources.Count;
                 foreach (var name in aotNames)
                 {
                     var fileName = name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? name : name + ".dll";
@@ -1657,6 +1894,7 @@ namespace UnitySkills
                     if (!string.IsNullOrEmpty(src) && File.Exists(src)) sources.Add(src);
                     else skipped.Add(new { name = fileName, reason = "not found in stripped AOT output — run hybridclr_generate_step(step=\"aot_dlls\")" });
                 }
+                aotAssemblies = new { source = aotSource, requested = aotNames.Count, staged = sources.Count - stagedBefore };
             }
 
             if (sources.Count == 0)
@@ -1720,6 +1958,7 @@ namespace UnitySkills
                     copiedCount = copied.Count,
                     copied = copied.ToArray(),
                     skipped = skipped.ToArray(),
+                    aotAssemblies,
                     next = "Point a YooAsset collector at this directory (yooasset_add_collector), then run yooasset_build_bundles."
                 };
             }
@@ -1736,7 +1975,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_aot_generic_refs",
-            "Read the generated AOTGenericReferences.cs — whether it exists, when it was written, and the PatchedAOTAssemblyList it declares, compared against the patchAOTAssemblies currently configured in HybridCLRSettings. Optionally return the raw file content.",
+            "Read the generated AOTGenericReferences.cs — whether it exists, when it was written, and the PatchedAOTAssemblyList it declares, compared against the patchAOTAssemblies currently configured in HybridCLRSettings (8.x only: 9.x has no such setting, so the comparison fields are null and the list itself is the source of truth). Optionally return the raw file content.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Query,
             Tags = new[] { "hybridclr", "aot", "generic", "metadata", "patch" },
             Outputs = new[] { "exists", "patchedAOTAssemblyList", "configuredPatchAOTAssemblies", "inSync", "genericTypeCount" },
@@ -1745,16 +1984,17 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object AotGenericRefs(bool includeContent = false)
         {
-            if (!Installed) return NoHybridCLR();
+            if (Gate() is object unavailable) return unavailable;
 
             var settings = SettingsInstance();
-            if (settings == null) return MissingApi("HybridCLR.Editor.Settings.HybridCLRSettings.Instance");
+            if (settings == null) return MissingApi("SettingsUtil.HybridCLRSettings");
 
             var absolute = AotGenericReferencesPath();
             if (string.IsNullOrEmpty(absolute))
                 return new { error = "HybridCLRSettings.outputAOTGenericReferenceFile is empty — AOTGenericReferences generation is disabled." };
 
-            var configured = StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _) ?? new List<string>();
+            bool api9 = IsApi9;
+            var configured = api9 ? null : StaticPropStringList(SettingsUtilType, "AOTAssemblyNames", out _) ?? new List<string>();
 
             if (!File.Exists(absolute))
             {
@@ -1763,7 +2003,7 @@ namespace UnitySkills
                     exists = false,
                     path = absolute,
                     projectRelativePath = ToProjectRelative(absolute),
-                    configuredPatchAOTAssemblies = configured.ToArray(),
+                    configuredPatchAOTAssemblies = configured?.ToArray(),
                     hint = "Run hybridclr_generate_step(step=\"aot_generic_reference\") or hybridclr_generate_all to produce it."
                 };
             }
@@ -1782,7 +2022,7 @@ namespace UnitySkills
             // with module names that include the suffix, so it must be stripped before comparing.
             string Stem(string s) => s.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? s.Substring(0, s.Length - 4) : s;
             var patchedStems = new HashSet<string>(patched.Select(Stem), StringComparer.OrdinalIgnoreCase);
-            var configuredStems = new HashSet<string>(configured.Select(Stem), StringComparer.OrdinalIgnoreCase);
+            var configuredStems = new HashSet<string>((configured ?? new List<string>()).Select(Stem), StringComparer.OrdinalIgnoreCase);
 
             return new
             {
@@ -1792,35 +2032,78 @@ namespace UnitySkills
                 lastWriteUtc = fi.LastWriteTimeUtc.ToString("o"),
                 sizeBytes = fi.Length,
                 patchedAOTAssemblyList = patched,
-                configuredPatchAOTAssemblies = configured.ToArray(),
-                inSync = patchedStems.SetEquals(configuredStems),
-                missingFromSettings = patchedStems.Except(configuredStems).OrderBy(s => s, StringComparer.Ordinal).ToArray(),
-                extraInSettings = configuredStems.Except(patchedStems).OrderBy(s => s, StringComparer.Ordinal).ToArray(),
+                configuredPatchAOTAssemblies = configured?.ToArray(),
+                inSync = api9 ? (bool?)null : patchedStems.SetEquals(configuredStems),
+                missingFromSettings = api9 ? null : patchedStems.Except(configuredStems).OrderBy(s => s, StringComparer.Ordinal).ToArray(),
+                extraInSettings = api9 ? null : configuredStems.Except(patchedStems).OrderBy(s => s, StringComparer.Ordinal).ToArray(),
                 genericTypeCount = CountCommentBlockLines(content, "// {{ AOT generic types"),
                 content = includeContent ? content : null,
-                note = "inSync=false means the generated list and settings.patchAOTAssemblies disagree — copy missingFromSettings into hybridclr_settings_set(patchAOTAssemblies=[...]) or generic instantiations will throw at runtime."
+                note = api9
+                    ? "hybridclr_unity 9.x has no patchAOTAssemblies setting: PatchedAOTAssemblyList is the list to load with RuntimeApi.LoadMetadataForAOTAssembly. Stage the DLLs with hybridclr_copy_hotupdate_dlls(includeAotAssemblies=true)."
+                    : "inSync=false means the generated list and settings.patchAOTAssemblies disagree — copy missingFromSettings into hybridclr_settings_set(patchAOTAssemblies=[...]) or generic instantiations will throw at runtime."
             };
         }
 
         private static readonly Regex QuotedEntry = new Regex("\"([^\"]+)\"", RegexOptions.Compiled);
 
-        private static string[] ParsePatchedAotAssemblyList(string content)
+        private static string[] ParsePatchedAotAssemblyList(string content) =>
+            TryParsePatchedAotAssemblyList(content, out var list) ? list : Array.Empty<string>();
+
+        /// <summary>False when the PatchedAOTAssemblyList initializer is absent, so "no list" and "empty list" stay distinguishable.</summary>
+        private static bool TryParsePatchedAotAssemblyList(string content, out string[] list)
         {
-            if (string.IsNullOrEmpty(content)) return Array.Empty<string>();
+            list = null;
+            if (string.IsNullOrEmpty(content)) return false;
 
             int start = content.IndexOf("PatchedAOTAssemblyList", StringComparison.Ordinal);
-            if (start < 0) return Array.Empty<string>();
+            if (start < 0) return false;
 
             int open = content.IndexOf('{', start);
-            if (open < 0) return Array.Empty<string>();
+            if (open < 0) return false;
 
             int close = content.IndexOf("};", open, StringComparison.Ordinal);
-            if (close < 0) return Array.Empty<string>();
+            if (close < 0) return false;
 
-            return QuotedEntry.Matches(content.Substring(open, close - open))
+            list = QuotedEntry.Matches(content.Substring(open, close - open))
                 .Cast<Match>()
                 .Select(m => m.Groups[1].Value)
                 .ToArray();
+            return true;
+        }
+
+        /// <summary>
+        /// The PatchedAOTAssemblyList the last aot_generic_reference step wrote; null with <paramref name="problem"/> set
+        /// when the file is not configured, not generated yet, or has no such list.
+        /// </summary>
+        private static string[] ReadGeneratedPatchedAotList(out string problem)
+        {
+            problem = null;
+            var path = AotGenericReferencesPath();
+            if (string.IsNullOrEmpty(path))
+            {
+                problem = "HybridCLRSettings.outputAOTGenericReferenceFile is empty";
+                return null;
+            }
+            if (!File.Exists(path))
+            {
+                problem = $"{ToProjectRelative(path)} has not been generated yet";
+                return null;
+            }
+
+            string content;
+            try { content = File.ReadAllText(path); }
+            catch (Exception ex)
+            {
+                problem = $"{ToProjectRelative(path)} could not be read ({ex.Message})";
+                return null;
+            }
+
+            if (!TryParsePatchedAotAssemblyList(content, out var list))
+            {
+                problem = $"{ToProjectRelative(path)} declares no PatchedAOTAssemblyList";
+                return null;
+            }
+            return list;
         }
 
         /// <summary>
@@ -1853,20 +2136,35 @@ namespace UnitySkills
             private readonly object _instance;
             internal string Error { get; }
 
+            /// <summary>The constructor threw NotSupportedException: the installed release has no entry for this Unity version (9.x, 8.15+).</summary>
+            internal bool UnsupportedUnity { get; }
+
             internal InstallerHandle()
             {
                 var type = InstallerControllerType;
                 if (type == null)
                 {
-                    Error = "HybridCLR.Editor.Installer.InstallerController not found";
+                    Error = "HybridCLR Installer.InstallerController not found";
                     return;
                 }
 
                 try { _instance = Activator.CreateInstance(type); }
-                catch (Exception ex) { Error = (ex.InnerException ?? ex).Message; }
+                catch (Exception ex)
+                {
+                    var inner = ex.InnerException ?? ex;
+                    Error = inner.Message;
+                    UnsupportedUnity = inner is NotSupportedException;
+                }
             }
 
-            internal bool? HasInstalledHybridCLR() => Invoke("HasInstalledHybridCLR") as bool?;
+            internal bool HasInstalledHybridCLR()
+            {
+                if (Invoke("HasInstalledHybridCLR") is bool installed) return installed;
+
+                // Without a controller (its constructor failed) the upstream check is still this directory test.
+                var il2cppDir = StaticPropString(SettingsUtilType, "LocalIl2CppDir");
+                return !string.IsNullOrEmpty(il2cppDir) && Directory.Exists($"{il2cppDir}/libil2cpp/hybridclr");
+            }
 
             internal object Invoke(string methodName)
             {

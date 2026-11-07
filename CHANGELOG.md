@@ -77,7 +77,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 合计通过 97 → 97，脚本题（dev）47 → 47；删除前不 dryRun、`scene_save` 的 dryRun 都是 0。xhigh 的失败调用上升来自 T7 一个会话：它逐个查 21 个本来就没有 BoxCollider 的箱子，每次都是 `TARGET_NOT_FOUND`，题目仍然通过，去掉这个会话为 0.32。auto 模式抽查（Haiku medium，不计分）：删除与建脚本拿到 `MODE_FORBIDDEN` 后如实转告用户、给出 Bypass / 允许列表两条路，没有绕路直接写文件；普通移动直接执行。
 
-- **回归**：2022.3.62f2 Built-in 工程的完整 EditMode 2680 个测试，0 失败（93 个按环境跳过）；URP 工程在上一轮是 2614 个、0 失败，本轮未重跑；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **回归**：2022.3.62f2 Built-in 工程的完整 EditMode 2705 个测试，0 失败（101 个按环境跳过：未装的可选包夹具等）；URP 工程在上一轮是 2614 个、0 失败，本轮未重跑；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
 
@@ -95,6 +95,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
 - **`queryJson.underPath`** — `batch_query_gameobjects`、`batch_query_components` 等共用查询的新键：某路径下任意深度的后代，不含该节点本身，不区分大小写，与 `parentPath` 同时给时两者都要满足；在 `limit` 截断之前过滤。
 - **YooAsset 3.x 支持** — 3.0.4+（3.x 线）与 2.3.15+（2.x 线）同时支持：asmdef 新增 `YOO_ASSET_3=[3.0.4,4.0)`，类型改名由别名吸收，方法级差异集中在一个薄兼容层。对外技能名与参数名不变（如 `buildinFileCopyOption`），内部映射到 3.x 的新名字。`yooasset_check_installed` 新增 `apiLine`、`supportedRange`、`versionSupported`；3.x 删除了 AssetArt Scanner / Reporter，对应 6 个技能在 3.x 上返回「3.x 已移除该功能」，技能数不变；8 个读报告的技能在报告由另一个主版本写出时返回 `warnings`（两版之间改名的字段跨版本读会是空值）；打开窗口的技能按版本线选菜单。新增 `yooasset-design/V3.md` 差异速查。实测：6000.3 与 2022.3 上的 3.0.7、2.3.19，收集器读写、模拟构建、真实构建、读报告与运行时校验作业均通过。
+- **HybridCLR 9.x 支持** — 8.12+ 与 9.x 同时支持（9.0 起 Editor 类型从 `HybridCLR.Editor.*` 移到 `HybridCLR.*`）：类型按两种全名解析，`hybridclr_status` / `install_status` 输出 `apiLine`；设置统一经 `SettingsUtil.HybridCLRSettings` 读写，工作流快照只覆盖当前版本线存在的字段（9.x 含 `linkPreserveLevel`）。9.x 删除的 `patchAOTAssemblies` 等三个字段在 `settings_get` 里为 null 并列入 `unsupportedFields`，`settings_set` 拒绝写入并给出替代项；`generate_step` 的 `clean_il2cpp_cache` 仅 8.x、`method_bridge_empty` 仅 9.x；`copy_hotupdate_dlls(includeAotAssemblies)` 在 9.x 上按生成的 `PatchedAOTAssemblyList` 复制，没有列表就报错；`install_status` 输出 `supportedUnityVersions`，并区分「当前 Unity 不受支持」与「未安装」；数据目录按版本线解析（9.x 为 `Library/HybridCLR`）。模块文档说明上游包自带的 AI 技能只作参考。实测：6000.3 与 2022.3 上的 8.15.0、9.0.3，以及 8.x 写的设置资产被 9.x 读取；`generate_all` 需要先用 HybridCLR Installer 安装 il2cpp_plus，未实测。
 
 ### Changed
 
@@ -140,6 +141,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 
+- **装了新版可选包时误报「未安装」** — 装 YooAsset 3.x 时 39 个技能说未安装并让人去装 `#2.3.18`；装 NGO 3.x 时 38 个技能说未安装并建议安装；装 HybridCLR 9.x 时 `hybridclr_status` 报已安装但各项为空，`copy_hotupdate_dlls(includeAotAssemblies)` 报成功却一个 AOT DLL 都没复制，对应测试夹具整体被跳过、回归看起来是绿的。
 - **NGO 文档与警告的事实错误** — PlayerPrefab 不在 NetworkPrefabsList 时「运行时会被拒绝」不成立（NetworkManager 启动时自动注册），警告文案与 netcode / netcode-design 文档改正；版本统一写「验证于 2.13.3」（原来两处分别写 2.13.1、2.11.0）。
 - **查询串里的第二个 `?`** — `?wait=90?expectInstance=X` 这类写法以前把 `wait` 读成 `"90?expectInstance=X"`，实例钉被悄悄丢掉（评测中出现 4 次）；现在 `&` 与 `?` 都当分隔符，`%3F` 在切分之后才解码，仍是字面 `?`。值里没编码的 `?` 会把这个值截断，协议文档已写明。
 - **根 `SKILL.md` 关于 `auto` 模式的事实错误** — 旧文写 `auto` 下写操作都直接执行；实际删除、触发重载、进 Play 模式与 `riskLevel` high 的技能在 `auto` / `approval` 下返回 `MODE_FORBIDDEN`，而新装插件默认就是 `auto`。`protocol-operating-mode.md` 里「The server will not stop you in Auto」与同文件的模式表矛盾，一并改正。
