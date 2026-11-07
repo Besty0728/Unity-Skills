@@ -102,6 +102,16 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void ASecondQuestionMark_SeparatesPairsLikeTheRouter()
+        {
+            var body = SkillsHttpServer.ConvertQueryToSkillBody("?name=a?mode=dryRun?label=why%3F", ProbeParameters(), out string requestQuery);
+
+            Assert.That(body["name"]?.ToString(), Is.EqualTo("a"));
+            Assert.That(body["label"]?.ToString(), Is.EqualTo("why?"));
+            Assert.That(requestQuery, Is.EqualTo("?mode=dryRun"));
+        }
+
+        [Test]
         public void Curl_QuotesSingleQuotesForTheShell()
         {
             var body = JObject.Parse(SkillsHttpServer.BuildMethodNotAllowedResponse(

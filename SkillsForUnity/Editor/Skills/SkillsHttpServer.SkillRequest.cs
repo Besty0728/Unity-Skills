@@ -187,7 +187,7 @@ namespace UnitySkills
             var requestPairs = new List<string>();
 
             string raw = string.IsNullOrEmpty(rawQuery) ? string.Empty : rawQuery.TrimStart('?');
-            foreach (var pair in raw.Split('&'))
+            foreach (var pair in SkillRouter.SplitQueryPairs(raw))
             {
                 if (pair.Length == 0)
                     continue;
@@ -271,7 +271,7 @@ namespace UnitySkills
         private static string QueryWithout(string rawQuery, string key)
         {
             if (string.IsNullOrEmpty(rawQuery)) return string.Empty;
-            var kept = rawQuery.TrimStart('?').Split('&').Where(pair =>
+            var kept = SkillRouter.SplitQueryPairs(rawQuery.TrimStart('?')).Where(pair =>
             {
                 if (pair.Length == 0) return false;
                 int eq = pair.IndexOf('=');

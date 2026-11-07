@@ -108,6 +108,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 
+- **查询串里的第二个 `?`** — `?wait=90?expectInstance=X` 这类写法以前把 `wait` 读成 `"90?expectInstance=X"`，实例钉被悄悄丢掉（评测中出现 4 次）；现在 `&` 与 `?` 都当分隔符，`%3F` 在切分之后才解码，仍是字面 `?`。值里没编码的 `?` 会把这个值截断，协议文档已写明。
 - **ISO 时间字符串被改写**（v2.9.1 起）— 请求参数里的 ISO-8601 时间以前在解析时被转成日期、再输出成本地格式：`console_get_logs` 的 `fromUtc:"2026-11-06T06:07:50Z"` 变成 `11/06/2026 06:07:50` 后被判为非法值，`fromUtc` / `toUtc` 实际无法使用。直接调用、dryRun、`/skills/batch` 的步骤参数与 `$ref` 引用的上一步结果、`*_batch` 的条目（如 `component_set_property_batch` 的 `value`）现在都原样收到字符串。
 - **batch dryRun 把前面步骤要加的组件判为不存在** — 前一步 `component_add` 要加的组件，后一步 `component_set_property`、`component_remove` 在 dryRun 中以前直接报 `Component not found`，一次 17 步的 batch 有 15 步因此失败；现在改为警告，提示依赖实时组件的检查已跳过。`component_set_property` 还认得该组件通过 `RequireComponent` 自动带上的组件（如 HingeJoint 带上的 Rigidbody）。dryRun 结果里不预测对象的场景创建技能（`light_create`、`camera_create`、`ui_create_*`、`prefab_instantiate`、Cinemachine 的 `*_create_*` 等约 40 个）建的对象，后续步骤按名字引用时同样只给警告，以前会报 `GameObject not found`：没有父节点参数的放在场景根，父节点能解析的放在它下面，落点无法预测的（如不指定父节点的 UI 元素）只按名字匹配，它的子对象也只按名字匹配。单独调用的 dryRun 不受影响。
 - **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。

@@ -28,6 +28,7 @@ namespace UnitySkills
         /// condition into "no filter," so a scoped request would get the whole catalog while still looking like it succeeded.</item>
         /// </list>
         /// A pair with no key at all (<c>?=v</c>, or an empty segment in <c>?a&amp;&amp;b</c>) is still skipped -- there's no key to index by.
+        /// Pairs split as <see cref="SplitQueryPairs"/> does, so a second '?' separates like '&amp;'.
         /// </summary>
         internal static Dictionary<string, string> ParseQueryString(string qs)
         {
@@ -59,7 +60,7 @@ namespace UnitySkills
             var raw = qs.StartsWith("?") ? qs.Substring(1) : qs;
             if (string.IsNullOrEmpty(raw)) yield break;
 
-            foreach (var pair in raw.Split('&'))
+            foreach (var pair in SplitQueryPairs(raw))
             {
                 var eqIdx = pair.IndexOf('=');
                 if (eqIdx == 0) continue;
@@ -80,6 +81,14 @@ namespace UnitySkills
                     yield return (key, val);
             }
         }
+
+        /// <summary>
+        /// Splits a raw query (leading '?' already dropped) into its still-encoded pairs. A second '?' separates like '&amp;':
+        /// agents append "?expectInstance=X" to a waitUrl that already carries "?wait=90", and reading that as one pair
+        /// would fail the wait value and silently drop the instance pin. A literal '?' in a value is written %3F, which is
+        /// decoded only after the split. Every query reader splits here so they all agree.
+        /// </summary>
+        internal static string[] SplitQueryPairs(string raw) => raw.Split('&', '?');
     }
 }
 

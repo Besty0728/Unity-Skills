@@ -23,12 +23,28 @@ namespace UnitySkills.Tests.Core
         [TestCase("/jobs/abc/", "?WAIT=2.5", 2.5)]
         [TestCase("/jobs/abc", "?wait=0", 0.0)]
         [TestCase("/jobs/abc", "?wait=900&recentCount=3", 120.0)]
+        [TestCase("/jobs/abc", "?wait=90?expectInstance=Abc", 90.0)]
         public void TryParseJobWait_AcceptsSecondsAndClamps(string path, string query, double expected)
         {
             Assert.That(SkillsHttpServer.TryParseJobWait(path, query, out var jobId, out var seconds, out var error), Is.True);
             Assert.That(error, Is.Null);
             Assert.That(jobId, Is.EqualTo("abc"));
             Assert.That(seconds, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ParseQueryString_ASecondQuestionMarkSeparatesLikeAnAmpersand()
+        {
+            var appended = SkillRouter.ParseQueryString("?wait=90?expectInstance=Abc");
+            Assert.That(appended["wait"], Is.EqualTo("90"));
+            Assert.That(appended["expectInstance"], Is.EqualTo("Abc"));
+
+            Assert.That(SkillRouter.ParseQueryString("?intent=rotate%3F")["intent"], Is.EqualTo("rotate?"),
+                "An encoded '?' is decoded after the split, so it stays part of the value.");
+
+            var sparse = SkillRouter.ParseQueryString("?a=1&&b=2??c=3?");
+            Assert.That(sparse.Keys, Is.EquivalentTo(new[] { "a", "b", "c" }), "Empty segments are skipped.");
+            Assert.That(sparse["c"], Is.EqualTo("3"));
         }
 
         [TestCase("/jobs/abc", null)]
