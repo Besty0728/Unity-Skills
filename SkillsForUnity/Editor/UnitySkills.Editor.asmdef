@@ -61,8 +61,13 @@
         },
         {
             "name": "com.tuyoogame.yooasset",
-            "expression": "[2.3.15,3.0)",
+            "expression": "[2.3.15,2.4)",
             "define": "YOO_ASSET"
+        },
+        {
+            "name": "com.tuyoogame.yooasset",
+            "expression": "[3.0.4,4.0)",
+            "define": "YOO_ASSET_3"
         },
         {
             "name": "com.unity.render-pipelines.core",

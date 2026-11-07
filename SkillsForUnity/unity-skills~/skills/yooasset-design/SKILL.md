@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset-design
-description: Source-anchored design rules for YooAsset v2.3.18
+description: Source-anchored design rules for YooAsset v2.3.18, with a 3.x delta sheet
 ---
 
 > **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
@@ -16,6 +16,8 @@ description: Source-anchored design rules for YooAsset v2.3.18
 # YooAsset - Design Rules
 
 Advisory module. Every rule is distilled from YooAsset **v2.3.18** (2025-12-04) source at `Assets/YooAsset/`. Each rule cites a concrete file/line so the reasoning is auditable and the AI does not improvise against stale memory.
+
+> **Version gate**: these files describe the **2.x line** (2.3.15+). On **YooAsset 3.0.4+** most runtime and Editor names changed (Options-style `InitializePackageAsync` / `LoadPackageManifestAsync`, `EOperationStatus.Succeeded`, `Bundle*` Editor types, no default-package shortcuts, no AssetArt). Call `yooasset_check_installed` and read `apiLine`; when it is `"3.x"`, read [V3.md](./V3.md) first and translate every 2.x name in the other sub-docs through it.
 
 > **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
 
@@ -61,6 +63,7 @@ Load before writing or reviewing any of:
 | [FILESYSTEM.md](./FILESYSTEM.md) | `FileSystemParameters` + 24 `FileSystemParametersDefine` constants + 5 factory helpers + `IDecryptionServices` / `IRemoteServices` / `IWebDecryptionServices` |
 | [BUILD.md](./BUILD.md) | `AssetBundleBuilder.Run(...)`, `BuildParameters` (Scriptable / Raw / Simulate), `AssetBundleCollector`, `IFilterRule.FindAssetType`, `ScriptableBuildParameters.ReplaceAssetPathWithAddress` |
 | [PITFALLS.md](./PITFALLS.md) | 30 concrete hallucination pitfalls + legacy API migration section |
+| [V3.md](./V3.md) | YooAsset 3.0.4+ delta sheet: every 2.x name in this module mapped to its 3.x form, removed features, new behavior traps |
 
 ## Routing to Other Modules
 
@@ -71,7 +74,7 @@ Load before writing or reviewing any of:
 
 ## Version Scope
 
-This document targets YooAsset **2.3.18** (2025-12-04). Key recent history:
+This document targets YooAsset **2.3.18** (2025-12-04); the 3.x line (3.0.4+, verified against 3.0.7) is covered only by [V3.md](./V3.md). Key recent 2.x history:
 
 - **2.3.18** — added `UNPACK_FILE_SYSTEM_ROOT` file-system parameter, `EFileClearMode.ClearBundleFilesByLocations`, `RawFileBuildParameters.IncludePathInHash`.
 - **2.3.17** — **[CRITICAL]** fixed a CRC-validation bug that let corrupted downloads pass verification on 2.3.15/2.3.16. Also fixed a Package-destroy race where an in-flight `AssetBundle` load could block unload.

@@ -81,6 +81,18 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(expected, PackageManagerHelper.IsVersionInRange(version, min, max));
         }
 
+        [TestCase("2.3.19", "2.x")]
+        [TestCase("2.3.14", null)]
+        [TestCase("3.0.0-beta", null)]
+        [TestCase("3.0.3-beta", null)]
+        [TestCase("3.0.4", "3.x")]
+        [TestCase("3.0.7", "3.x")]
+        [TestCase("4.0.0", null)]
+        public void YooAssetApiLine_MatchesTheVersionDefines(string version, string expected)
+        {
+            Assert.AreEqual(expected, YooAssetSkills.ResolveApiLine(version));
+        }
+
         [TestCase("Runtime validation job 'DefaultPackage_validation_1' not found")]
         [TestCase("Job 'ContainsPackageWord' not found")]
         [TestCase("Material asset not found: Packages/com.example.fake/Materials/Nope.mat")]

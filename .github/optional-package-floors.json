@@ -78,6 +78,10 @@
       "prefix": "UnitySkills.Tests.OptionalPackages.TimelineSkillsLiveTests.",
       "min": 5
     },
+    "YooAsset": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.YooAssetSkillsLiveTests.",
+      "min": 6
+    },
     "XR": {
       "prefix": "UnitySkills.Tests.OptionalPackages.XRSkillsLiveTests.",
       "min": 11

@@ -94,6 +94,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`GET /analytics?agent=`** — 按 agent 过滤分析数据，`(unknown)` 匹配没有 agent 的记录；失败调用的遥测行带脱敏后的错误文本 `err` 与参数摘要 `target`（工程根目录写作 `<project>`，用户主目录写作 `~`）。
 - **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
 - **`queryJson.underPath`** — `batch_query_gameobjects`、`batch_query_components` 等共用查询的新键：某路径下任意深度的后代，不含该节点本身，不区分大小写，与 `parentPath` 同时给时两者都要满足；在 `limit` 截断之前过滤。
+- **YooAsset 3.x 支持** — 3.0.4+（3.x 线）与 2.3.15+（2.x 线）同时支持：asmdef 新增 `YOO_ASSET_3=[3.0.4,4.0)`，类型改名由别名吸收，方法级差异集中在一个薄兼容层。对外技能名与参数名不变（如 `buildinFileCopyOption`），内部映射到 3.x 的新名字。`yooasset_check_installed` 新增 `apiLine`、`supportedRange`、`versionSupported`；3.x 删除了 AssetArt Scanner / Reporter，对应 6 个技能在 3.x 上返回「3.x 已移除该功能」，技能数不变；8 个读报告的技能在报告由另一个主版本写出时返回 `warnings`（两版之间改名的字段跨版本读会是空值）；打开窗口的技能按版本线选菜单。新增 `yooasset-design/V3.md` 差异速查。实测：6000.3 与 2022.3 上的 3.0.7、2.3.19，收集器读写、模拟构建、真实构建、读报告与运行时校验作业均通过。
 
 ### Changed
 
@@ -133,6 +134,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **Unity CLI 探测与安装命令加固** — `--version` 探测进程清掉继承来的 `UNITY_FORMAT` / `HUB_FORMAT`，并设 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`、`UNITY_NO_UPDATE_CHECK=1`；输出必须是版本号（如 `1.0.0-beta.17`），JSON 或别的程序的输出按 `launch_failed` 处理。Windows 候选路径加上 `UNITY_CLI_HOME\bin\unity.exe` 与 `%LOCALAPPDATA%\Unity\bin\unity.exe`（未在 Windows 实测）。面板里的两条安装命令加 `UNITY_CLI_SKIP_SETUP=1`，不让安装器把 Unity 的技能写进用户的 agent 客户端（beta15 引入；beta16 之后的安装脚本是否仍认这个变量未验证）。
 - **可选包版本不在支持范围时如实报错** — 新增 `SkillErrorResponse.UnsupportedPackageVersion`：`SKILL_ERROR`，第一条修复是 `ask_user`，响应带 `reason:"unsupported_package_version"`、`installedVersion`、`supportedRange`，不再说「未安装」或建议装旧版。NGO 3.x（需要 Unity 6000.7，本版未适配，可钉 2.13.3）、YooAsset 3.0.0–3.0.3 beta 与 4.x、HybridCLR 8.12 以下与 10.x 都走这条；`PackageManagerHelper.IsVersionInRange` 按 versionDefine 的规则排序（预发布版在正式版之前）。冒烟测试与可选包测试夹具遇到它记为跳过。
 - **`netcode_set_debug_simulator` 改为结构化报错** — UnityTransport 的 debug simulator 自 NGO 2.2.0 起已无效（技能以前报成功却什么都没改），3.x 起该 API 直接编译报错。技能名与参数不变，不再写入，错误指向 Multiplayer Tools 的 Network Simulator。
+- **YooAsset 2.x 的版本区间收紧为 `[2.3.15,2.4)`** — 原来的 `[2.3.15,3.0)` 会把 openupm 上的 `3.0.0-beta` 算进 2.x（预发布版排在正式版之前），用 2.x 代码编译 3.x API 会让整个插件编译失败。
+- **可选包 CI** — 6000.3 作业改钉 YooAsset 3.0.7；2022.3 作业新装 YooAsset 2.3.19（floor 6）。NGO 仍钉 2.13.3；HybridCLR 不能在 CI 分发，靠本地实测。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed

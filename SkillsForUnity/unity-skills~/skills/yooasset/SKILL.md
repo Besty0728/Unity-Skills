@@ -13,9 +13,9 @@ description: Automate YooAsset hot-update and asset bundles
 
 # Unity YooAsset Skills
 
-Editor-side automation for the YooAsset hot-update framework — build pipeline orchestration, Collector configuration CRUD, BuildReport analysis, PlayMode runtime validation, and companion YooAsset tools. Every skill wraps a concrete YooAsset Editor/runtime API path validated against 2.3.18 source. When the package is absent, every skill except `yooasset_check_installed` returns a `NoYooAsset()` error with install instructions.
+Editor-side automation for the YooAsset hot-update framework — build pipeline orchestration, Collector configuration CRUD, BuildReport analysis, PlayMode runtime validation, and companion YooAsset tools. Every skill wraps a concrete YooAsset Editor/runtime API path validated against the 2.3.19 and 3.0.7 sources; skill names and parameter names are identical on both lines. When the package is absent, every skill except `yooasset_check_installed` returns a `NoYooAsset()` error with install instructions.
 
-> **Requires**: `com.tuyoogame.yooasset` **≥ 2.3.15**, Unity 2022.3+ (validated against 2.3.18).
+> **Requires**: `com.tuyoogame.yooasset` **2.3.15+ (2.x line)** or **3.0.4+ (3.x line)**, Unity 2022.3+. 3.0.0-beta to 3.0.3-beta and 4.x are unsupported. The six AssetArt skills work on the 2.x line only.
 > **Strongly recommended**: before writing ANY YooAsset runtime code, load [yooasset-design](../yooasset-design/SKILL.md). PlayMode / parameter-class / handle-lifecycle pitfalls are strict, and only the advisory module surfaces them.
 
 ## Guardrails
@@ -28,7 +28,7 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
   - `SkillOperation.Delete` → `yooasset_remove_collector_package`, `yooasset_remove_collector_group`, `yooasset_remove_collector`
   
   Reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN`. Note `yooasset_build_bundles` runs heavy disk I/O but has no Reload/PlayMode flag, so it stays grantable.
-- When `com.tuyoogame.yooasset` is missing, every skill except `yooasset_check_installed` returns a `NoYooAsset()` error with install instructions.
+- When `com.tuyoogame.yooasset` is missing, every skill except `yooasset_check_installed` returns a `NoYooAsset()` error with install instructions (`MISSING_PACKAGE`). When it is present at a version outside both supported ranges, they return `SKILL_ERROR` with `reason: "unsupported_package_version"`, `installedVersion` and `supportedRange`: tell the user, do not install or upgrade on your own.
 
 **DO NOT** (common hallucinations):
 - `yooasset_initialize` / `yooasset_load_asset` / `yooasset_create_downloader` — do NOT exist as general-purpose REST skills. Runtime APIs (`YooAssets.Initialize`, default-package `YooAssets.LoadAssetAsync`, `ResourcePackage.LoadAssetAsync`, `RequestPackageVersionAsync`, `CreateResourceDownloader`) belong in game code. Use [yooasset-design](../yooasset-design/SKILL.md) when writing runtime code.
@@ -36,6 +36,8 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 - `yooasset_install` — NOT a skill. Package install is a Package Manager user action.
 - Do NOT pass `timeout` to `yooasset_build_bundles` — the property was removed in YooAsset 2.3.16. Runtime watchdog now lives on `CacheFileSystemParameters.DOWNLOAD_WATCH_DOG_TIME` (runtime concern, not a build parameter).
 - Do NOT call `yooasset_build_bundles` while `EditorUserBuildSettings.isBuildingPlayer == true` — `BuildParameters.CheckBuildParameters` throws.
+- Do NOT call the `yooasset_*assetart*` skills when `yooasset_check_installed` reports `apiLine: "3.x"` — YooAsset 3.x deleted AssetArt Scanner / Reporter, and the skills answer `SKILL_ERROR` "YooAsset 3.x removed this feature".
+- Do NOT pass 3.x parameter names (`bundledCopyOption`, `bundleEncryptorClassName`, ...) — the skills keep their 2.x names on both lines; see [Version Scope](#version-scope).
 
 **Routing**:
 - Collector configuration (packages, groups, collectors, rules) → this module.
@@ -44,42 +46,42 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 - Runtime validation in Editor PlayMode → `yooasset_runtime_validate_package` + polling/cleanup skills in this module.
 - Runtime code generation/design (Initialize / Load / Download / Scene in game scripts) → write it yourself using [yooasset-design](../yooasset-design/SKILL.md).
 - YooAsset companion windows and AssetArtScanner config/runs → this module.
-- Version-policy decisions (2.x vs pre-2.3.15 manifest, `FindAssetType` on `IFilterRule`) → [yooasset-design/PITFALLS.md](../yooasset-design/PITFALLS.md).
+- Version-policy decisions (2.x vs pre-2.3.15 manifest, `FindAssetType` on `IFilterRule`) → [yooasset-design/PITFALLS.md](../yooasset-design/PITFALLS.md); 2.x vs 3.x API names → [yooasset-design/V3.md](../yooasset-design/V3.md).
 
 ## Skills
 
 ### Environment (1)
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
-| `yooasset_check_installed` | Reflection probe — works even when the package is missing. Reports runtime assembly, package version, editor availability, and which of the 4 pipelines are present. | (none) |
+| `yooasset_check_installed` | Reflection probe — works even when the package is missing. Reports package version, `apiLine` (`"2.x"` / `"3.x"` / null), `supportedRange`, `versionSupported`, runtime assembly, editor availability, and which pipeline classes are present. | (none) |
 
 ### Build pipeline (7)
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
 | `yooasset_build_bundles` | Build bundles via `ScriptableBuildPipeline` or `RawFileBuildPipeline`. Writes to `<projectPath>/Bundles/<PackageName>/<Version>`. | `packageName`, `packageVersion="auto"`, `pipeline="ScriptableBuildPipeline"`, `buildTarget?`, `compression="LZ4"`, `fileNameStyle="HashName"`, `clearBuildCache=false`, `useAssetDependencyDB=true`, `verifyBuildingResult=true`, `replaceAssetPathWithAddress=false`, `stripUnityVersion=false`, `disableWriteTypeTree=false`, `trackSpriteAtlasDependencies=false`, `writeLinkXML=true`, `cacheServerHost=""`, `cacheServerPort=0`, `builtinShadersBundleName=""`, `monoScriptsBundleName=""`, `includePathInHash=false`, `buildinFileCopyOption="None"`, `buildinFileCopyParams=""`, `enableLog=true` |
-| `yooasset_simulate_build` | Run `AssetBundleSimulateBuilder.SimulateBuild` for an `EditorSimulateMode` package — virtual bundles only, no files written. | `packageName` |
+| `yooasset_simulate_build` | Run the simulate builder (2.x `AssetBundleSimulateBuilder`, 3.x `BundleSimulateBuilder`) for an `EditorSimulateMode` package — virtual bundles only, no files written. | `packageName` |
 | `yooasset_get_default_paths` | Return `BuildOutputRoot` + `StreamingAssetsRoot` that YooAsset uses. | (none) |
-| `yooasset_get_build_settings` | Read persisted YooAsset AssetBundle Builder EditorPrefs for a package/pipeline. | `packageName`, `pipeline?` |
-| `yooasset_set_build_settings` | Persist AssetBundle Builder EditorPrefs for repeatable build UI defaults. | `packageName`, `pipeline?`, `compression?`, `fileNameStyle?`, `buildinFileCopyOption?`, `buildinFileCopyParams?`, `encryptionServicesClassName?`, `manifestProcessServicesClassName?`, `manifestRestoreServicesClassName?`, `clearBuildCache?`, `useAssetDependencyDB?` |
-| `yooasset_open_builder_window` | Open the YooAsset `AssetBundle Builder` Editor window. | (none) |
-| `yooasset_open_collector_window` | Open the YooAsset `AssetBundle Collector` Editor window. | (none) |
+| `yooasset_get_build_settings` | Read persisted YooAsset Builder EditorPrefs for a package/pipeline. | `packageName`, `pipeline?` |
+| `yooasset_set_build_settings` | Persist Builder EditorPrefs for repeatable build UI defaults. | `packageName`, `pipeline?`, `compression?`, `fileNameStyle?`, `buildinFileCopyOption?`, `buildinFileCopyParams?`, `encryptionServicesClassName?`, `manifestProcessServicesClassName?`, `manifestRestoreServicesClassName?`, `clearBuildCache?`, `useAssetDependencyDB?` |
+| `yooasset_open_builder_window` | Open the YooAsset Builder window (`AssetBundle Builder` on 2.x, `Bundle Builder` on 3.x). | (none) |
+| `yooasset_open_collector_window` | Open the YooAsset Collector window (`AssetBundle Collector` on 2.x, `Bundle Collector` on 3.x). | (none) |
 
 ### YooAsset tools (8)
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
-| `yooasset_open_reporter_window` | Open the YooAsset AssetBundle Reporter window. | (none) |
-| `yooasset_open_debugger_window` | Open the YooAsset AssetBundle Debugger window. | (none) |
-| `yooasset_open_assetart_scanner_window` | Open the YooAsset AssetArt Scanner window. | (none) |
-| `yooasset_list_assetart_scanners` | List AssetArtScanner configurations, optionally filtered by keyword. | `keyword?` |
-| `yooasset_run_assetart_scanner` | Run one scanner and optionally save its report file. | `scannerGUID`, `saveDirectory?` |
-| `yooasset_run_all_assetart_scanners` | Run all scanners, optionally filtered by keyword. | `keyword?` |
-| `yooasset_import_assetart_scanner_config` | Import AssetArtScanner JSON config. | `configPath` |
-| `yooasset_export_assetart_scanner_config` | Export AssetArtScanner JSON config. | `configPath` |
+| `yooasset_open_reporter_window` | Open the YooAsset Reporter window (`AssetBundle Reporter` on 2.x, `Bundle Reporter` on 3.x). | (none) |
+| `yooasset_open_debugger_window` | Open the YooAsset Debugger window (`AssetBundle Debugger` on 2.x, `Bundle Debugger` on 3.x). | (none) |
+| `yooasset_open_assetart_scanner_window` | **2.x only.** Open the YooAsset AssetArt Scanner window. | (none) |
+| `yooasset_list_assetart_scanners` | **2.x only.** List AssetArtScanner configurations, optionally filtered by keyword. | `keyword?` |
+| `yooasset_run_assetart_scanner` | **2.x only.** Run one scanner and optionally save its report file. | `scannerGUID`, `saveDirectory?` |
+| `yooasset_run_all_assetart_scanners` | **2.x only.** Run all scanners, optionally filtered by keyword. | `keyword?` |
+| `yooasset_import_assetart_scanner_config` | **2.x only.** Import AssetArtScanner JSON config. | `configPath` |
+| `yooasset_export_assetart_scanner_config` | **2.x only.** Export AssetArtScanner JSON config. | `configPath` |
 
 ### Runtime validation (3)
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
-| `yooasset_runtime_validate_package` | Start an async PlayMode job that initializes `EditorSimulateMode`, sets default package, optionally validates one asset load/release and downloader status, then optionally cleans up and returns to Edit Mode. | `packageName`, `assetLocation?`, `restoreEditMode=true`, `cleanup=true`, `checkDownloader=true`, `downloadingMaxNumber=4`, `failedTryAgain=1` |
+| `yooasset_runtime_validate_package` | Start an async PlayMode job that initializes `EditorSimulateMode` (2.x also sets the default package; 3.x has none), optionally validates one asset load/release and downloader status, then optionally cleans up and returns to Edit Mode. | `packageName`, `assetLocation?`, `restoreEditMode=true`, `cleanup=true`, `checkDownloader=true`, `downloadingMaxNumber=4`, `failedTryAgain=1` |
 | `yooasset_runtime_get_validation_result` | Poll the runtime validation job status/result. | `jobId` |
 | `yooasset_runtime_cleanup` | Remove completed validation jobs and optionally force `YooAssets.Destroy()` / exit PlayMode. | `jobId?`, `forceYooAssetsDestroy=false`, `exitPlayMode=false` |
 
@@ -91,7 +93,7 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 | `yooasset_create_collector_package` | Create a new Collector Package. Fails on duplicate unless `allowDuplicate=true`. | `packageName`, `allowDuplicate=false` |
 | `yooasset_create_collector_group` | Create a Group inside an existing Package. | `packageName`, `groupName`, `groupDesc=""`, `activeRule="EnableGroup"`, `assetTags=""` |
 | `yooasset_add_collector` | Add an `AssetBundleCollector` to a Group. Validates `collectPath` via AssetDatabase and each rule via its registered class name. | `packageName`, `groupName`, `collectPath`, `collectorType="MainAssetCollector"`, `addressRule="AddressByFileName"`, `packRule="PackDirectory"`, `filterRule="CollectAll"`, `assetTags=""`, `userData=""` |
-| `yooasset_save_collector_config` | Persist the `AssetBundleCollectorSetting.asset`. Optionally run `FixFile()` to repair dangling rule references. | `fixErrors=true` |
+| `yooasset_save_collector_config` | Persist the collector setting asset (`AssetBundleCollectorSetting.asset` on 2.x, `BundleCollectorSetting.asset` on 3.x). Optionally run `FixFile()` to repair dangling rule references. | `fixErrors=true` |
 | `yooasset_modify_collector_settings` | Modify global Collector settings. | `showPackageView=false`, `uniqueBundleName=false`, `save=true` |
 | `yooasset_modify_collector_package` | Rename/describe a package and set package-level options. | `packageName`, `packageDesc?`, `newPackageName?`, `enableAddressable=false`, `supportExtensionless=true`, `locationToLower=false`, `includeAssetGUID=false`, `autoCollectShaders=true`, `ignoreRule="NormalIgnoreRule"`, `save=true` |
 | `yooasset_remove_collector_package` | Remove a Collector package by name. | `packageName`, `save=true` |
@@ -103,7 +105,7 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 ### Build report analysis (8)
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
-| `yooasset_load_build_report` | Deserialize a YooAsset BuildReport `.report` file and return `ReportSummary` metadata + top-level totals. | `reportPath` |
+| `yooasset_load_build_report` | Deserialize a YooAsset BuildReport `.report` file and return `ReportSummary` metadata + top-level totals. Every report skill adds `warnings` when the report's `YooVersion` major differs from the installed line. | `reportPath` |
 | `yooasset_list_report_bundles` | Paginated / filtered / sorted bundle listing from the report. | `reportPath`, `filterEncrypted?`, `filterTag?`, `sortBy="size"` (`size|name|refCount|dependCount`), `limit=100`, `offset=0` |
 | `yooasset_get_bundle_detail` | Full `ReportBundleInfo` for a single bundle — `DependBundles`, `ReferenceBundles`, asset `BundleContents`. | `reportPath`, `bundleName` |
 | `yooasset_list_report_assets` | Paginated / filtered / sorted asset listing from the report. | `reportPath`, `filterBundle?`, `filterTag?`, `search?`, `sortBy="path"` (`path|size|bundle|dependCount`), `limit=100`, `offset=0` |
@@ -119,7 +121,7 @@ import unity_skills as u
 
 # 0. Probe installation (works even if package is missing)
 u.call_skill("yooasset_check_installed")
-# -> { installed, packageVersion, availablePipelines: [...], editorAvailable, ... }
+# -> { installed, packageVersion, apiLine: "2.x" | "3.x" | None, supportedRange, versionSupported, availablePipelines: [...], ... }
 
 # 1. Configure collectors (end-to-end)
 u.call_skill("yooasset_list_collector_rules", ruleKind="all")  # discover available rule class names
@@ -176,23 +178,43 @@ u.call_skill("yooasset_runtime_get_validation_result", jobId=job["jobId"])
 
 ## Critical Rules (must read)
 
-1. **`yooasset_check_installed` is the ONLY skill that works without `YOO_ASSET` compile define.** Every other skill returns `NoYooAsset()` — correct the environment (install or upgrade the package, then let Unity recompile) before retrying.
-2. **Pipeline ↔ Parameters pairing is enforced.** `yooasset_build_bundles pipeline=ScriptableBuildPipeline` uses `ScriptableBuildParameters`; `pipeline=RawFileBuildPipeline` uses `RawFileBuildParameters`. `EditorSimulateBuildPipeline` is rejected here — use `yooasset_simulate_build`. `BuiltinBuildPipeline` is legacy and explicitly rejected.
+1. **`yooasset_check_installed` is the ONLY skill that works without the `YOO_ASSET` (2.x) / `YOO_ASSET_3` (3.x) compile define.** Every other skill returns `NoYooAsset()` — `MISSING_PACKAGE` when absent, `SKILL_ERROR` + `reason: "unsupported_package_version"` when the version is outside both ranges, `COMPILING` while Unity has not recompiled yet. Changing the package version is the user's decision.
+2. **Pipeline ↔ Parameters pairing is enforced.** `yooasset_build_bundles pipeline=ScriptableBuildPipeline` uses `ScriptableBuildParameters`; `pipeline=RawFileBuildPipeline` uses `RawFileBuildParameters`. `EditorSimulateBuildPipeline` is rejected here — use `yooasset_simulate_build`. `BuiltinBuildPipeline` (2.x) and `LegacyBuildPipeline` / `ArchiveFileBuildPipeline` / `InstantAssetBuildPipeline` (3.x) are rejected.
 3. **`packageVersion="auto"` fills `DateTime.UtcNow.ToString("yyyyMMddHHmm")`.** Pass a semver string when you want deterministic versioning.
 4. **`yooasset_add_collector` validates `collectPath`** via `AssetDatabase.LoadAssetAtPath`. Paths must be under `Assets/...`; absolute or relative `../` paths will fail.
 5. **Rule names in Create Skills are CLASS names, not display names.** Use `yooasset_list_collector_rules` to discover valid values (e.g. `EnableGroup`, `AddressByFileName`, `PackDirectory`, `CollectAll`, `NormalIgnoreRule`).
 6. **Collector mutations can save immediately or be batched.** Create skills mark `IsDirty=true`; modify/remove skills expose `save=true`. For bulk edits, pass `save=false` and finish with `yooasset_save_collector_config`.
 7. **`yooasset_build_bundles` is NOT undo-tracked** (external file I/O, not scene/asset state). `clearBuildCache=true` re-runs the full pipeline; defaults avoid it for incremental speed.
-8. **BuildReport lives next to bundles as a `.report` file** — YooAsset 2.3.18 writes it as `<BuildOutputRoot>/<BuildTarget>/<PackageName>/<Version>/<PackageName>_<PackageVersion>.report`. Do not pass `BuildReport.json`, `<PackageName>_<PackageVersion>.json`, or `buildlogtep.json`: the `.json` file is the package manifest and `buildlogtep.json` is the Scriptable Build Pipeline trace log. `yooasset_list_report_bundles` reads the `.report` file standalone, so you can also point it at an archived copy.
+8. **BuildReport lives next to bundles as a `.report` file** — both lines write it as `<BuildOutputRoot>/<BuildTarget>/<PackageName>/<Version>/<PackageName>_<PackageVersion>.report`. Do not pass `BuildReport.json`, `<PackageName>_<PackageVersion>.json`, or `buildlogtep.json`: the `.json` file is the package manifest and `buildlogtep.json` is the Scriptable Build Pipeline trace log. `yooasset_list_report_bundles` reads the `.report` file standalone, so you can also point it at an archived copy.
 9. **Runtime validation may enter PlayMode.** `yooasset_runtime_validate_package` is intentionally async; poll the job result and use `yooasset_runtime_cleanup` if the editor is left in a state you do not want.
 10. **`yooasset_list_independ_assets` identifies assets not referenced by any main asset** — candidates for the Collector to drop. Verify manually before removing; a main asset created later could still need them.
 
 ## Version Scope
 
-- **Target**: YooAsset `2.3.18` (published 2025-12-04). Source anchors use this version.
-- **Minimum**: `2.3.15` (enforced by the asmdef `versionDefines` entry). Earlier versions use an incompatible manifest format and pre-`FindAssetType` `IFilterRule` (would not compile against this Skill module).
-- **2.3.17** fixed a critical CRC validation bug; users on 2.3.15/2.3.16 should upgrade before relying on `verifyBuildingResult=true`.
-- Runtime-side rules (PlayMode mapping, handle lifecycle, update flow, legacy-API migration) → [yooasset-design/SKILL.md](../yooasset-design/SKILL.md).
+| Line | Range | Compile define | Verified against |
+|------|-------|----------------|------------------|
+| 2.x | `[2.3.15,2.4)` | `YOO_ASSET` | 2.3.19 |
+| 3.x | `[3.0.4,4.0)` | `YOO_ASSET_3` | 3.0.7 |
+
+- **Minimum 2.x**: `2.3.15`. Earlier versions use an incompatible manifest format and pre-`FindAssetType` `IFilterRule`. **2.3.17** fixed a critical CRC validation bug; users on 2.3.15/2.3.16 should upgrade before relying on `verifyBuildingResult=true`.
+- **3.x**: 3.0.0-beta to 3.0.3-beta are prereleases and rejected as unsupported. AssetArt Scanner / Reporter do not exist in 3.x (six skills answer `SKILL_ERROR`). Builder EditorPrefs saved by a 2.x Builder window are not read by 3.x (key prefix changed), so `yooasset_get_build_settings` returns defaults after an upgrade.
+- **Reports across lines**: a `.report` written by one major version and read by the other loses renamed fields (`IndependAssets` / `FileCRC` / `AssetGUID`) silently; the report skills flag it in `warnings`.
+- **Parameter names stay 2.x on both lines** and are mapped internally on 3.x:
+
+| Skill parameter / output | 3.x API it maps to |
+|--------------------------|--------------------|
+| `buildinFileCopyOption` | `BuildParameters.BundledCopyOption` (`EBundledCopyOption`), `BundleBuilderSetting.*BundledCopyOption` |
+| `buildinFileCopyParams` | `BuildParameters.BundledCopyParams`, `BundleBuilderSetting.*BundledCopyParams` |
+| `encryptionServicesClassName` | `BundleBuilderSetting.*BundleEncryptorClassName` |
+| `manifestProcessServicesClassName` | `BundleBuilderSetting.*ManifestEncryptorClassName` |
+| `manifestRestoreServicesClassName` | `BundleBuilderSetting.*ManifestDecryptorClassName` |
+| `independAssetCount`, `yooasset_list_independ_assets` | `BuildReport.IndependentAssets` |
+| `fileCRC` | `ReportBundleInfo.FileCrc` |
+| `assetGUID` (report assets / independent assets) | `ReportAssetInfo.AssetGuid`, `ReportIndependentAsset.AssetGuid` |
+| `activeRule` / `packRule` / `filterRule` / `ignoreRule` validation | `HasGroupActiveRuleName` / `HasBundlePackRuleName` / `HasAssetFilterRuleName` / `HasAssetIgnoreRuleName` |
+| `downloadingMaxNumber`, `failedTryAgain` | `ResourceDownloaderOptions(maximumConcurrency, retryCount)` |
+
+- Runtime-side rules (PlayMode mapping, handle lifecycle, update flow, legacy-API migration) → [yooasset-design/SKILL.md](../yooasset-design/SKILL.md); 3.x renames → [yooasset-design/V3.md](../yooasset-design/V3.md).
 
 ## Exact Signatures
 
