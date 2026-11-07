@@ -15,7 +15,7 @@ description: Automate YooAsset hot-update and asset bundles
 
 Editor-side automation for the YooAsset hot-update framework — build pipeline orchestration, Collector configuration CRUD, BuildReport analysis, PlayMode runtime validation, and companion YooAsset tools. Every skill wraps a concrete YooAsset Editor/runtime API path validated against the 2.3.19 and 3.0.7 sources; skill names and parameter names are identical on both lines. When the package is absent, every skill except `yooasset_check_installed` returns a `NoYooAsset()` error with install instructions.
 
-> **Requires**: `com.tuyoogame.yooasset` **2.3.15+ (2.x line)** or **3.0.4+ (3.x line)**, Unity 2022.3+. 3.0.0-beta to 3.0.3-beta and 4.x are unsupported. The six AssetArt skills work on the 2.x line only.
+> **Requires**: `com.tuyoogame.yooasset` **2.3.15+ (2.x line)** or **3.0.4+ (3.x line)**, Unity 2022.3+. 3.0.0-beta to 3.0.3-beta, 2.4+ and 3.1+ (their prereleases included) are unsupported. The six AssetArt skills work on the 2.x line only.
 > **Strongly recommended**: before writing ANY YooAsset runtime code, load [yooasset-design](../yooasset-design/SKILL.md). PlayMode / parameter-class / handle-lifecycle pitfalls are strict, and only the advisory module surfaces them.
 
 ## Guardrails
@@ -193,8 +193,8 @@ u.call_skill("yooasset_runtime_get_validation_result", jobId=job["jobId"])
 
 | Line | Range | Compile define | Verified against |
 |------|-------|----------------|------------------|
-| 2.x | `[2.3.15,2.4)` | `YOO_ASSET` | 2.3.19 |
-| 3.x | `[3.0.4,4.0)` | `YOO_ASSET_3` | 3.0.7 |
+| 2.x | `[2.3.15,2.4.0-0)` | `YOO_ASSET` | 2.3.19 |
+| 3.x | `[3.0.4,3.1.0-0)` | `YOO_ASSET_3` | 3.0.7 |
 
 - **Minimum 2.x**: `2.3.15`. Earlier versions use an incompatible manifest format and pre-`FindAssetType` `IFilterRule`. **2.3.17** fixed a critical CRC validation bug; users on 2.3.15/2.3.16 should upgrade before relying on `verifyBuildingResult=true`.
 - **3.x**: 3.0.0-beta to 3.0.3-beta are prereleases and rejected as unsupported. AssetArt Scanner / Reporter do not exist in 3.x (six skills answer `SKILL_ERROR`). Builder EditorPrefs saved by a 2.x Builder window are not read by 3.x (key prefix changed), so `yooasset_get_build_settings` returns defaults after an upgrade.

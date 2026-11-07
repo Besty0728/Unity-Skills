@@ -61,12 +61,12 @@
         },
         {
             "name": "com.tuyoogame.yooasset",
-            "expression": "[2.3.15,2.4)",
+            "expression": "[2.3.15,2.4.0-0)",
             "define": "YOO_ASSET"
         },
         {
             "name": "com.tuyoogame.yooasset",
-            "expression": "[3.0.4,4.0)",
+            "expression": "[3.0.4,3.1.0-0)",
             "define": "YOO_ASSET_3"
         },
         {

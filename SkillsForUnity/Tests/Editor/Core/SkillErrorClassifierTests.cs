@@ -57,7 +57,7 @@ namespace UnitySkills.Tests.Core
         public void UnsupportedPackageVersion_IsASkillErrorThatAsksTheUser_NotMissingPackage()
         {
             var response = Newtonsoft.Json.Linq.JObject.FromObject(SkillErrorResponse.UnsupportedPackageVersion(
-                "com.tuyoogame.yooasset", "4.0.0", "[2.3.15,2.4) and [3.0.4,4.0)", "Pin a supported version."));
+                "com.tuyoogame.yooasset", "4.0.0", "[2.3.15,2.4.0-0) and [3.0.4,3.1.0-0)", "Pin a supported version."));
 
             Assert.AreEqual("SKILL_ERROR", response["errorCode"]?.ToString());
             Assert.AreEqual("ask_user", response["suggestedFixes"]?[0]?["action"]?.ToString());
@@ -87,6 +87,11 @@ namespace UnitySkills.Tests.Core
         [TestCase("3.0.3-beta", null)]
         [TestCase("3.0.4", "3.x")]
         [TestCase("3.0.7", "3.x")]
+        [TestCase("3.0.9", "3.x")]
+        [TestCase("3.1.0-beta", null)]
+        [TestCase("2.4.0-beta", null)]
+        [TestCase("3.1.0", null)]
+        [TestCase("4.0.0-beta", null)]
         [TestCase("4.0.0", null)]
         public void YooAssetApiLine_MatchesTheVersionDefines(string version, string expected)
         {

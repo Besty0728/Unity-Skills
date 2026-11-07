@@ -38,8 +38,8 @@ namespace UnitySkills
 
         // Same ordering rule as an asmdef versionDefine: [min, max).
         private const string SupportedMinVersion = "8.12.0";
-        private const string SupportedMaxVersion = "10.0.0";
-        private const string SupportedRange = ">=8.12.0 <10.0.0 (hybridclr_unity 8.12+ and 9.x)";
+        private const string SupportedMaxVersion = "10.0.0-0";
+        private const string SupportedRange = ">=8.12.0, below 10.0 and its prereleases (hybridclr_unity 8.12+ and 9.x)";
 
         private const string SettingsKey = "hybridclr.settings";
         private const string GeneratedSourcesKey = "hybridclr.generatedSources";

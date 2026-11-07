@@ -203,7 +203,7 @@ namespace UnitySkills
         }
 
         private const string PackageId = "com.tuyoogame.yooasset";
-        private const string SupportedRange = "[2.3.15,2.4) or [3.0.4,4.0)";
+        private const string SupportedRange = "[2.3.15,2.4.0-0) or [3.0.4,3.1.0-0)";
 
         /// <summary>
         /// "2.x" / "3.x" when <paramref name="version"/> is on a line this module is written against, else null. Mirrors the
@@ -212,8 +212,8 @@ namespace UnitySkills
         /// </summary>
         internal static string ResolveApiLine(string version)
         {
-            if (PackageManagerHelper.IsVersionInRange(version, "2.3.15", "2.4")) return "2.x";
-            if (PackageManagerHelper.IsVersionInRange(version, "3.0.4", "4.0.0-0")) return "3.x";
+            if (PackageManagerHelper.IsVersionInRange(version, "2.3.15", "2.4.0-0")) return "2.x";
+            if (PackageManagerHelper.IsVersionInRange(version, "3.0.4", "3.1.0-0")) return "3.x";
             return null;
         }
 
@@ -254,7 +254,7 @@ namespace UnitySkills
                 return "Versions below 2.3.15 predate the Editor API this module calls.";
             if (PackageManagerHelper.IsVersionInRange(version, "3.0.0-0", "3.0.4"))
                 return "3.0.0-beta to 3.0.3-beta are prereleases; the 3.x line is supported from 3.0.4.";
-            return "This YooAsset major version has not been adapted yet.";
+            return "Each line is pinned to one minor version (2.3.x, 3.0.x), because YooAsset changes its Editor API between minor versions; this one has not been adapted yet.";
         }
 #endif
 
@@ -281,7 +281,7 @@ namespace UnitySkills
             reason = SkillErrorResponse.UnsupportedPackageVersionReason,
             packageId = PackageId,
             installedVersion = PackageManagerHelper.GetInstalledVersion(PackageId),
-            supportedRange = "[2.3.15,2.4)"
+            supportedRange = "[2.3.15,2.4.0-0)"
         };
 #endif
 
