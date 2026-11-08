@@ -10,6 +10,10 @@ namespace UnitySkills
 {
     internal static class SerializedPropertySkillUtility
     {
+        // A miss scans every loaded type, over a second per call on Unity 6; loaded types only change with a domain
+        // reload, which also resets this cache, so misses are cached too.
+        private static readonly Dictionary<string, Type> _unityObjectTypes = new Dictionary<string, Type>(StringComparer.Ordinal);
+
         public static SerializedProperty FindProperty(SerializedObject serializedObject, string propertyPath)
         {
             if (serializedObject == null || string.IsNullOrWhiteSpace(propertyPath))
@@ -948,14 +952,16 @@ namespace UnitySkills
                 return typeof(RectTransform);
             }
 
-            var componentType = ComponentSkills.FindComponentType(objectType);
-            if (componentType != null) return componentType;
+            if (_unityObjectTypes.TryGetValue(objectType, out var known)) return known;
 
-            return SkillsCommon.GetAllLoadedTypes()
+            var resolved = ComponentSkills.FindComponentType(objectType) ?? SkillsCommon.GetAllLoadedTypes()
                 .FirstOrDefault(t =>
                     typeof(UnityEngine.Object).IsAssignableFrom(t) &&
                     (string.Equals(t.Name, objectType, StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(t.FullName, objectType, StringComparison.Ordinal)));
+            if (_unityObjectTypes.Count > 5000) _unityObjectTypes.Clear();
+            _unityObjectTypes[objectType] = resolved;
+            return resolved;
         }
 
         // Culture-invariant: a comma-decimal or non-ASCII-minus current culture must not change the comma-separated values.
