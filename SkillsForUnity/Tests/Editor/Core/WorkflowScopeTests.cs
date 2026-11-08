@@ -21,10 +21,14 @@ namespace UnitySkills.Tests.Core
         private const string AgentA = "WorkflowScopeAgentA";
         private string _tempRoot;
         private bool _autoCleanEnabled;
+        private SkillsOperatingMode _savedMode;
 
         [SetUp]
         public void SetUp()
         {
+            // These steps delete objects and save scenes, which only Bypass runs; a fresh install (CI) defaults to Auto.
+            _savedMode = SkillsModeManager.CurrentMode;
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             _autoCleanEnabled = WorkflowAutoCleanConfig.Enabled;
             WorkflowAutoCleanConfig.Enabled = false;
 
@@ -40,6 +44,7 @@ namespace UnitySkills.Tests.Core
         [TearDown]
         public void TearDown()
         {
+            SkillsModeManager.CurrentMode = _savedMode;
             WorkflowManager.AbortTask();
             WorkflowManager.OverrideRootForTests(null);
             // The scene that holds the test objects must be closed before its folder can be deleted.

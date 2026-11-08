@@ -139,7 +139,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **可选包版本不在支持范围时如实报错** — 新增 `SkillErrorResponse.UnsupportedPackageVersion`：`SKILL_ERROR`，第一条修复是 `ask_user`，响应带 `reason:"unsupported_package_version"`、`installedVersion`、`supportedRange`，不再说「未安装」或建议装旧版。NGO 3.x（需要 Unity 6000.7，本版未适配，可钉 2.13.3）、YooAsset 3.0.0–3.0.3 beta 与 2.4 / 3.1 起的版本、HybridCLR 8.12 以下与 10.0（含其预发布版）都走这条；`PackageManagerHelper.IsVersionInRange` 按 versionDefine 的规则排序（预发布版在正式版之前）。冒烟测试与可选包测试夹具遇到它记为跳过。
 - **`netcode_set_debug_simulator` 改为结构化报错** — UnityTransport 的 debug simulator 自 NGO 2.2.0 起已无效（技能以前报成功却什么都没改），3.x 起该 API 直接编译报错。技能名与参数不变，不再写入，错误指向 Multiplayer Tools 的 Network Simulator。
 - **YooAsset 每条版本线锁到一个小版本** — 2.x 为 `[2.3.15,2.4.0-0)`，3.x 为 `[3.0.4,3.1.0-0)`。原来的 `[2.3.15,3.0)` 会把 openupm 上的 `3.0.0-beta` 算进 2.x（预发布版排在正式版之前），用 2.x 代码编译 3.x API 会让整个插件编译失败；上界写成 `-0`，下一个小版本的预发布版也不会进入区间。YooAsset 在小版本之间也改 Editor API（如 2.2 → 2.3），新小版本出来时如实报不支持，而不是编译失败。
-- **可选包 CI** — 6000.3 作业改钉 YooAsset 3.0.7；2022.3 作业新装 YooAsset 2.3.19（floor 6）。NGO 仍钉 2.13.3；HybridCLR 不能在 CI 分发，靠本地实测。
+- **可选包 CI** — 6000.3 作业改钉 YooAsset 3.0.7；2022.3 作业新装 YooAsset 2.3.19（floor 6）。NGO 仍钉 2.13.3；HybridCLR 不能在 CI 分发，靠本地实测。编译矩阵的 6000.5 改用 6000.5.11f1（6000.5.0f1 的 CI 镜像已下架）；Workflow 回退测试显式切到 Bypass（新安装默认 Auto，CI 上删除与 `scene_save` 会被拦截），导入工作进程门禁测试跳过 NGO 的 IL 后处理器注入的 `NetworkVariableSerializationHelper`。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
 
 ### Fixed

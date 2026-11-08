@@ -200,6 +200,10 @@ namespace Canary
             const BindingFlags all = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
             foreach (var type in types)
             {
+                // Netcode for GameObjects' IL post-processor injects this type, with its own load hook, into every assembly that
+                // references the package; it has no source here and is the package's code, not an entry point of ours.
+                if (type.Name == "NetworkVariableSerializationHelper")
+                    continue;
                 if (type.IsDefined(typeof(InitializeOnLoadAttribute), false))
                     yield return type.Name + "..cctor";
                 bool postprocessor = typeof(AssetPostprocessor).IsAssignableFrom(type);

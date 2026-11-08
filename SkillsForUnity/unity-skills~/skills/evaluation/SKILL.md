@@ -1,6 +1,6 @@
 ---
 name: unity-evaluation
-description: Run the UnitySkills evaluation set (scored benchmark tasks) on the user's own Unity project. Use only when the user explicitly asks to run, resume or continue a UnitySkills evaluation, or pastes an evaluation session prompt; never for ordinary Unity work.
+description: Run the UnitySkills evaluation set (a scored benchmark of tasks) on the user's own Unity project - start a session with the bundled entry script and complete its tasks one by one. Use only when the user explicitly asks to run, resume or continue a UnitySkills evaluation or benchmark (for example "run the UnitySkills evaluation"), or pastes an evaluation session prompt. Never use it for ordinary Unity work, Unity questions, or testing the user's own game. 仅当用户明确要求运行或继续 UnitySkills 评测集（跑测评集、评测集测试、UnitySkills 评测），或贴出评测会话提示时使用；日常 Unity 开发、Unity 问答、测试用户自己的游戏一律不要使用。
 ---
 
 # UnitySkills Evaluation (advisory)
