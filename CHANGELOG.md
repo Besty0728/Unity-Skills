@@ -40,6 +40,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### 本版实测
 
 - **写操作的 Workflow 开销**：2022.3 URP 上，空历史和 40 MB（约 5.8 万步）历史下每次写操作的 workflow 耗时 p95 都是 0 ms；旧格式在 15 MB 历史时每次写入中位 248 ms。6 万步历史的完整重放约 0.8 秒。
+- **Workflow 内存上限复核**（2022.3.62f2，真实编辑器）：6 万步历史全量加载 427 ms，托管堆常驻增量 57.2 MB（约 1 KB/步），不另设日志体积上限；删除一个含 300 MB 文件的文件夹再回退，编辑器 RSS 峰值只多约 1 MB，文件逐字节复原；覆盖 1092 步、129 项的回退预览连续执行 20 次，RSS 在 1.11–1.33 GB 之间波动、不累积。
 
 | 指标 | 旧整份历史（对照） | 3.0 只追加 |
 |---|---|---|
@@ -102,6 +103,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口先压到 **7936** 字节（相对 v2.9.1 的 8189），按评测补规则涨到 8188 字节后，再按下一条重写为 **7433** 字节：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
 - **面板石墨配色** — 深浅两套配色换成石墨色系，控件高度与圆角统一（4 / 6 / 8 三档），横幅、提示与状态统一为淡色底加同色描边，删除类按钮改为红色描边的空心按钮；标签栏保持原样式。
 - **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
+- **Workflow 常驻内存有上限** — 回退、撤销、重做与 dryRun 预览读回的快照在最外层操作结束后释放；写日志失败而只留在内存里的步骤最多保留 50 个的完整内容，更早的只留摘要，回退时如实报告「未保存、无法还原」；按 agent 记录的空闲计时最多 64 个，满了先忘记最久没调用的。
 - **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
 - **`workflow_list` 返回紧凑文本行** — `s<n> 时间 技能 目标 (改动数)`，其他 agent 的步骤带 `@agent`，批量带 `xN`，被回退的步骤标 `(undone)`；检查点行 `c<n>` 穿插其中；新增 `limit`、`agent`、`before`、`format` 与 `view:"checkpoints"`。
 - **改动数如实** — 一步中实际没有变化的场景对象快照会被剪掉，什么都没改的调用不再留下步骤。
@@ -142,6 +144,9 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Fixed
 
 - **装了新版可选包时误报「未安装」** — 装 YooAsset 3.x 时 39 个技能说未安装并让人去装 `#2.3.18`；装 NGO 3.x 时 38 个技能说未安装并建议安装；装 HybridCLR 9.x 时 `hybridclr_status` 报已安装但各项为空，`copy_hotupdate_dlls(includeAotAssemblies)` 报成功却一个 AOT DLL 都没复制，对应测试夹具整体被跳过、回归看起来是绿的。
+- **回退与预览读回的快照一直留在内存里** — 每次回退、dryRun 预览或冲突检查读回的完整快照以前直到域重载都不释放，反复预览一个较早的检查点会把成千上万步的内容留在内存中；现在操作结束即释放。
+- **删除文件夹时整份读入内存** — 删除文件夹前的备份以前对每个文件 `File.ReadAllBytes`，含大文件的文件夹会瞬间占用同等内存，超过 2 GB 的文件直接失败；现在与单文件备份一样流式计算哈希并复制。
+- **单步超过 500 个对象时静默截断** — 一步最多记录 500 个对象，以前超出的部分只写一条 Verbose 日志，回退时这些对象不会被还原也不报告；现在步骤记录跳过的数量（日志字段 `ns`），回退结果的 `skippedItems` 与 dryRun 预览的无法还原项会列出它。
 - **NGO 文档与警告的事实错误** — PlayerPrefab 不在 NetworkPrefabsList 时「运行时会被拒绝」不成立（NetworkManager 启动时自动注册），警告文案与 netcode / netcode-design 文档改正；版本统一写「验证于 2.13.3」（原来两处分别写 2.13.1、2.11.0）。
 - **查询串里的第二个 `?`** — `?wait=90?expectInstance=X` 这类写法以前把 `wait` 读成 `"90?expectInstance=X"`，实例钉被悄悄丢掉（评测中出现 4 次）；现在 `&` 与 `?` 都当分隔符，`%3F` 在切分之后才解码，仍是字面 `?`。值里没编码的 `?` 会把这个值截断，协议文档已写明。
 - **根 `SKILL.md` 关于 `auto` 模式的事实错误** — 旧文写 `auto` 下写操作都直接执行；实际删除、触发重载、进 Play 模式与 `riskLevel` high 的技能在 `auto` / `approval` 下返回 `MODE_FORBIDDEN`，而新装插件默认就是 `auto`。`protocol-operating-mode.md` 里「The server will not stop you in Auto」与同文件的模式表矛盾，一并改正。

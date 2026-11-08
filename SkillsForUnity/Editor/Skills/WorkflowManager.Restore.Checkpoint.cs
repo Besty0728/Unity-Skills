@@ -179,6 +179,13 @@ namespace UnitySkills
         internal static RestorePreview PreviewSteps(List<WorkflowTask> steps, string to, string callerAgent, long checkpointCursor = 0,
             string scope = null)
         {
+            using (EnterHydrationScope())
+                return PreviewStepsInScope(steps, to, callerAgent, checkpointCursor, scope);
+        }
+
+        private static RestorePreview PreviewStepsInScope(List<WorkflowTask> steps, string to, string callerAgent, long checkpointCursor,
+            string scope)
+        {
             string agent = NormalizeAgent(callerAgent);
             var refusal = RestoreRefusal();
             if (refusal != null)
@@ -232,9 +239,14 @@ namespace UnitySkills
             }
             if (runs.Count > MaxPreviewItems)
                 preview.moreItems = runs.Count - MaxPreviewItems;
+            foreach (var step in steps.Where(step => step.snapshotsSkipped > 0))
+                preview.unresolvable.Add(new RestoreUnresolvable { target = step.DisplayId, reason = SkippedSnapshotsReason(step) });
             preview.danglingReferences = FindDanglingReferences(runs, steps, planning.GidAliases);
             return preview;
         }
+
+        private static string SkippedSnapshotsReason(WorkflowTask step) =>
+            $"{step.snapshotsSkipped} objects past the 500-per-step capture limit were not recorded and cannot be restored";
 
         /// <summary>The name a preview lists a work by: its setting key, its asset path, or its object name.</summary>
         private static string PreviewName(RestoreWork work)
@@ -281,6 +293,9 @@ namespace UnitySkills
         private static string UnresolvableReason(RestoreWork work)
         {
             var snapshot = work.Item.Snapshot;
+            // A payload that cannot be read back (a dropped unsaved one, or a damaged blob) fails the run the same way.
+            if (snapshot.payloadError != null)
+                return snapshot.payloadError;
             if (IsSceneWork(snapshot) && TryGetClosedScene(snapshot.globalObjectId, out string scenePath))
                 return $"scene {scenePath} is not open";
 
@@ -301,6 +316,13 @@ namespace UnitySkills
         internal static RestoreOutcome RestoreSteps(List<WorkflowTask> steps, string to, string callerAgent, string conflicts = null,
             long checkpointCursor = 0, string scope = null)
         {
+            using (EnterHydrationScope())
+                return RestoreStepsInScope(steps, to, callerAgent, conflicts, checkpointCursor, scope);
+        }
+
+        private static RestoreOutcome RestoreStepsInScope(List<WorkflowTask> steps, string to, string callerAgent, string conflicts,
+            long checkpointCursor, string scope)
+        {
             var refused = RestoreRefusal();
             if (refused != null)
                 return refused;
@@ -313,6 +335,8 @@ namespace UnitySkills
             var outcome = new RestoreOutcome { to = to, matchedSteps = steps.Count };
             if (steps.Count == 0)
                 return outcome;
+            foreach (var step in steps.Where(step => step.snapshotsSkipped > 0))
+                AddSkippedItem(outcome, $"{step.DisplayId}: {SkippedSnapshotsReason(step)}");
 
             // A conflict refuses the restore unless conflicts names its ids, so the planning takes the ids the caller passed (none on a refusal).
             var planning = PlanRestore(steps, callerAgent, checkpointCursor, overwrite ?? new HashSet<string>(StringComparer.Ordinal), restoreScope);

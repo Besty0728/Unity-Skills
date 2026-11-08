@@ -135,6 +135,31 @@ namespace UnitySkills
 
         #region Payloads
 
+        // Payloads read back by TryHydrate stay in memory until the outermost restore or preview returns: its planning and its run
+        // both read them, and nothing needs them afterwards. Calls nest, so only the outermost exit releases them.
+        private static int _hydrationScopeDepth;
+        private static readonly List<ObjectSnapshot> _hydratedSnapshots = new List<ObjectSnapshot>();
+
+        private readonly struct HydrationScope : IDisposable
+        {
+            public void Dispose() => ExitHydrationScope();
+        }
+
+        private static HydrationScope EnterHydrationScope()
+        {
+            _hydrationScopeDepth++;
+            return default;
+        }
+
+        private static void ExitHydrationScope()
+        {
+            if (--_hydrationScopeDepth > 0)
+                return;
+            foreach (var snapshot in _hydratedSnapshots)
+                WorkflowStore.ReleasePayload(snapshot);
+            _hydratedSnapshots.Clear();
+        }
+
         /// <summary>
         /// Reads a stub's payload back from the store; a snapshot that was never released has nothing to read. Its header
         /// stays authoritative over the payload's copy of the same fields. Fails with the reason when the blob is missing or
@@ -173,6 +198,7 @@ namespace UnitySkills
             }
             WorkflowStore.ApplyHeader(header, snapshot);
             snapshot.payloadReleased = false;
+            _hydratedSnapshots.Add(snapshot);
             return true;
         }
 
@@ -377,6 +403,7 @@ namespace UnitySkills
             _maintenanceScheduled = false;
             _maintenanceSizeCheck = false;
             _pendingAgentTasks.Clear();
+            _unsavedTasks.Clear();
             // The blobs of the task still being recorded are preserved: it was never part of the history the
             // user asked to clear in the first place. Everything else goes, whatever its age — this skill promises
             // to clear the file store — which also resynchronizes the store with the history and clears recovery mode.

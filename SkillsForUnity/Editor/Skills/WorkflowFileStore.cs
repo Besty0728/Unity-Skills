@@ -318,6 +318,24 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Stores a file's content by streaming it, so a large file is never held in memory. Returns its hash, or null when the file
+        /// cannot be hashed or stored.
+        /// </summary>
+        internal static string StoreFileAtPath(string fullPath)
+        {
+            try
+            {
+                string hash = ComputeSourceFileHash(fullPath);
+                return !string.IsNullOrEmpty(hash) && StoreBlob(fullPath, hash) ? hash : null;
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogError($"[WorkflowFileStore] Failed to store file {fullPath}: {ex.Message}");
+                return null;
+            }
+        }
+
         public static string StoreBytes(byte[] bytes)
         {
             if (bytes == null) return null;

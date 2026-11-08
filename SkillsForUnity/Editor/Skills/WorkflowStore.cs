@@ -53,6 +53,7 @@ namespace UnitySkills
         internal static long SegmentMaxBytesForTests;
         internal static int SegmentMaxLinesForTests;
         internal static Func<string, bool> SegmentReadFailsForTests;
+        internal static bool AppendFailsForTests;
         internal static int AppendsForTests;
         internal static int DirectoryEnumerationsForTests;
         internal static int FullReplaysForTests;
@@ -114,6 +115,7 @@ namespace UnitySkills
             [JsonProperty("sp")] public List<long> Steps;
             [JsonProperty("al")] public List<string[]> Aliases;
             [JsonProperty("sc")] public string Scope;
+            [JsonProperty("ns")] public int SnapshotsSkipped;
         }
 
         /// <summary>
@@ -176,7 +178,7 @@ namespace UnitySkills
                 Kind = "task", Stack = stack, IsNew = isNew ? 1 : 0, Id = task.id, Seq = task.seq, Tag = task.tag,
                 Description = task.description, Timestamp = task.timestamp, SessionId = task.sessionId, Agent = task.agent,
                 Group = task.group, Target = task.target, IdSession = task.idSession, Changes = changes,
-                CursorStart = task.cursorStart, CursorEnd = task.cursorEnd
+                CursorStart = task.cursorStart, CursorEnd = task.cursorEnd, SnapshotsSkipped = task.snapshotsSkipped
             });
         }
 
@@ -263,6 +265,7 @@ namespace UnitySkills
                     case "sp": record.Steps = ReadSeqs(reader); break;
                     case "al": record.Aliases = ReadAliases(reader); break;
                     case "sc": record.Scope = reader.ReadAsString(); break;
+                    case "ns": record.SnapshotsSkipped = reader.ReadAsInt32() ?? 0; break;
                     default: reader.Skip(); break;
                 }
             }
@@ -434,6 +437,9 @@ namespace UnitySkills
         {
             if (!string.IsNullOrEmpty(snapshot.payloadHash))
                 return true;
+            // Dropped unsaved (see DropUnsavedPayload): there is no payload left to store, and storing the cleared one would lose it.
+            if (snapshot.payloadError != null)
+                return false;
             string hash = WorkflowFileStore.StoreBytes(SkillsCommon.Utf8NoBom.GetBytes(JsonUtility.ToJson(snapshot)));
             if (string.IsNullOrEmpty(hash))
                 return false;
@@ -524,6 +530,21 @@ namespace UnitySkills
             snapshot.fileRefs = DirectoryHashes(snapshot);
             ClearPayloadFields(snapshot);
         }
+
+        /// <summary>
+        /// Drops the payload of a snapshot whose task was never appended, so it stays in memory only as its header. Restoring it then
+        /// reports <see cref="UnsavedPayloadError"/>. A snapshot already released to the log keeps its payload, which the log names.
+        /// </summary>
+        internal static void DropUnsavedPayload(ObjectSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.payloadReleased)
+                return;
+            ClearPayloadFields(snapshot);
+            snapshot.payloadError = UnsavedPayloadError;
+        }
+
+        private const string UnsavedPayloadError =
+            "This change was never saved (workflow history write failed), so it cannot be restored.";
 
         private static void ClearPayloadFields(ObjectSnapshot snapshot)
         {
@@ -792,6 +813,8 @@ namespace UnitySkills
         {
             if (lines == null || lines.Count == 0)
                 return true;
+            if (AppendFailsForTests)
+                return false;
             EnsureInitialized();
 
             var text = new StringBuilder();
@@ -1170,6 +1193,7 @@ namespace UnitySkills
                 idSession = record.IdSession,
                 cursorStart = record.CursorStart,
                 cursorEnd = record.CursorEnd,
+                snapshotsSkipped = record.SnapshotsSkipped,
                 snapshots = new List<ObjectSnapshot>(record.Changes?.Count ?? 0)
             };
             if (record.Changes != null)
@@ -1531,6 +1555,7 @@ namespace UnitySkills
             SegmentMaxBytesForTests = 0;
             SegmentMaxLinesForTests = 0;
             SegmentReadFailsForTests = null;
+            AppendFailsForTests = false;
             ResetState();
         }
 

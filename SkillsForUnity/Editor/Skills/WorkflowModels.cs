@@ -194,6 +194,7 @@ namespace UnitySkills
         public long cursorEnd;
         public string idSession;  // Editor session the snapshots were captured in; instance/entity ids are only valid there
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
+        public int snapshotsSkipped; // Objects past the per-step capture limit that were not recorded, so this step cannot restore them
         [NonSerialized] private HashSet<string> _snapshotKeys;
         [NonSerialized] private HashSet<string> _entityKeys;
         [NonSerialized] internal bool autoStarted;

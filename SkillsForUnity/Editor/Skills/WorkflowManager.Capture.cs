@@ -101,6 +101,7 @@ namespace UnitySkills
             const int MaxSnapshotsPerTask = 500;
             if (_currentTask.snapshots.Count >= MaxSnapshotsPerTask)
             {
+                _currentTask.snapshotsSkipped++;
                 SkillsLogger.LogVerbose($"Snapshot limit reached ({MaxSnapshotsPerTask}), skipping: {obj.name}");
                 return;
             }
@@ -498,7 +499,7 @@ namespace UnitySkills
                 {
                     string metaPath = directory + ".meta";
                     string metaHash = File.Exists(metaPath)
-                        ? WorkflowFileStore.StoreBytes(File.ReadAllBytes(metaPath))
+                        ? WorkflowFileStore.StoreFileAtPath(metaPath)
                         : null;
                     if (File.Exists(metaPath) && string.IsNullOrEmpty(metaHash))
                         return null;
@@ -516,10 +517,10 @@ namespace UnitySkills
                     if (file.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    string fileHash = WorkflowFileStore.StoreBytes(File.ReadAllBytes(file));
+                    string fileHash = WorkflowFileStore.StoreFileAtPath(file);
                     string metaPath = file + ".meta";
                     string metaHash = File.Exists(metaPath)
-                        ? WorkflowFileStore.StoreBytes(File.ReadAllBytes(metaPath))
+                        ? WorkflowFileStore.StoreFileAtPath(metaPath)
                         : null;
                     if (string.IsNullOrEmpty(fileHash) || (File.Exists(metaPath) && string.IsNullOrEmpty(metaHash)))
                         return null;
@@ -534,7 +535,7 @@ namespace UnitySkills
 
                 string rootMetaPath = normalizedRoot + ".meta";
                 string rootMetaHash = File.Exists(rootMetaPath)
-                    ? WorkflowFileStore.StoreBytes(File.ReadAllBytes(rootMetaPath))
+                    ? WorkflowFileStore.StoreFileAtPath(rootMetaPath)
                     : null;
                 if (File.Exists(rootMetaPath) && string.IsNullOrEmpty(rootMetaHash))
                     return null;

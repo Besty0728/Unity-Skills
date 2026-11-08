@@ -47,6 +47,10 @@ namespace UnitySkills
         private const string AgentActivitySessionKey = "UnitySkills_WorkflowAgentActivity";
         private const string IdSessionKey = "UnitySkills_WorkflowIdSession";
         private static Dictionary<string, AgentActivity> _agentActivity;
+
+        // Bounds the map, and so its SessionState value, for a session with many callers. The least recently active agent is
+        // forgotten first; its next tracked write then opens a new run, as after a restart.
+        private const int MaxTrackedAgents = 64;
         private static string _idSession;
         internal static Func<long> NowUnixMsForTests;
         internal static EditorChangeTrackerService.AgentLookup AgentLookupForTests;
@@ -55,6 +59,11 @@ namespace UnitySkills
         // resolver keeps an answer for 60 s, so one that turns up later could only belong to a reused port.
         private static readonly List<WorkflowTask> _pendingAgentTasks = new List<WorkflowTask>();
         private const long PendingAgentWindowMs = 60_000;
+
+        // Tasks whose append failed, oldest first. They stay in memory for this session with their payloads; past the limit
+        // the oldest one drops its payloads, so restoring it reports why instead of holding them.
+        private const int MaxUnsavedTasksWithPayload = 50;
+        private static readonly Queue<WorkflowTask> _unsavedTasks = new Queue<WorkflowTask>();
 
         // Set by ResetStateForTests: from then on the activity map lives in memory only, so tests never erase or overwrite
         // the editor's real SessionState value, which is read again after the next domain reload.
@@ -195,11 +204,27 @@ namespace UnitySkills
             AddTaskRecord(batch, WorkflowStore.TasksStack, task, isNew: true);
             if (_history != null)
                 _history.tasks.Add(task);
-            if (!Commit(batch) && _history == null)
+            if (!Commit(batch))
             {
-                // Not persisted: keep it for this session at least, as an unsaved history file used to.
-                LoadHistory();
-                _history.tasks.Add(task);
+                if (_history == null)
+                {
+                    // Not persisted: keep it for this session at least, as an unsaved history file used to.
+                    LoadHistory();
+                    _history.tasks.Add(task);
+                }
+                KeepUnsavedTask(task);
+            }
+        }
+
+        private static void KeepUnsavedTask(WorkflowTask task)
+        {
+            _unsavedTasks.Enqueue(task);
+            while (_unsavedTasks.Count > MaxUnsavedTasksWithPayload)
+            {
+                var oldest = _unsavedTasks.Dequeue();
+                if (oldest.snapshots == null) continue;
+                foreach (var snapshot in oldest.snapshots)
+                    WorkflowStore.DropUnsavedPayload(snapshot);
             }
         }
 
@@ -492,7 +517,11 @@ namespace UnitySkills
             _agentActivity ??= new Dictionary<string, AgentActivity>(StringComparer.Ordinal);
 
             if (!_agentActivity.TryGetValue(agent, out var activity))
+            {
+                while (_agentActivity.Count >= MaxTrackedAgents)
+                    _agentActivity.Remove(_agentActivity.OrderBy(pair => pair.Value.lastCallMs).First().Key);
                 _agentActivity[agent] = activity = new AgentActivity();
+            }
             return activity;
         }
 
@@ -720,6 +749,8 @@ namespace UnitySkills
             _agentActivityDetached = true;
             _agentActivity = new Dictionary<string, AgentActivity>(StringComparer.Ordinal);
             _pendingAgentTasks.Clear();
+            _unsavedTasks.Clear();
+            _hydratedSnapshots.Clear();
             _persistentGidCache.Clear();
             NowUnixMsForTests = null;
             AgentLookupForTests = null;
