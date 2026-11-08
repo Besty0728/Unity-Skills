@@ -16,6 +16,9 @@ namespace UnitySkills
     {
         private const string SceneNameNote = "Bare scene name, no '.unity' extension or folder path -- appending either breaks the match against loaded scenes.";
 
+        internal static bool? PlayingOverrideForTests;
+        private static bool IsPlaying => PlayingOverrideForTests ?? EditorApplication.isPlaying;
+
         [UnitySkill("scene_create", "Create a new empty scene",
             Category = SkillCategory.Scene, Operation = SkillOperation.Create,
             Tags = new[] { "new", "empty", "setup" },
@@ -75,6 +78,19 @@ namespace UnitySkills
             string scenePath = null)
         {
             if (!string.IsNullOrEmpty(scenePath) && Validate.SafePath(scenePath, "scenePath") is object pathErr) return pathErr;
+
+            // EditorSceneManager.SaveScene throws during Play Mode, which the router would report as INTERNAL.
+            if (IsPlaying)
+                return new
+                {
+                    error = "Scenes cannot be saved in Play Mode.",
+                    errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    suggestedFixes = new[]
+                    {
+                        new { action = "retry", skill = "editor_stop", reason = "Exit Play Mode first, then save the scene." }
+                    }
+                };
 
             var scene = SceneManager.GetActiveScene();
             var path = scenePath ?? scene.path;

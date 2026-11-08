@@ -12,7 +12,8 @@ namespace UnitySkills
     public static class PhysicsSkills
     {
         private const string LayerMaskNote = "Layer bit mask (bit n = layer n, e.g. 256 = layer 8 only), not a layer index; -1 = all layers.";
-        private const string LayerIndexNote = "Layer index 0-31, not a layer name.";
+        private const string LayerIndexNote = "Layer index 0-31. Omit it and pass the layer name instead when addressing the layer by name.";
+        private const string LayerNameNote = "Layer name from Tags & Layers, e.g. \"Enemy\". When given, it overrides the index of the same side.";
 
         private sealed class GravityValue { public float x; public float y; public float z; }
 
@@ -49,6 +50,34 @@ namespace UnitySkills
         /// report a meaningless layer pair.</summary>
         private static object InvalidLayerIndexError(int value, string paramName) =>
             SkillParamUtil.InvalidValueError(value.ToString(), paramName, new[] { "0-31" });
+
+        /// <summary>Resolves one side of a layer pair. A layer name wins over the index; index -1 means neither was given
+        /// (the signature defaults to -1 so that a name alone is a legal call). Returns the error to report, or null.</summary>
+        private static object ResolveLayer(string layerName, int index, string indexParam, string nameParam, out int layer)
+        {
+            layer = index;
+            if (!string.IsNullOrEmpty(layerName))
+            {
+                layer = LayerMask.NameToLayer(layerName);
+                if (layer >= 0) return null;
+
+                var named = Enumerable.Range(0, 32)
+                    .Where(i => !string.IsNullOrEmpty(LayerMask.LayerToName(i)))
+                    .Select(i => $"{i}:{LayerMask.LayerToName(i)}")
+                    .ToArray();
+                return SkillParamUtil.InvalidValueError(layerName, nameParam, named);
+            }
+
+            if (index == -1)
+                return new
+                {
+                    error = $"{indexParam} or {nameParam} is required",
+                    errorCode = SkillErrorCode.MissingParam.ToWireString(),
+                    parameter = indexParam,
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
+                };
+            return index < 0 || index > 31 ? InvalidLayerIndexError(index, indexParam) : null;
+        }
 
         /// <summary>A negative radius/half-extent is not a valid cast or overlap shape; Physics.OverlapSphere,
         /// SphereCast, OverlapBox, and BoxCast all accept it without erroring — they just return "no hit".</summary>
@@ -411,32 +440,36 @@ namespace UnitySkills
             Outputs = new[] { "layer1", "layer2", "collisionEnabled" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object PhysicsGetLayerCollision([SkillParam(LayerIndexNote)] int layer1, [SkillParam(LayerIndexNote)] int layer2)
+        public static object PhysicsGetLayerCollision(
+            [SkillParam(LayerIndexNote)] int layer1 = -1, [SkillParam(LayerIndexNote)] int layer2 = -1,
+            [SkillParam(LayerNameNote)] string layer1Name = null, [SkillParam(LayerNameNote)] string layer2Name = null)
         {
-            if (layer1 < 0 || layer1 > 31) return InvalidLayerIndexError(layer1, "layer1");
-            if (layer2 < 0 || layer2 > 31) return InvalidLayerIndexError(layer2, "layer2");
-            bool ignored = Physics.GetIgnoreLayerCollision(layer1, layer2);
-            return new { layer1, layer2, collisionEnabled = !ignored };
+            if (ResolveLayer(layer1Name, layer1, "layer1", "layer1Name", out int resolved1) is object err1) return err1;
+            if (ResolveLayer(layer2Name, layer2, "layer2", "layer2Name", out int resolved2) is object err2) return err2;
+            bool ignored = Physics.GetIgnoreLayerCollision(resolved1, resolved2);
+            return new { layer1 = resolved1, layer2 = resolved2, collisionEnabled = !ignored };
         }
 
         [UnitySkill("physics_set_layer_collision", "Set whether two layers collide", TracksWorkflow = true,
             Category = SkillCategory.Physics, Operation = SkillOperation.Modify,
             Tags = new[] { "layer", "collision", "matrix" },
             Outputs = new[] { "success", "layer1", "layer2", "collisionEnabled" }, MutatesAssets = true)]
-        public static object PhysicsSetLayerCollision([SkillParam(LayerIndexNote)] int layer1, [SkillParam(LayerIndexNote)] int layer2, bool enableCollision = true)
+        public static object PhysicsSetLayerCollision(
+            [SkillParam(LayerIndexNote)] int layer1 = -1, [SkillParam(LayerIndexNote)] int layer2 = -1, bool enableCollision = true,
+            [SkillParam(LayerNameNote)] string layer1Name = null, [SkillParam(LayerNameNote)] string layer2Name = null)
         {
-            if (layer1 < 0 || layer1 > 31) return InvalidLayerIndexError(layer1, "layer1");
-            if (layer2 < 0 || layer2 > 31) return InvalidLayerIndexError(layer2, "layer2");
+            if (ResolveLayer(layer1Name, layer1, "layer1", "layer1Name", out int resolved1) is object err1) return err1;
+            if (ResolveLayer(layer2Name, layer2, "layer2", "layer2Name", out int resolved2) is object err2) return err2;
             if (WorkflowManager.IsRecording)
             {
-                EnsureLayerCollisionRestorer(layer1, layer2);
-                WorkflowManager.SnapshotSetting(LayerCollisionKey(layer1, layer2),
-                    JsonConvert.SerializeObject(!Physics.GetIgnoreLayerCollision(layer1, layer2)),
-                    $"Physics: Layer Collision ({layer1}<->{layer2})");
+                EnsureLayerCollisionRestorer(resolved1, resolved2);
+                WorkflowManager.SnapshotSetting(LayerCollisionKey(resolved1, resolved2),
+                    JsonConvert.SerializeObject(!Physics.GetIgnoreLayerCollision(resolved1, resolved2)),
+                    $"Physics: Layer Collision ({resolved1}<->{resolved2})");
             }
 
-            Physics.IgnoreLayerCollision(layer1, layer2, !enableCollision);
-            return new { success = true, layer1, layer2, collisionEnabled = enableCollision };
+            Physics.IgnoreLayerCollision(resolved1, resolved2, !enableCollision);
+            return new { success = true, layer1 = resolved1, layer2 = resolved2, collisionEnabled = enableCollision };
         }
     }
 }

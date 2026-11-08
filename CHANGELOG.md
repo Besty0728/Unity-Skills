@@ -96,6 +96,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
 - **`queryJson.underPath`** — `batch_query_gameobjects`、`batch_query_components` 等共用查询的新键：某路径下任意深度的后代，不含该节点本身，不区分大小写，与 `parentPath` 同时给时两者都要满足；在 `limit` 截断之前过滤。
 - **YooAsset 3.x 支持** — 3.0.4+（3.x 线）与 2.3.15+（2.x 线）同时支持：asmdef 新增 `YOO_ASSET_3=[3.0.4,3.1.0-0)`，类型改名由别名吸收，方法级差异集中在一个薄兼容层。对外技能名与参数名不变（如 `buildinFileCopyOption`），内部映射到 3.x 的新名字。`yooasset_check_installed` 新增 `apiLine`、`supportedRange`、`versionSupported`；3.x 删除了 AssetArt Scanner / Reporter，对应 6 个技能在 3.x 上返回「3.x 已移除该功能」，技能数不变；8 个读报告的技能在报告由另一个主版本写出时返回 `warnings`（两版之间改名的字段跨版本读会是空值）；打开窗口的技能按版本线选菜单。新增 `yooasset-design/V3.md` 差异速查。实测：6000.3 与 2022.3 上的 3.0.7、2.3.19，收集器读写、模拟构建、真实构建、读报告与运行时校验作业均通过。
+- **physics 层碰撞技能接受层名** — `physics_get_layer_collision` / `physics_set_layer_collision` 新增可选参数 `layer1Name` / `layer2Name`（按 Tags & Layers 里的名字解析，与索引同时给出时以名字为准）；不存在的层名返回 `SEMANTIC_INVALID` 并列出已命名的层（如 `4:Water`）。原有 `layer1` / `layer2` 索引参数不变，改为可省略，两者都没给时返回 `MISSING_PARAM`。
 - **HybridCLR 9.x 支持** — 8.12+ 与 9.x 同时支持（9.0 起 Editor 类型从 `HybridCLR.Editor.*` 移到 `HybridCLR.*`）：类型按两种全名解析，`hybridclr_status` / `install_status` 输出 `apiLine`；设置统一经 `SettingsUtil.HybridCLRSettings` 读写，工作流快照只覆盖当前版本线存在的字段（9.x 含 `linkPreserveLevel`）。9.x 删除的 `patchAOTAssemblies` 等三个字段在 `settings_get` 里为 null 并列入 `unsupportedFields`，`settings_set` 拒绝写入并给出替代项；`generate_step` 的 `clean_il2cpp_cache` 仅 8.x、`method_bridge_empty` 仅 9.x；`copy_hotupdate_dlls(includeAotAssemblies)` 在 9.x 上按生成的 `PatchedAOTAssemblyList` 复制，没有列表就报错；`install_status` 输出 `supportedUnityVersions`，并区分「当前 Unity 不受支持」与「未安装」；数据目录按版本线解析（9.x 为 `Library/HybridCLR`）。模块文档说明上游包自带的 AI 技能只作参考。实测：6000.3 与 2022.3 上的 8.15.0、9.0.3，以及 8.x 写的设置资产被 9.x 读取；两条线都装好 il2cpp_plus 后跑通 `generate_all` → `aot_generic_refs` → `copy_hotupdate_dlls(includeAotAssemblies)`（9.x 按生成的列表、8.x 按 `patchAOTAssemblies` 拷出 mscorlib / System.Core），`validate_setup` 全部通过。
 
 ### Changed
@@ -144,6 +145,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Fixed
 
 - **装了新版可选包时误报「未安装」** — 装 YooAsset 3.x 时 39 个技能说未安装并让人去装 `#2.3.18`；装 NGO 3.x 时 38 个技能说未安装并建议安装；装 HybridCLR 9.x 时 `hybridclr_status` 报已安装但各项为空，`copy_hotupdate_dlls(includeAotAssemblies)` 报成功却一个 AOT DLL 都没复制，对应测试夹具整体被跳过、回归看起来是绿的。
+- **Play Mode 下 `scene_save` 返回 INTERNAL** — `EditorSceneManager.SaveScene` 在 Play Mode 下抛出的异常以前被路由报成 `INTERNAL`；现在写盘和快照之前就返回 `SEMANTIC_INVALID`，`suggestedFixes` 指向 `editor_stop`。
 - **回退与预览读回的快照一直留在内存里** — 每次回退、dryRun 预览或冲突检查读回的完整快照以前直到域重载都不释放，反复预览一个较早的检查点会把成千上万步的内容留在内存中；现在操作结束即释放。
 - **删除文件夹时整份读入内存** — 删除文件夹前的备份以前对每个文件 `File.ReadAllBytes`，含大文件的文件夹会瞬间占用同等内存，超过 2 GB 的文件直接失败；现在与单文件备份一样流式计算哈希并复制。
 - **单步超过 500 个对象时静默截断** — 一步最多记录 500 个对象，以前超出的部分只写一条 Verbose 日志，回退时这些对象不会被还原也不报告；现在步骤记录跳过的数量（日志字段 `ns`），回退结果的 `skippedItems` 与 dryRun 预览的无法还原项会列出它。
