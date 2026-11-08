@@ -140,6 +140,23 @@ namespace UnitySkills.Tests.Core
             Assert.That(preview.unresolvable.Any(item => item.target == "s42" && item.reason.Contains("3 objects")), Is.True);
         }
 
+        [Test]
+        public void SnapshotObject_SkipsAnAssetOfAReadOnlyPackage()
+        {
+            string packageAsset = AssetDatabase.FindAssets("t:MonoScript", new[] { "Packages/com.unity.test-framework" })
+                .Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault();
+            if (packageAsset == null)
+                Assert.Ignore("com.unity.test-framework exposes no script asset in this editor.");
+            var editable = WriteAsset("Editable.txt", "v0");
+
+            WorkflowManager.BeginTask("edit", "a package asset and a project asset");
+            WorkflowManager.SnapshotObject(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(packageAsset));
+            WorkflowManager.SnapshotObject(editable);
+
+            Assert.That(WorkflowManager.CurrentTask.snapshots.Select(snapshot => snapshot.assetPath),
+                Is.EquivalentTo(new[] { AssetRoot + "/Editable.txt" }));
+        }
+
         private void AssertEveryPayloadReleased()
         {
             foreach (var task in WorkflowManager.History.tasks)

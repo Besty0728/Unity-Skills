@@ -81,6 +81,20 @@ namespace UnitySkills
         /// Supports both scene objects and project assets (materials, scripts, etc.).
         /// Asset file backups are stored in the content-addressed WorkflowFileStore.
         /// </summary>
+        /// <summary>
+        /// An asset of a registry, git or built-in package cannot be changed, so a snapshot of it could only be written back
+        /// into the package cache (URP primitives all share Packages/.../Lit.mat, which the router snapshots with their renderer).
+        /// </summary>
+        private static bool IsReadOnlyPackageAsset(UnityEngine.Object obj)
+        {
+            string path = AssetDatabase.GetAssetPath(obj);
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Packages/", StringComparison.Ordinal))
+                return false;
+            var info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
+            return info != null && info.source != UnityEditor.PackageManager.PackageSource.Embedded &&
+                   info.source != UnityEditor.PackageManager.PackageSource.Local;
+        }
+
         public static void SnapshotObject(UnityEngine.Object obj, SnapshotType type = SnapshotType.Modified)
         {
             if (_currentTask == null || obj == null) return;
@@ -90,6 +104,9 @@ namespace UnitySkills
                 SnapshotCreatedGameObject(createdGameObject);
                 return;
             }
+
+            if (IsReadOnlyPackageAsset(obj))
+                return;
 
             // A repeat snapshot of the same object in one task is dropped anyway (the oldest state wins), so it is
             // detected by entity id before paying for the GlobalObjectId, JSON, file hash and reference walk below.
