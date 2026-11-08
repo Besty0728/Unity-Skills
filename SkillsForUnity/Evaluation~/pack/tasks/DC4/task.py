@@ -15,7 +15,6 @@ import os
 import random
 
 from usk_eval import verifylib as V
-from usk_eval.rest import SkillError
 from usk_eval.task_api import PublicTask, address
 
 WORDS = ("Kestrel", "Talon", "Vortex", "Ember", "Quill", "Harrow")
@@ -167,8 +166,8 @@ class DC4(PublicTask):
             try:
                 c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath=old,
                         value=value, **address(seed_obj))
-            except SkillError as exc:
-                if exc.code != "SEMANTIC_INVALID":
+            except Exception as exc:       # the client's SkillError, which a task module may not import
+                if getattr(exc, "code", None) != "SEMANTIC_INVALID":
                     raise
                 c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath=new,
                         value=value, **address(seed_obj))
