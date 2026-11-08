@@ -202,7 +202,7 @@ def editor_folder_only(ctx):
 def copied_report(ctx):
     """The editor script deleted and created again in the Editor folder: same content, new GUID."""
     h = ctx.handles
-    with open(_disk(ctx, h["reportScript"]), "r", encoding="utf-8", newline="") as handle:
+    with open(_disk(ctx, h["reportScript"]), "r", encoding="utf-8") as handle:
         content = handle.read()
     add_references(ctx, [h["coreAsm"], h["dataAsm"]])
     asmdef = make_editor_asmdef(ctx, editor_folder(ctx))

@@ -283,7 +283,8 @@ class FakeEditor(object):
     def _write_file(self, asset_path, text):
         path = self.disk(asset_path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
+        # newline="" writes the text as given, like the plugin's File.WriteAllText; text mode would turn \n into \r\n on Windows.
+        with open(path, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         with open(path + ".meta", "w", encoding="utf-8") as handle:
             handle.write("fileFormatVersion: 2\nguid: %s\n" % self._guid(asset_path))
