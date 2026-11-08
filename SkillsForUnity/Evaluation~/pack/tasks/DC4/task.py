@@ -15,6 +15,7 @@ import os
 import random
 
 from usk_eval import verifylib as V
+from usk_eval.rest import SkillError
 from usk_eval.task_api import PublicTask, address
 
 WORDS = ("Kestrel", "Talon", "Vortex", "Ember", "Quill", "Harrow")
@@ -160,10 +161,17 @@ class DC4(PublicTask):
         c.write("component_add", componentType="Rigidbody", **address(seed_obj))
         c.write("component_set_property", componentType="Rigidbody", propertyName="mass",
                 value=str(spec["mass"]), **address(seed_obj))
-        c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath="m_Drag",
-                value=str(spec["drag"]), **address(seed_obj))
-        c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath="m_AngularDrag",
-                value="0.05", **address(seed_obj))
+        # Unity 6 renamed m_Drag / m_AngularDrag to m_LinearDamping / m_AngularDamping.
+        for old, new, value in (("m_Drag", "m_LinearDamping", str(spec["drag"])),
+                                ("m_AngularDrag", "m_AngularDamping", "0.05")):
+            try:
+                c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath=old,
+                        value=value, **address(seed_obj))
+            except SkillError as exc:
+                if exc.code != "SEMANTIC_INVALID":
+                    raise
+                c.write("component_set_serialized_property", componentType="Rigidbody", propertyPath=new,
+                        value=value, **address(seed_obj))
         c.write("component_set_property", componentType="Rigidbody", propertyName="useGravity",
                 value="true", **address(seed_obj))
         c.write("component_set_property", componentType="Rigidbody", propertyName="isKinematic",

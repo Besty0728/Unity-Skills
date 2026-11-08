@@ -148,6 +148,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **Play Mode 下 `scene_save` 返回 INTERNAL** — `EditorSceneManager.SaveScene` 在 Play Mode 下抛出的异常以前被路由报成 `INTERNAL`；现在写盘和快照之前就返回 `SEMANTIC_INVALID`，`suggestedFixes` 指向 `editor_stop`。
 - **回退会改写只读包里的资产** — 路由对每个按名定位的物体顺带快照它渲染器的共享材质，URP 原始体的材质是包里的 `Packages/com.unity.render-pipelines.universal/Runtime/Materials/Lit.mat`；回退时把它写回包缓存并重新导入，评测把这算作越界修改。现在 registry、git 与内置包里的资产不再快照（`file:` 本地包与嵌入包照旧）。由临时 Workflow 回退评测题发现。
 - **序列化引用每项扫描全部类型** — `component_set_serialized_property(_batch)` 等技能的 `objectType` 不是组件类型时（如 `Material`），以前每一项都要把所有已加载类型扫两遍，Unity 6 + URP 上每项超过 1 秒，2022 上约 330 ms；现在按名字缓存解析结果（含未找到），20 项的批处理从约 20 秒降到 0.3 秒。由 Unity 6 评测自测发现。
+- **评测题 DC4 在 Unity 6 上搭不起来** — 题目给预制体写 Rigidbody 的 `m_Drag` / `m_AngularDrag`，Unity 6 已改名为 `m_LinearDamping` / `m_AngularDamping`，20 个用例全部 `FIXTURE_FAILED`；现在旧名报 `SEMANTIC_INVALID` 时改写新名，2022 上行为不变。DC4 的 gateInputsHash 随之改变，各版本需重跑一次 DC4 自测。
 - **回退与预览读回的快照一直留在内存里** — 每次回退、dryRun 预览或冲突检查读回的完整快照以前直到域重载都不释放，反复预览一个较早的检查点会把成千上万步的内容留在内存中；现在操作结束即释放。
 - **删除文件夹时整份读入内存** — 删除文件夹前的备份以前对每个文件 `File.ReadAllBytes`，含大文件的文件夹会瞬间占用同等内存，超过 2 GB 的文件直接失败；现在与单文件备份一样流式计算哈希并复制。
 - **单步超过 500 个对象时静默截断** — 一步最多记录 500 个对象，以前超出的部分只写一条 Verbose 日志，回退时这些对象不会被还原也不报告；现在步骤记录跳过的数量（日志字段 `ns`），回退结果的 `skippedItems` 与 dryRun 预览的无法还原项会列出它。
