@@ -3,49 +3,33 @@ name: unity-workflow
 description: Persistent operation history and orchestration
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Workflow Skills
 
-## Triggers
-- Undoing a restore, a task, a session, or a few recent steps
+Time Machine for AI operations: restoring a checkpoint undoes every tracked step after it, even across an Editor restart. Parameters: `GET /skills/schema?category=Workflow&wire=v2`.
+
+## When to use
+- Undoing a restore, task, session or recent steps
 - Naming a checkpoint before risky changes
-- Rolling back
-- 撤销、回退到检查点、高危改动前打点
-
-# Workflow Skills
-
-Time Machine for AI operations. Every tracked write is a step; a checkpoint names a point in that history, and restoring a checkpoint undoes everything after it, even after an Editor restart.
 
 ## Restore Protocol
 
-1. Call `workflow_restore {"to":"last"}` (or a `c<n>` id or a label from `workflow_list`). With no conflict, that one call is the whole job.
-2. On `WORKFLOW_CONFLICT` (the user or another agent changed the target since), ask the user in one sentence which changes to keep. Default to keeping them.
+1. Call `workflow_restore {"to":"last"}` (or a `c<n>` id or label). Without a conflict, that is the whole job.
+2. On `WORKFLOW_CONFLICT`, ask the user in one sentence which changes to keep; default to keeping them.
 3. Resend with `"conflicts":"keep"`, or with the `conflicts[].id` values the user chose to overwrite. Any conflict not in your list is kept.
-4. `?mode=dryRun` previews a restore without applying it. It is optional unless `dryRunPolicy` is on.
+4. `?mode=dryRun` previews a restore without applying it.
 5. To undo a restore, call `workflow_restore {"to":"<guard>"}` with the `guard` from its response, or `workflow_redo_task`, which reverts only that restore.
-
-## workflow_list Rows
-
-```
-s344 14:36:10 light_set_properties Sun (2)
-c343 14:35:58 auto
-s338 14:28:11 gameobject_create_batch x12 (12) (undone)
-```
-
-- `s<n>` is a step: `id time skill target (changes)`, plus `@agent` when another agent made it, `xN` for a batch, and `(undone)` when a restore reverted it.
-- `c<n>` is a checkpoint: `auto`, or its label in quotes.
-- `view:"checkpoints"` lists one row per checkpoint; pass the answer's `more` as `before` to page.
 
 ## Checkpoints
 
-- **Automatic**: a write that follows at least 30 s of idle time from its agent gets a checkpoint. Compile and reload time is not idle. The switch in the History tab turns automatic checkpoints off; explicit ones still work.
-- **`_checkpoint`**: a body key on any write (`POST /skill/<name>`) or on `/skills/batch` (its first recorded step): `{"_checkpoint":"before lighting", ...}`. A failed call leaves no checkpoint.
-- **`workflow_checkpoint {label, at?}`**: without `at`, adds a checkpoint before the caller's next step; with `at:"c343"`, renames one (for example, to name an auto checkpoint).
+- **Automatic**: a write that follows at least 30 s of idle time from its agent gets a checkpoint. Compile and reload time is not idle. The History tab switch turns them off; explicit ones still work.
+- **`_checkpoint`**: a body key on any write or on `/skills/batch` (its first recorded step): `{"_checkpoint":"before lighting", ...}`. A failed call leaves no checkpoint.
+- **`workflow_checkpoint {label, at?}`**: without `at`, adds a checkpoint before the caller's next step; with `at:"c343"`, renames one.
 
 ## Restoring
 
 `workflow_restore {to, agents?, conflicts?, scope?}`. `to` is a `c<n>` (back to that checkpoint), an `s<n>` (back to before that step), a label (the newest checkpoint with it), or `last`. `agents` is `self` (default) or `all`. `scope` limits it (see below).
 
-Returns `to`, `guard`, `restored`, `deleted`, `recreated`, `failed`, `skipped`, `coverage`, `undo`, and `compileTriggered` (with `jobId` / `waitUrl` when scripts recompile), plus `merged`, `failedItems` and `skippedItems` when present.
+Returns `to`, `guard`, `restored`, `deleted`, `recreated`, `failed`, `skipped`, `coverage`, `undo`, `compileTriggered`, and the optional `merged`, `failedItems` and `skippedItems`; see [`workflow_restore`](reference/workflow_restore.md).
 
 Errors: `WORKFLOW_CONFLICT` (nothing changed; `conflicts` lists each id, target, who and what), `NOT_FOUND` (with `recentCheckpoints`), `SEMANTIC_INVALID` (Play Mode, a bad `agents`, `conflicts` or `scope` value), `COMPILING` (retry after the compile).
 
@@ -61,21 +45,41 @@ An open scene's `.unity` is not rewritten; the scene is marked dirty, and saving
 
 ## Known Limitations
 
-- Conflict detection reads the change journal: about 22,000 entries (11 segments of 2,000). Once older entries rotate out, `coverage` is `partial` or `unknown` and the older changes are not checked.
-- Objects in a never-saved scene are tracked by session-local ids. They do not survive an Editor restart, so a restore reports them as `failed`.
-- External side effects (Package Manager operations, etc.) cannot be rolled back.
+- Conflict detection reads the change journal (about 22,000 entries). Once older entries rotate out, `coverage` is `partial` or `unknown` and older changes are not checked.
+- Never-saved scene objects use session-local ids; they do not survive an Editor restart and restore as `failed`.
+- External side effects (for example Package Manager operations) cannot be rolled back.
 
-## Skills
+## Skills Overview
 
-- Tracking: `workflow_task_start`, `workflow_task_end`, `workflow_checkpoint`, `workflow_snapshot_object`, `workflow_snapshot_created`
-- Restore and undo: `workflow_restore`, `workflow_undo_task`, `workflow_redo_task`, `workflow_undone_list`, `workflow_revert_task` (deprecated)
-- History: `workflow_list`, `workflow_delete_task`, `workflow_clear_history`, `history_undo`, `history_redo`, `history_get_current`
-- Sessions: `workflow_session_start`, `workflow_session_end`, `workflow_session_undo`, `workflow_session_list`, `workflow_session_status`
-- Planning: `workflow_plan`
-- Bookmarks: `bookmark_set`, `bookmark_goto`, `bookmark_list`, `bookmark_delete`
+| Skill | Purpose |
+|-------|---------|
+| [`workflow_task_start`](reference/workflow_task_start.md) | Start a tracked task |
+| [`workflow_task_end`](reference/workflow_task_end.md) | End and save the task |
+| [`workflow_checkpoint`](reference/workflow_checkpoint.md) | Name or rename a checkpoint |
+| [`workflow_snapshot_object`](reference/workflow_snapshot_object.md) | Snapshot an object (grant) |
+| [`workflow_snapshot_created`](reference/workflow_snapshot_created.md) | Record a created object (grant) |
+| [`workflow_restore`](reference/workflow_restore.md) | Restore to a checkpoint or step |
+| [`workflow_undo_task`](reference/workflow_undo_task.md) | Undo one step or group |
+| [`workflow_redo_task`](reference/workflow_redo_task.md) | Redo a restore |
+| [`workflow_undone_list`](reference/workflow_undone_list.md) | List redoable restores |
+| [`workflow_revert_task`](reference/workflow_revert_task.md) | Deprecated; use `workflow_undo_task` |
+| [`workflow_list`](reference/workflow_list.md) | List tasks and checkpoints |
+| [`workflow_delete_task`](reference/workflow_delete_task.md) | Remove a task record (NeverInSemi) |
+| [`workflow_clear_history`](reference/workflow_clear_history.md) | Clear all history (NeverInSemi) |
+| [`history_undo`](reference/history_undo.md) | Undo the last operation(s) |
+| [`history_redo`](reference/history_redo.md) | Redo the last undone operation(s) |
+| [`history_get_current`](reference/history_get_current.md) | Get the current undo group |
+| [`workflow_session_start`](reference/workflow_session_start.md) | Start a session |
+| [`workflow_session_end`](reference/workflow_session_end.md) | End and save the session |
+| [`workflow_session_undo`](reference/workflow_session_undo.md) | Undo a whole session |
+| [`workflow_session_list`](reference/workflow_session_list.md) | List sessions |
+| [`workflow_session_status`](reference/workflow_session_status.md) | Get session status |
+| [`workflow_plan`](reference/workflow_plan.md) | Build a combined plan |
+| [`bookmark_set`](reference/bookmark_set.md) | Save selection and Scene view (grant) |
+| [`bookmark_goto`](reference/bookmark_goto.md) | Restore selection and Scene view (grant) |
+| [`bookmark_list`](reference/bookmark_list.md) | List bookmarks |
+| [`bookmark_delete`](reference/bookmark_delete.md) | Delete a bookmark (NeverInSemi) |
 
-Details are in `reference/<skill_name>.md`.
-
-Read-only skills run under Approval. `bookmark_set`, `bookmark_goto`, `workflow_snapshot_object` and `workflow_snapshot_created` need a grant. `bookmark_delete`, `workflow_delete_task` and `workflow_clear_history` are NeverInSemi (Bypass or allowlist only).
-
-**DO NOT** call `workflow_save` (use `workflow_task_end`), `workflow_rollback` (use `workflow_restore`) or `workflow_create` (use `workflow_task_start`); none of them exists. A single simple undo is `editor_undo`.
+## Pitfalls
+- `workflow_save`, `workflow_rollback` and `workflow_create` do not exist. Use `workflow_task_end`, `workflow_restore` and `workflow_task_start`.
+- A single simple undo is `editor_undo`.

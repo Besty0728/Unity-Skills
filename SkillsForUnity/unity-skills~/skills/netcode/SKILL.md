@@ -3,200 +3,53 @@ name: unity-netcode
 description: Set up Netcode for GameObjects (NGO 2.x) multiplayer
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Scaffolding multiplayer
-- Registering network prefabs
-- Wiring spawn logic
-- Starting host/server/client
-- 搭建多人联机、注册网络预制体、连接生成逻辑、启动 host/server/client
-
 # Unity Netcode for GameObjects Skills
 
-Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. Every skill is source-verified against NGO 2.x (validated against 2.13.3); when the package is absent, each skill returns a `NoNetcode()` error with install instructions, and when a version outside 2.x is installed, each skill returns a structured `SKILL_ERROR` that says so (it is not `MISSING_PACKAGE`). A subset of skills additionally require NGO **2.5.0+** (see [NGO 2.5+ features](#ngo-25-features)) — on an older 2.x install they return a structured "requires 2.5.0+" error instead of a compile error, since AttachableBehaviour/AttachableNode/ComponentController are detected by reflection, not by a dedicated version symbol.
+Setup and operation of Netcode for GameObjects (NGO) multiplayer. Parameters come from the schema (`GET /skills/schema?category=Netcode&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md). Walkthrough: [reference/quick-start.md](reference/quick-start.md). NGO 2.5+ attach features: [reference/ngo-2-5-features.md](reference/ngo-2-5-features.md). Code-level design (RPC direction, NetworkVariable permissions): [netcode-design](../netcode-design/SKILL.md).
 
-> **Requires**: `com.unity.netcode.gameobjects` (2.x), Unity 6000.0+.
-> **Not supported yet**: NGO 3.x. It needs Unity 6000.7 (still in beta) and this module has not been adapted to it. The 2.x line is still maintained; if the project has 3.x, tell the user they can pin `com.unity.netcode.gameobjects` to 2.13.3 — changing the package version is their call, not the agent's.
-> **Strongly recommended**: before calling any `netcode_*` skill, load [netcode-design](../netcode-design/SKILL.md). NGO lifecycle and permission rules are strict; skills alone cannot prevent incorrect business code.
+## When to use
+- Scaffolding multiplayer, or registering network prefabs
+- Adding NetworkObject, NetworkTransform or NetworkRigidbody components
+- Starting a host, server or client in Play Mode
 
-## Guardrails
+## Rules
+- Load [netcode-design](../netcode-design/SKILL.md) before writing NetworkBehaviour code; NGO lifecycle and permission rules are strict.
+- Targets NGO 2.x, validated against 2.13.3, on Unity 6000.0+. Target by `entityId` (preferred), `name`, `instanceId` or `path` (`Parent/Child`).
+- Spawn and Despawn are not skills. Call them from NetworkBehaviour code on the server, with a running NetworkManager.
+- Listing the PlayerPrefab in a NetworkPrefabsList is recommended, not enforced. An explicit entry is the only way to set an override.
+- `netcode_add_to_prefabs_list` does not add a NetworkObject. Call `netcode_add_network_object` first.
+- Runtime control (`netcode_start_*`, `netcode_shutdown`, `netcode_get_status`) needs Play Mode; Edit Mode calls return an error.
+- Address and ServerListenAddress differ: on a client `address` is the server; on a server `serverListenAddress` is the bind address.
+- `useRigidbody2D` switches between NetworkRigidbody and NetworkRigidbody2D.
+- Operating mode: query and info skills run in every mode. Creators and configurators need a grant under Approval.
+- Refused under Approval and Auto, and run only in Bypass or when allowlisted: deletes (`netcode_remove_*`), `netcode_add_network_behaviour_script` (writes a `.cs`, triggers a reload) and the Play Mode controls (`netcode_start_*`, `netcode_shutdown`).
+- Without `com.unity.netcode.gameobjects`, every skill returns a `NoNetcode()` error with install instructions. Outside 2.x every skill except `netcode_version` returns `SKILL_ERROR` with `reason: unsupported_package_version`.
 
-**Operating Mode** (v1.9 three-tier):
-- **Approval** (default): query/list/info skills (`netcode_check_setup`, `netcode_get_manager_info`, `netcode_get_transport_info`, `netcode_list_network_objects`, `netcode_get_network_object_info`, `netcode_list_network_prefabs`, `netcode_list_network_behaviours`, `netcode_get_spawn_manager_info`, `netcode_get_scene_manager_info`, `netcode_get_status`, `netcode_version`, `netcode_attachable_info`) run directly. Mutators (create/configure/attach/add) are FullAuto — on `MODE_RESTRICTED`, run the grant protocol.
-- **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
-- Auto-forbidden in this module:
-  - `SkillOperation.Delete` → `netcode_remove_manager`, `netcode_remove_network_object`, `netcode_remove_from_prefabs_list`
-  - `MayTriggerReload = true` → `netcode_add_network_behaviour_script` (writes a new `.cs`, forces script compile + Domain Reload)
-  - `MayEnterPlayMode = true` → `netcode_start_host`, `netcode_start_server`, `netcode_start_client`, `netcode_shutdown`
-  
-  These are reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN`. Runtime control + Behaviour-script generation are the practical reason this module is gated.
-- When `com.unity.netcode.gameobjects` is missing, every skill returns a `NoNetcode()` error with install instructions. When a version outside 2.x is installed, every `netcode_*` skill except `netcode_version` returns `SKILL_ERROR` (with `reason: "unsupported_package_version"`, `installedVersion` and `supportedRange`) and an `ask_user` fix; `netcode_version` still answers and explains why.
+## Pitfalls
+- NGO 3.x is not supported: it needs Unity 6000.7 (beta) and this module has not been adapted to it. Tell the user they can pin `com.unity.netcode.gameobjects` to 2.13.3; the version change is their call.
+- `netcode_set_debug_simulator` always returns an error and writes nothing: UnityTransport's debug simulator has done nothing since NGO 2.2.0. Use the Network Simulator in `com.unity.multiplayer.tools`.
+- `netcode_configure_manager` is the one place for NetworkConfig edits such as tick rate and protocol.
+
+## Skills Overview
+
+| Group | Skills | Purpose |
+|-------|--------|---------|
+| Setup and validation | `netcode_check_setup`, `netcode_create_manager`, `netcode_configure_manager`, `netcode_get_manager_info`, `netcode_remove_manager` | Verify and create the NetworkManager; bulk-edit NetworkConfig |
+| Transport | `netcode_set_transport_address`, `netcode_set_relay_server_data`, `netcode_set_debug_simulator`, `netcode_get_transport_info` | Direct or relay connection; the simulator is non-functional |
+| NetworkObject | `netcode_add_network_object`, `netcode_configure_network_object`, `netcode_remove_network_object`, `netcode_list_network_objects`, `netcode_get_network_object_info` | Attach and inspect NetworkObjects |
+| Prefabs list | `netcode_create_prefabs_list`, `netcode_add_to_prefabs_list`, `netcode_remove_from_prefabs_list`, `netcode_list_network_prefabs`, `netcode_set_player_prefab` | Network prefab registration and the player prefab |
+| Components | `netcode_add_network_transform`, `netcode_configure_network_transform`, `netcode_add_network_rigidbody`, `netcode_add_network_animator`, `netcode_add_network_behaviour_script`, `netcode_list_network_behaviours` | NetworkTransform, NetworkRigidbody, NetworkAnimator, NetworkBehaviour templates |
+| Scene and spawning | `netcode_configure_scene_management`, `netcode_get_spawn_manager_info`, `netcode_get_scene_manager_info` | Scene management config and spawn or scene state |
+| Runtime control (Play Mode) | `netcode_start_host`, `netcode_start_server`, `netcode_start_client`, `netcode_shutdown`, `netcode_get_status` | Start and stop sessions; IsHost, IsServer, IsClient, NetworkTime |
+| NGO 2.5+ attach | `netcode_version`, `netcode_attachable_info`, `netcode_attachable_add`, `netcode_attachable_node_add`, `netcode_component_controller_add`, `netcode_component_controller_configure` | AttachableBehaviour, AttachableNode and ComponentController; details in the reference |
+
+Parameters of each skill come from the schema. Key parameters for the ones most often misread:
+- `netcode_set_relay_server_data`: relay mode, mutually exclusive with a direct address.
+- `netcode_configure_scene_management`: `EnableSceneManagement`, `LoadSceneTimeOut`, `ClientSynchronizationMode`.
+- `netcode_shutdown`: optional `discardMessageQueue`.
 
 **DO NOT** (common hallucinations):
-- `netcode_spawn_object` / `netcode_spawn_player` — do not exist. Spawn must happen in runtime code (NetworkBehaviour) via `.Spawn()` or `NetworkManager.SpawnManager.InstantiateAndSpawn`. Skills do not proxy Spawn because Spawn requires a running NetworkManager.
-- `netcode_register_scene` — does not exist. Scene registration goes through Build Settings + `EnableSceneManagement`. This module only exposes `netcode_configure_scene_management` for reading/writing the config.
-- `netcode_set_tick_rate` / `netcode_set_protocol` as standalone skills — do not exist. Use `netcode_configure_manager` for all NetworkConfig edits.
-- Do not assume `netcode_start_host` works in Edit Mode. All Runtime control skills require PlayMode.
-- Do not assume `netcode_add_to_prefabs_list` automatically attaches a `NetworkObject` component. Call `netcode_add_network_object` first.
-
-**Routing**:
-- Plain GameObject hierarchy creation → `gameobject`
-- Attach NetworkObject / NetworkTransform / other networking components → this module
-- Generic player-prefab components (Rigidbody / Collider / Animator) → `component`
-- Runtime scene switching (LoadScene) → call `NetworkManager.SceneManager.LoadScene` from the generated NetworkBehaviour; this module does not execute it
-- Code-level design decisions (RPC direction, NetworkVariable permission) → [netcode-design](../netcode-design/SKILL.md) advisory
-
-## Object Targeting
-
-`netcode_add_*` / `netcode_configure_*` skills use the usual target parameters:
-- `name` — scene object name
-- `entityId` — Unity EntityId (exact; the only id on Unity 6000.4+)
-- `instanceId` — Unity InstanceID (exact)
-- `path` — hierarchy path `Parent/Child`
-
-Prefer `entityId` when there is a chance of duplicate names.
-
-## Skills
-
-### Setup & Validation
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_check_setup` | Verify package, NetworkManager, Transport, PlayerPrefab, and PrefabsList consistency | `verbose?` |
-| `netcode_create_manager` | Create NetworkManager + UnityTransport | `name?` |
-| `netcode_configure_manager` | Bulk-edit NetworkConfig (TickRate, ConnectionApproval, EnableSceneManagement, NetworkTopology, ...) | `name?`, 15+ optional fields |
-| `netcode_get_manager_info` | Read NetworkConfig + runtime state | `name?` |
-| `netcode_remove_manager` | Delete the NetworkManager (must already be Shutdown) | `name?` |
-
-### Transport
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_set_transport_address` | Direct connection: set Address / Port / ServerListenAddress | `address`, `port`, `serverListenAddress?` |
-| `netcode_set_relay_server_data` | Relay mode (mutually exclusive with direct connection) | `address`, `port`, `allocationIdBase64`, `keyBase64`, `connectionDataBase64`, `hostConnectionDataBase64?`, `isSecure?` |
-| `netcode_set_debug_simulator` | **Not functional — always returns an error.** UnityTransport's debug simulator has done nothing since NGO 2.2.0 (obsolete members, an `Obsolete(error)` in 3.x), so this skill validates the parameters, writes nothing and points to the Network Simulator of `com.unity.multiplayer.tools` | `packetDelay`, `packetJitter`, `dropRate` |
-| `netcode_get_transport_info` | Read current transport info | `name?` |
-
-### NetworkObject
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_add_network_object` | Attach NetworkObject to a GameObject | `name/entityId/instanceId/path` + NetworkObject fields |
-| `netcode_configure_network_object` | Modify fields on an existing NetworkObject | same as above |
-| `netcode_remove_network_object` | Remove a NetworkObject (must not be currently spawned) | same as above |
-| `netcode_list_network_objects` | List all NetworkObjects in scene (including runtime state) | `includeInactive?` |
-| `netcode_get_network_object_info` | Query a single NetworkObject in detail | same as above |
-
-### NetworkPrefabsList
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_create_prefabs_list` | Create a NetworkPrefabsList asset | `path`, `assignToManager?` |
-| `netcode_add_to_prefabs_list` | Add a prefab (optional override: None/Prefab/Hash) | `listPath`, `prefabPath`, `overrideMode?`, ... |
-| `netcode_remove_from_prefabs_list` | Remove a prefab entry | `listPath`, `prefabPath` |
-| `netcode_list_network_prefabs` | List every entry with its hash | `listPath` |
-| `netcode_set_player_prefab` | Set `NetworkConfig.PlayerPrefab` | `prefabPath`, `name?` |
-
-### Components
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_add_network_transform` | Attach NetworkTransform with axis sync toggles | target + 15 optional fields |
-| `netcode_configure_network_transform` | Edit fields / thresholds on an existing NT | includes PositionThreshold etc. |
-| `netcode_add_network_rigidbody` | Attach NetworkRigidbody / NetworkRigidbody2D | `useRigidbody2D?`, `useRigidBodyForMotion?` |
-| `netcode_add_network_animator` | Attach NetworkAnimator (Animator required) | target |
-| `netcode_add_network_behaviour_script` | Generate a NetworkBehaviour script template (OnNetworkSpawn/Despawn + optional RPC/NetworkVariable/Ownership/NGO 2.5+ OnNetworkPreDespawn) | `className`, `path`, `includeRpc?`, `includeNetworkVariable?`, `includeOwnershipCallbacks?`, `includePreDespawn?` |
-| `netcode_list_network_behaviours` | List NetworkBehaviour subclass instances in the scene | `includeInactive?` |
-
-### Scene & Spawning Query
-| Skill | Purpose |
-|-------|---------|
-| `netcode_configure_scene_management` | Set EnableSceneManagement / LoadSceneTimeOut / ClientSynchronizationMode |
-| `netcode_get_spawn_manager_info` | Runtime: list SpawnedObjects |
-| `netcode_get_scene_manager_info` | Runtime: read scene load state |
-
-### Runtime Control (PlayMode required)
-| Skill | Purpose |
-|-------|---------|
-| `netcode_start_host` | Start Host |
-| `netcode_start_server` | Start Server |
-| `netcode_start_client` | Start Client |
-| `netcode_shutdown` | Shut down (optional `discardMessageQueue`) |
-| `netcode_get_status` | Read IsHost / IsServer / IsClient, LocalClientId, ConnectedClients, NetworkTime |
-
-### NGO 2.5+ Features {#ngo-25-features}
-
-Added in Netcode for GameObjects **2.5.0** (verified against the package CHANGELOG, PR #3518): `AttachableBehaviour` / `AttachableNode` are an alternate "attach" parenting system that avoids the classic `NetworkObject` parenting pitfalls; `ComponentController` network-synchronizes the enabled/disabled state of a list of components. On NGO 2.0–2.4.x (`NETCODE_GAMEOBJECTS` is still active, but these types don't exist yet) every skill below returns a structured `requires 2.5.0+` error instead of failing — call `netcode_version` first to confirm.
-
-| Skill | Purpose | Key Parameters |
-|-------|---------|----------------|
-| `netcode_version` | Report installed NGO version and 2.5+ feature availability | — |
-| `netcode_attachable_info` | Audit the scene's AttachableBehaviour / AttachableNode / ComponentController distribution | `includeInactive?` |
-| `netcode_attachable_add` | Attach an `AttachableBehaviour` to a GameObject nested under a NetworkObject | target + `autoDetach?` (`None`/`OnAttachNodeDestroy`/`OnDespawn`/`OnOwnershipChange`, comma-separated) |
-| `netcode_attachable_node_add` | Attach an `AttachableNode` (the socket an `AttachableBehaviour` attaches to) | target + `detachOnDespawn?` |
-| `netcode_component_controller_add` | Attach a `ComponentController` to a GameObject | target + `startEnabled?` |
-| `netcode_component_controller_configure` | Set `StartEnabled` and/or populate the synchronized component list from target GameObjects (mirrors dragging a GameObject onto the Components field in the Inspector) | target, `targetPaths?`, `clearExisting?`, `startEnabled?` |
-
-Notes:
-- `AttachableBehaviour` must live on a child GameObject nested under a `NetworkObject`'s hierarchy, not directly on the `NetworkObject`'s own GameObject.
-- `AttachableNode` must belong to a *different* `NetworkObject` than the `AttachableBehaviour` instances attaching to it.
-- `Attach()` / `Detach()` are runtime-only calls (require both instances spawned) and are intentionally **not** exposed as skills — same rationale as `netcode_spawn_object` not existing (see DO NOT above): the caller must already have a running NetworkManager and do this from NetworkBehaviour code.
-- `netcode_component_controller_configure`'s `targetPaths` accepts whole GameObjects; NGO's own `OnValidate()` (invoked by this skill) expands each into every eligible child component with a public `bool enabled` property, skipping `NetworkBehaviour`/`NetworkObject`/`NetworkManager` — identical to what happens when you drag a GameObject onto the Components field in the Inspector. If that `OnValidate()` is missing or throws, the response carries `warning` and the entries stay unexpanded.
-
-## Quick Start
-
-```python
-import unity_skills as u
-
-# 1. Inspect current state
-u.call_skill("netcode_check_setup")
-
-# 2. Create NetworkManager + UnityTransport
-u.call_skill("netcode_create_manager", name="NetworkManager")
-
-# 3. Configure the NetworkConfig
-u.call_skill("netcode_configure_manager",
-    tickRate=30,
-    connectionApproval=False,
-    enableSceneManagement=True,
-    networkTopology="ClientServer")
-
-# 4. Transport
-u.call_skill("netcode_set_transport_address",
-    address="127.0.0.1", port=7777, serverListenAddress="0.0.0.0")
-
-# 5. Player prefab setup
-#    NOTE: add_network_object on a prefab path depends on GameObjectFinder support.
-#    Safer route: instantiate the prefab in the scene first, then attach.
-u.call_skill("netcode_add_network_object", path="Assets/Prefabs/Player.prefab")
-u.call_skill("netcode_create_prefabs_list", path="Assets/NetworkPrefabs.asset")
-u.call_skill("netcode_add_to_prefabs_list",
-    listPath="Assets/NetworkPrefabs.asset",
-    prefabPath="Assets/Prefabs/Player.prefab")
-u.call_skill("netcode_set_player_prefab", prefabPath="Assets/Prefabs/Player.prefab")
-
-# 6. Generate a NetworkBehaviour template
-u.call_skill("netcode_add_network_behaviour_script",
-    className="PlayerController",
-    path="Assets/Scripts/PlayerController.cs",
-    includeRpc=True, includeNetworkVariable=True)
-
-# 7. Drive the session in PlayMode
-u.call_skill("editor_play")   # enter PlayMode
-u.call_skill("netcode_start_host")
-u.call_skill("netcode_get_status")
-u.call_skill("netcode_shutdown")
-u.call_skill("editor_stop")
-```
-
-## Critical Rules (must read)
-
-1. **Spawn/Despawn are not exposed as skills.** They must be called from NetworkBehaviour runtime code (Server authority). Skills handle prefab registration and NetworkManager lifecycle only.
-2. **Listing the PlayerPrefab in a NetworkPrefabsList is recommended, not enforced.** NetworkManager registers the PlayerPrefab itself when it starts (`NetworkPrefabHandler.RegisterPlayerPrefab`, 2.13.3), but an explicit entry keeps registration visible and is the only way to set an override. Register it with `netcode_add_to_prefabs_list`.
-3. **Runtime control skills (start_*/shutdown) require PlayMode.** Calls from Edit Mode return an error.
-4. **Address vs ServerListenAddress have different meaning.** On a client, `Address` is the target server IP. On a server, `ServerListenAddress` is the bind address (usually `0.0.0.0`).
-5. **`useRigidbody2D`** switches between NetworkRigidbody and NetworkRigidbody2D. Unrelated physics settings (e.g. `Physics2D.AutoSyncTransforms`) live elsewhere.
-
-## Version Scope
-
-Targets NGO **2.x** (`[2.0,3.0)`, validated against 2.13.3). Legacy 1.x (old prefabs list layout, different RPC model) is out of scope for this module. NGO **3.x** is not supported yet: it needs Unity 6000.7 (beta) and this module has not been adapted to it, so skills answer with a structured unsupported-version error and `netcode_version` reports the installed version; pin 2.13.3 to use the module. The [NGO 2.5+ features](#ngo-25-features) skills additionally require 2.5.0+ within that range; call `netcode_version` to check before relying on them.
-
-## Exact Signatures
-
-For exact parameter names, defaults, and return fields, query `GET /skills/schema` or `unity_skills.get_skill_schema()`. This document is a routing and best-practice guide, not the authoritative signature source.
+- `netcode_spawn_object` and `netcode_spawn_player` do not exist: spawn from runtime code with `.Spawn()` or `NetworkManager.SpawnManager.InstantiateAndSpawn`.
+- `netcode_register_scene` does not exist: scene registration goes through Build Settings and `EnableSceneManagement`.
+- `netcode_set_tick_rate` and `netcode_set_protocol` do not exist: use `netcode_configure_manager`.
+- Do not assume `netcode_start_host` works in Edit Mode.

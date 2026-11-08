@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset-update
-description: "YooAsset update flow and Downloader (v2.3.18) — the canonical patch flow from InitializeAsync through version/manifest update to bundle download. YooAsset 更新流程与 Downloader(v2.3.18:从 InitializeAsync 到版本/清单更新再到资源包下载的标准热更流程)。"
+description: "YooAsset update flow and Downloader (v2.3.18) — the canonical patch flow from InitializeAsync through version/manifest update to bundle download."
 type: reference
 ---
 

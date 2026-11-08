@@ -3,46 +3,41 @@ name: unity-optimization
 description: Optimize project assets and scenes
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Optimization Skills
 
-## Triggers
-- Reducing build size
-- Batch-compressing assets
-- Analyzing scene poly/material usage
-- 缩减包体、批量压缩资源、分析场景面数与材质用量
+Analyse and optimise project assets (textures, models, audio) and scene objects (static flags, LOD groups). Parameters come from the schema (`GET /skills/schema?category=Optimization&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-# Optimization Skills
+## When to use
+- Reducing build size or batch-compressing assets
+- Finding large assets, duplicate materials or overdraw
+- Analysing scene polygon and material usage
+- Setting static flags or LOD groups
 
-Optimize project assets (Textures, Models).
+## Rules
+- Analysis skills are read-only and run in every mode; the write skills need a grant under Approval.
+- Write skills re-import assets or change components, without a dry-run rollback. Check `filter` or `assetType` before a batch run, and review the returned `modified` list.
+- No skill here deletes or triggers a domain reload.
 
-## Operating Mode
+## Pitfalls
+- `optimize_textures` `limit` is a cap on modified textures; 0 (default) means no cap.
+- `optimize_set_static_flags`: `Everything` and `Nothing` are aliases added by this API, not enum members. `Everything` is the OR of the five non-deprecated members, so `NavigationStatic` and `OffMeshLinkGeneration` must be named explicitly. A flag name that does not resolve fails the whole call.
 
-- **Approval**: 只读分析类 skill（`optimize_analyze_scene` / `optimize_find_large_assets` / `optimize_get_static_flags` / `optimize_find_duplicate_materials` / `optimize_analyze_overdraw`，标 `SkillMode.SemiAuto`）直接执行；写型 skill（`optimize_textures` / `optimize_mesh_compression` / `optimize_audio_compression` / `optimize_set_static_flags` / `optimize_set_lod_group`，默认 `SkillMode.FullAuto`）需用户 grant，grant 后一步执行返结果。
-- **Auto / Bypass**: 直接执行。
-- **本模块不含 Delete / PlayMode / Reload / RiskLevel=high 类 skill** —— 写型 skill 改的是 Importer / 组件设置，会重新导入资源，但不会触发 Domain Reload，也不会被 `IsForbiddenInSemi` 拦截。批量操作前务必检查筛选范围（`filter` / `assetType`），改完无 dry-run 回滚。
-
-**DO NOT** (common hallucinations):
-- `optimize_scene` / `optimization_run` do not exist → use specific skills: `optimize_analyze_scene`, `optimize_find_large_assets`, `optimize_find_duplicate_materials`, etc.
-- `optimize_compress` / `optimize_compress_textures` / `optimize_compress_meshes` / `optimize_compress_audio` do not exist → use `optimize_textures` (textures), `optimize_mesh_compression` (meshes), `optimize_audio_compression` (audio)
-- `optimize_set_lod` / `optimize_setup_lod` do not exist → use `optimize_set_lod_group`
-- Optimization skills are analysis + action tools — always review results before applying batch changes
-
-**Routing**:
-- For profiler metrics → use `profiler` module
-- For static batching flags → `optimize_set_static_flags` (this module)
-- For performance review guidance → load `performance` advisory module
+## Routing
+- Profiler metrics → `profiler` module.
+- Performance review guidance → the `performance` advisory module.
 
 ## Skills
 
 ### `optimize_textures`
-Optimize texture settings (maxSize, compression). Returns list of modified textures.
+Optimize texture settings (maxSize, compression). Returns the list of modified textures.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | maxTextureSize | int | No | 2048 | Max texture size |
 | enableCrunch | bool | No | true | Enable crunch compression |
 | compressionQuality | int | No | 50 | Compression quality 0-100 |
-| filter | string | No | "" | Asset filter |
+| filter | string | No | "" | Asset search filter |
+| limit | int | No | 0 | Maximum textures to modify; 0 = no limit |
 
 **Returns:** `{ success, count, message, modified }`
 
@@ -57,7 +52,7 @@ Set mesh compression for 3D models.
 **Returns:** `{ success, count, compression, modified }`
 
 ### `optimize_analyze_scene`
-Analyze scene for performance bottlenecks (high-poly meshes, excessive materials).
+Analyze the scene for performance bottlenecks (high-poly meshes, excessive materials).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -78,9 +73,7 @@ Find assets exceeding a size threshold (in KB).
 **Returns:** `{ success, threshold, count, assets }`
 
 ### `optimize_set_static_flags`
-Set static flags on GameObjects. `flags` is comma-separated, drawn from `ContributeGI`, `OccluderStatic`, `OccludeeStatic`, `BatchingStatic`, `ReflectionProbeStatic`, plus the two deprecated members `NavigationStatic` and `OffMeshLinkGeneration`.
-
-> **`Everything` means the five non-deprecated flags, not literally everything.** `StaticEditorFlags` declares neither `Everything` nor `Nothing`, so both are aliases this API adds: `Nothing` clears all bits, and `Everything` is the OR of the members Unity's own Static dropdown still offers — numerically `87`, not the full `127`. `NavigationStatic` and `OffMeshLinkGeneration` are deprecated and excluded, so **name them explicitly if you want them**. Every listed part must resolve: one unknown name fails the whole call rather than silently applying the subset that parsed, and a raw number carrying bits outside the enum's declared mask (`"999"`) is rejected too.
+Set static flags on a GameObject. `flags` is comma-separated, drawn from `ContributeGI`, `OccluderStatic`, `OccludeeStatic`, `BatchingStatic`, `ReflectionProbeStatic`, plus the deprecated `NavigationStatic` and `OffMeshLinkGeneration`; the `Everything` and `Nothing` aliases are described under Pitfalls.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -88,13 +81,13 @@ Set static flags on GameObjects. `flags` is comma-separated, drawn from `Contrib
 | entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| flags | string | No | "Everything" | Comma-separated static flags, or the `Everything` / `Nothing` aliases (see above) |
+| flags | string | No | "Everything" | Comma-separated static flags, or the `Everything` / `Nothing` aliases |
 | includeChildren | bool | No | false | Apply to all children recursively |
 
 **Returns:** `{ success, gameObject, flags, affectedCount }`
 
 ### `optimize_get_static_flags`
-Get static flags of a GameObject.
+Get the static flags of a GameObject.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -106,12 +99,12 @@ Get static flags of a GameObject.
 **Returns:** `{ success, gameObject, flags, isStatic }`
 
 ### `optimize_audio_compression`
-Batch set audio compression. compressionFormat: PCM/Vorbis/ADPCM. loadType: DecompressOnLoad/CompressedInMemory/Streaming
+Batch-set audio compression. `compressionFormat`: PCM, Vorbis or ADPCM. `loadType`: DecompressOnLoad, CompressedInMemory or Streaming.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| compressionFormat | string | No | "Vorbis" | Audio compression format: PCM/Vorbis/ADPCM |
-| loadType | string | No | "CompressedInMemory" | Audio load type: DecompressOnLoad/CompressedInMemory/Streaming |
+| compressionFormat | string | No | "Vorbis" | PCM, Vorbis or ADPCM |
+| loadType | string | No | "CompressedInMemory" | DecompressOnLoad, CompressedInMemory or Streaming |
 | quality | float | No | 0.5 | Compression quality 0.0-1.0 |
 | filter | string | No | "" | Asset filter |
 
@@ -127,7 +120,7 @@ Find materials with identical shader and properties.
 **Returns:** `{ success, duplicateGroups, groups }`
 
 ### `optimize_analyze_overdraw`
-Analyze transparent objects that may cause overdraw.
+Find transparent objects that may cause overdraw.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -136,7 +129,7 @@ Analyze transparent objects that may cause overdraw.
 **Returns:** `{ success, transparentObjectCount, objects }`
 
 ### `optimize_set_lod_group`
-Add or configure LOD Group. lodDistances: comma-separated screen-relative heights (e.g. '0.6,0.3,0.1')
+Add or configure an LOD Group. `lodDistances` is a comma-separated list of screen-relative heights, e.g. `0.6,0.3,0.1`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -148,7 +141,7 @@ Add or configure LOD Group. lodDistances: comma-separated screen-relative height
 
 **Returns:** `{ success, gameObject, lodLevels, distances }`
 
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+**DO NOT** (common hallucinations):
+- `optimize_scene` and `optimization_run` do not exist: use the specific analysis skills, e.g. `optimize_analyze_scene`, `optimize_find_large_assets`, `optimize_find_duplicate_materials`.
+- `optimize_compress`, `optimize_compress_textures`, `optimize_compress_meshes` and `optimize_compress_audio` do not exist: use `optimize_textures`, `optimize_mesh_compression` or `optimize_audio_compression`.
+- `optimize_set_lod` and `optimize_setup_lod` do not exist: use `optimize_set_lod_group`.

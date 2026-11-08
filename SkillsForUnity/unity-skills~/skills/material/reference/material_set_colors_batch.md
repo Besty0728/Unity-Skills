@@ -8,10 +8,6 @@ Set colors on multiple objects. Each item accepts: identifier (`name`/`entityId`
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, propertyUsed, color}]}` — the per-item key is `target` (GameObject name, or the path when you addressed the asset), not `name`; a rejected item fails the whole batch and rolls back the others (`rolledBack:true`, `results[i].reverted:true`).
 
-```python
-unity_skills.call_skill("material_set_colors_batch", items=[
-    {"name": "Cube1", "r": 1, "g": 0, "b": 0},
-    {"name": "Cube2", "r": 0, "g": 1, "b": 0},
-    {"name": "Cube3", "r": 0, "g": 0, "b": 1}
-])
+```bash
+curl -s "http://localhost:<port>/skill/material_set_colors_batch?expectProject=<project>" -d '{"items": "[{\"name\": \"Cube1\", \"r\": 1, \"g\": 0, \"b\": 0}, {\"name\": \"Cube2\", \"r\": 0, \"g\": 1, \"b\": 0}, {\"name\": \"Cube3\", \"r\": 0, \"g\": 0, \"b\": 1}]"}'
 ```

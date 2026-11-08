@@ -1,6 +1,6 @@
 ---
 name: unity-shadergraph-nodes
-description: "Supported Shader Graph node subset validated on Unity 2022.3 (SG14) and Unity 6 — the editable nodes the skills can reliably execute. Shader Graph 支持的可编辑节点子集(在 Unity 2022.3 SG14 与 Unity 6 验证:技能可可靠执行的节点)。"
+description: "Supported Shader Graph node subset validated on Unity 2022.3 (SG14) and Unity 6 — the editable nodes the skills can reliably execute."
 type: reference
 ---
 

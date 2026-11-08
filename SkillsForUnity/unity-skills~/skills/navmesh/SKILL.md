@@ -3,39 +3,30 @@ name: unity-navmesh
 description: Bake and query Unity NavMesh
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity NavMesh Skills
 
-## Triggers
-- Setting up navigation
-- Baking a NavMesh
-- Testing agent paths
-- Tuning bake parameters
-- 搭建导航、烘焙 NavMesh、测试 Agent 路径、调整烘焙参数
+Bake or clear NavMesh data, calculate paths, sample positions, set area costs and configure NavMeshAgent and NavMeshObstacle components. Parameters come from the schema (`GET /skills/schema?category=NavMesh&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-# NavMesh Skills
+## When to use
+- Setting up navigation for a scene
+- Baking or clearing a NavMesh
+- Testing agent paths or nearest reachable points
+- Tuning agent or obstacle settings and area traversal costs
 
-Bake / clear NavMesh data, calculate paths, sample positions, and configure NavMeshAgent / NavMeshObstacle components.
+## Rules
+- `navmesh_bake` runs synchronously and blocks the Editor; on large scenes warn the user first.
+- Re-bake after scene geometry changes; the NavMesh does not follow them.
+- `navmesh_clear` is a Delete operation: it is refused in Approval and Auto, and runs only in Bypass or when allowlisted.
+- Query skills (`navmesh_calculate_path`, `navmesh_sample_position`, `navmesh_get_settings`) are read-only and run in every mode; the write skills need a grant under Approval.
 
-## Operating Mode
-
-- **Approval**：查询类 skill（`navmesh_calculate_path` / `navmesh_sample_position` / `navmesh_get_settings`，源码标 `SkillMode.SemiAuto`）直接执行；变更类（`navmesh_bake` / `navmesh_add_agent` / `navmesh_set_agent` / `navmesh_add_obstacle` / `navmesh_set_obstacle` / `navmesh_set_area_cost`，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**：所有未被禁列表拦截的 skill 直接执行。
-- 本模块**含 Delete 类 skill**：`navmesh_clear` 标记为 `SkillOperation.Delete`，会被 `IsForbiddenInSemi` 静态拦截 —— 仅 **Bypass** 模式或将其加入 **Allowlist** 才能调用。
-- `navmesh_bake` 同步阻塞主线程；大场景可能很慢，调用前提醒用户。
-
-**DO NOT** (common hallucinations):
-- `navmesh_create` does not exist → use `navmesh_bake` to generate NavMesh
-- `navmesh_add_agent_component` / `navmesh_set_agent_speed` do not exist → use `navmesh_add_agent` + `navmesh_set_agent` (convenience wrappers), or `component_add`/`component_set_property` for full control
-- NavMesh must be re-baked after scene geometry changes
-
-**Routing**:
-- For NavMeshAgent/NavMeshObstacle components → use `component` module
-- For path calculation → `navmesh_calculate_path` (this module)
+## Pitfalls
+- `navmesh_calculate_path` returns `status: "NoPath"` when `NavMesh.CalculatePath` returns false; `PathPartial` is not `valid`.
+- `navmesh_set_area_cost` takes `areaIndex` 0-31 and `cost` >= 0.
 
 ## Skills
 
 ### `navmesh_bake`
-Bake the NavMesh (Synchronous). **Warning: blocks the Editor, can be slow on large scenes.**
+Bake the NavMesh (synchronous). **Blocks the Editor; can be slow on large scenes.**
 **Parameters:** None.
 
 ### `navmesh_clear`
@@ -51,14 +42,14 @@ Calculate a path between two points.
 
 **Returns:** `{ status, valid, distance, cornerCount, corners }`
 
-- `status`: NavMeshPathStatus string (`PathComplete` / `PathPartial` / `PathInvalid`)
-- `valid`: `true` only when `status == "PathComplete"`
-- `distance`: total path length (0 for invalid paths)
-- `cornerCount`: number of corner points in `corners`
-- `corners`: array of `{x, y, z}` waypoints (empty when no path)
+- `status`: `PathComplete`, `PathPartial`, `PathInvalid`, or `NoPath`.
+- `valid`: `true` only when `status == "PathComplete"`.
+- `distance`: total length of the corners (0 for invalid paths).
+- `cornerCount`: number of entries in `corners`.
+- `corners`: array of `{x, y, z}` waypoints (empty when there is no path).
 
 ### `navmesh_add_agent`
-Add NavMeshAgent component to an object.
+Add a NavMeshAgent component to an object.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -88,7 +79,7 @@ Set NavMeshAgent properties (speed, acceleration, radius, height, stoppingDistan
 **Returns:** `{ success, gameObject, speed, radius }`
 
 ### `navmesh_add_obstacle`
-Add NavMeshObstacle component to an object.
+Add a NavMeshObstacle component to an object.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -109,7 +100,7 @@ Set NavMeshObstacle properties (shape, size, carving).
 | entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| shape | string | No | null | Obstacle shape (e.g. Box, Capsule) |
+| shape | string | No | null | Obstacle shape (e.g. Box, Capsule); an unknown value is rejected before any write |
 | sizeX | float | No | null | Obstacle size X |
 | sizeY | float | No | null | Obstacle size Y |
 | sizeZ | float | No | null | Obstacle size Z |
@@ -118,7 +109,7 @@ Set NavMeshObstacle properties (shape, size, carving).
 **Returns:** `{ success, gameObject, shape, carving }`
 
 ### `navmesh_sample_position`
-Find nearest point on NavMesh.
+Find the nearest point on the NavMesh.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -130,12 +121,12 @@ Find nearest point on NavMesh.
 **Returns:** `{ success, found, point: { x, y, z }, distance }`
 
 ### `navmesh_set_area_cost`
-Set area traversal cost.
+Set an area's traversal cost.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| areaIndex | int | Yes | - | NavMesh area index |
-| cost | float | Yes | - | Traversal cost value |
+| areaIndex | int | Yes | - | NavMesh area index, 0-31 |
+| cost | float | Yes | - | Traversal cost, >= 0 |
 
 **Returns:** `{ success, areaIndex, cost }`
 
@@ -146,7 +137,10 @@ Get NavMesh build settings.
 
 **Returns:** `{ success, agentRadius, agentHeight, agentSlope, agentClimb }`
 
----
-## Exact Signatures
+## Routing
+- NavMeshAgent or NavMeshObstacle properties beyond these skills → `component_add` / `component_set_property`.
+- Path queries stay in this module (`navmesh_calculate_path`).
 
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+**DO NOT** (common hallucinations):
+- `navmesh_create` does not exist: use `navmesh_bake`.
+- `navmesh_add_agent_component` and `navmesh_set_agent_speed` do not exist: use `navmesh_add_agent` then `navmesh_set_agent`.

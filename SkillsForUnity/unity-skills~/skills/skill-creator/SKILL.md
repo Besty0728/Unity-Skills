@@ -3,15 +3,12 @@ name: skill-creator
 description: Guide for authoring user-defined custom UnitySkills skills inside your own Unity project - a [UnitySkill] C# method plus the conventions that let agents and the server discover and gate it
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Skill Creator (advisory)
 
-## Triggers
+## When to use
 - Writing your own custom skill for your project
 - Extending what agents can do in this specific Unity project
 - Learning the [UnitySkill] metadata contract and discovery rules
-- 为自己的工程编写自定义技能、扩展 Agent 在本工程可调用的能力
-
-# Skill Creator (advisory)
 
 **Audience**: an agent (or developer) adding a **custom skill to your own Unity project**, not to the UnitySkills plugin source. A custom skill is a `public static` method marked `[UnitySkill]` compiled inside your project's Editor code; the server discovers it automatically — you never edit the plugin.
 

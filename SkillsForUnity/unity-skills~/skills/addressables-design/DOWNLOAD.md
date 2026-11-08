@@ -1,6 +1,6 @@
 ---
 name: unity-addressables-download
-description: "Addressables download, size, and cache APIs (1.22.3 & 2.9.1) — GetDownloadSizeAsync, DownloadDependenciesAsync, cache clearing, and the version-divergent download surface. Addressables 下载、大小与缓存 API(1.22.3 与 2.9.1:GetDownloadSizeAsync、DownloadDependenciesAsync、清缓存、跨版本差异较大的下载接口)。"
+description: "Addressables download, size, and cache APIs (1.22.3 & 2.9.1) — GetDownloadSizeAsync, DownloadDependenciesAsync, cache clearing, and the version-divergent download surface."
 type: reference
 ---
 

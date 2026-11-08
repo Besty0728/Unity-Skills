@@ -3,20 +3,13 @@ name: unity-primetween-design
 description: Source-anchored design rules for PrimeTween 1.4.6
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Writing or reviewing PrimeTween code
-- Diagnosing tween lifecycle behavior
-- 编写或审查 PrimeTween 代码、诊断补间生命周期行为
-
 # PrimeTween - Design Rules
+
+**Version scope:** PrimeTween 1.4.6 (`com.kyrylokuzyk.primetween`). Its UPM package supports Unity 2018.4+, but Unity Skills maintains a 2022.3+ baseline. Check the installed package version before relying on a newer factory overload or PrimeTween Pro feature.
 
 Advisory module. Rules are grounded in the PrimeTween **1.4.6** package installed through `com.kyrylokuzyk.primetween`.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode.
-
-## When to Load This Module
+## When to use
 
 Load before writing or reviewing:
 

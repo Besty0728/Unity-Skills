@@ -13,10 +13,6 @@ Set transforms for several objects in one call, with the spaces and order of `ga
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, entityId, instanceId, isUI, position, pos, localPosition, rotation, scale}]}`, read back per item; `pos` is the legacy alias of `position` (world); UI items add the RectTransform values. All-or-nothing: one missing object reverts every item.
 
-```python
-unity_skills.call_skill("gameobject_set_transform_batch", items=[
-    {"name": "Cube1", "posX": 0, "posY": 1},
-    {"entityId": cube2_id, "posX": 2, "posY": 1},
-    {"path": "Env/Cube3", "posX": 4, "posY": 1}
-])
+```bash
+curl -s "http://localhost:<port>/skill/gameobject_set_transform_batch?expectProject=<project>" -d '{"items":"[{\"name\":\"Cube1\",\"posX\":0,\"posY\":1},{\"entityId\":\"<cube2_entityId>\",\"posX\":2,\"posY\":1},{\"path\":\"Env/Cube3\",\"posX\":4,\"posY\":1}]"}'
 ```

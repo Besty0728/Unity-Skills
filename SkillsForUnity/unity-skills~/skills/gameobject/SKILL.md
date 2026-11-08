@@ -3,20 +3,16 @@ name: unity-gameobject
 description: Create and manipulate GameObjects
 ---
 
-## Triggers
-- Building or restructuring scene hierarchy
-- Spawning or removing objects
-- Adjusting transforms
-- 搭建或调整场景层级、新建或删除物体、修改 Transform
-
 # Unity GameObject Skills
 
 Create, find, parent and transform scene objects. Parameters come from the schema (recommend `includeSchema=true` or `/skills/schema?names=`), which notes the non-obvious ones — never from a skill's name. Execution, dryRun and verification rules: root [SKILL.md](../../SKILL.md).
 
-## Operating Mode
-`gameobject_find` / `gameobject_get_info` are `SemiAuto` (read-only); every other skill is `FullAuto`. `gameobject_delete` / `gameobject_delete_batch` (`Operation.Delete`) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+## When to use
+- Building or restructuring scene hierarchy
+- Spawning or removing objects
+- Adjusting transforms
 
-## Shared rules
+## Rules
 
 - **Identifiers**: `entityId` (string, any Unity; the only id on 6000.4+, where `instanceId` reads `0`), `instanceId` (int, older Unity), `path` (`"Parent/Child"`, case-insensitive, optional scene-name prefix), `name`. Give at least one; precedence `entityId > instanceId > path > name`. An id that names nothing is `TARGET_NOT_FOUND` (it may be stale), never a fallback; a missed path falls back to `name`.
 - **Name matching**: an exact name wins (the top-most in the Hierarchy when several share it, inactive too; Prefab Mode only by id); otherwise a single whole-word or substring match is used. Several fuzzy matches return `TARGET_NOT_FOUND` with `candidates` (`path` + `entityId` each) instead of guessing. Non-exact resolutions are listed in top-level `resolutionNotes`.
@@ -51,10 +47,6 @@ Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` —
 - `gameobject_get_transform` does not exist → use `gameobject_get_info`
 
 **Elsewhere**: components → `component_*` skills; material or colour → `material_*` skills; `scene_find_objects` (SemiAuto) also searches objects.
-
-## Exact Signatures
-
-Names, parameters, defaults and required flags come from `GET /skills/schema?category=GameObject` (or `?names=a,b`), not this file.
 
 ## Common Errors
 

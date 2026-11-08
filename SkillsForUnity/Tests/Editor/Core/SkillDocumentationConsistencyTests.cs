@@ -84,7 +84,7 @@ namespace UnitySkills.Tests.Core
             "testability",
             "shadergraph-design",
             // The following *-design entries are all pure design guides (0 ### skill endpoint definitions), same
-            // as shadergraph-design - uniformly exempt from schema-first (Exact Signatures) validation to avoid false positives.
+            // as shadergraph-design - uniformly exempt from schema-first validation to avoid false positives.
             "addressables-design",
             "dotween-design",
             "primetween-design",
@@ -100,8 +100,7 @@ namespace UnitySkills.Tests.Core
             "manual-material",
             "manual-scene",
             // skills/SKILL.md's index already states unity-cli belongs to the same category as manual-* /
-            // *-design: "pure doc modules defining no REST skills." It stayed green while unlisted only because
-            // that doc kept a leftover Exact Signatures + /skills/schema paragraph; removing it (valid for a zero-endpoint module) would turn it red.
+            // *-design: "pure doc modules defining no REST skills."
             "unity-cli",
             // Pure authoring guide for extending the plugin itself (0 REST skills), added with the
             // skill-creator module — same exemption family as adr / unity-cli.
@@ -198,6 +197,15 @@ namespace UnitySkills.Tests.Core
             ("cinemachine", skill => skill.Attribute.Category == SkillCategory.Cinemachine),
             ("particle", skill => skill.Attribute.Category == SkillCategory.Particle),
             ("workflow", skill => skill.Method.DeclaringType?.Name == "WorkflowSkills"),
+            ("addressables", skill => skill.Attribute.Category == SkillCategory.Addressables),
+            ("behavior", skill => skill.Attribute.Category == SkillCategory.Behavior),
+            ("camera", skill => skill.Attribute.Category == SkillCategory.Camera),
+            ("event", skill => skill.Attribute.Category == SkillCategory.Event),
+            ("light", skill => skill.Attribute.Category == SkillCategory.Light),
+            ("prefab", skill => skill.Attribute.Category == SkillCategory.Prefab),
+            ("qframework", skill => skill.Attribute.Category == SkillCategory.QFramework),
+            ("terrain", skill => skill.Attribute.Category == SkillCategory.Terrain),
+            ("ui", skill => skill.Attribute.Category == SkillCategory.UI),
         };
 
         /// <summary>
@@ -222,17 +230,17 @@ namespace UnitySkills.Tests.Core
             { "cinemachine", 6464 },
             { "particle", 14080 },
             // 3.0 checkpoint-first rewrite (design cap 6 KB): entry size at the rewrite plus ~4% headroom, rounded up to 64 bytes.
-            { "workflow", 6144 }
-        };
-
-        private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "batch",
-            "editor",
-            "profiler",
-            "scene",
-            "timeline",
-            "workflow"
+            { "workflow", 6144 },
+            // 3.0 module doc overhaul (entries capped at 6 KB): entry size at the split plus ~4% headroom, rounded up to 64 bytes.
+            { "addressables", 4672 },
+            { "behavior", 4736 },
+            { "camera", 3648 },
+            { "event", 3712 },
+            { "light", 3904 },
+            { "prefab", 6336 },
+            { "qframework", 6400 },
+            { "terrain", 3648 },
+            { "ui", 6272 }
         };
 
         [Test]
@@ -1303,21 +1311,18 @@ namespace UnitySkills.Tests.Core
                 }
 
                 var content = File.ReadAllText(skillDocPath);
-                if (content.IndexOf("## Canonical Signatures", StringComparison.OrdinalIgnoreCase) >= 0)
+                foreach (var retired in new[] { "## Canonical Signatures", "## Exact Signatures" })
                 {
-                    issues.Add($"残留 Canonical Signatures: {moduleName}/SKILL.md");
+                    if (content.IndexOf(retired, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        issues.Add($"残留 {retired.Substring(3)}: {moduleName}/SKILL.md");
+                    }
                 }
 
-                if (ExactSignatureOptionalModules.Contains(moduleName))
+                // The entry's one-line schema pointer replaced the per-module Exact Signatures closer.
+                if (content.IndexOf("/skills/schema", StringComparison.OrdinalIgnoreCase) < 0)
                 {
-                    continue;
-                }
-
-                var hasExactSignatures = content.IndexOf("## Exact Signatures", StringComparison.OrdinalIgnoreCase) >= 0;
-                var mentionsSchemaEndpoint = content.IndexOf("/skills/schema", StringComparison.OrdinalIgnoreCase) >= 0;
-                if (!hasExactSignatures || !mentionsSchemaEndpoint)
-                {
-                    issues.Add($"缺少 schema-first Exact Signatures 声明: {moduleName}/SKILL.md");
+                    issues.Add($"缺少 schema-first 指引（入口需指向 GET /skills/schema）: {moduleName}/SKILL.md");
                 }
             }
         }

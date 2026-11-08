@@ -3,70 +3,47 @@ name: unity-volume
 description: Work with the SRP Volume framework
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Volume Skills
 
-## Triggers
+Shared SRP Volume framework skills for Unity 2022.3+, for URP and HDRP through SRP Core. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Setting up volumes
 - Creating or loading a VolumeProfile
-- Adding global/local volumes
-- 搭建 Volume、创建或加载 VolumeProfile、向场景添加全局/局部 Volume
+- Adding global or local volumes
 
-# Volume Skills
-
-Shared SRP Volume framework skills for Unity 2022.3+ — works in URP and HDRP via SRP Core.
-
-## Operating Mode
-
-- Query skills (`volume_list_component_types`, `volume_get_component`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
-- Mutating skills (`volume_profile_create`, `volume_create`, `volume_set_profile`, `volume_add_component`, `volume_set_parameter`, `volume_set_parameter_batch`) are `SkillMode.FullAuto` — under **Approval** they need user grant (grant triggers one server-side execute returning the result); under **Auto** / **Bypass** they execute directly.
-- `volume_remove_component` carries `SkillOperation.Delete` and is **auto-forbidden** in Approval / Auto modes (NeverInSemi). Only **Bypass** or the user-managed **Allowlist** can run it.
-
-## SRP Package Stub
-
-This module is compiled against `com.unity.render-pipelines.core` (`SRP_CORE`). When neither URP nor HDRP is installed (no SRP Core), **every** skill returns a stub `{ error: "Scriptable Render Pipeline Core package … is not installed." }` (`RenderPipelineSkillsCommon.NoSRP()`). The stub is a diagnostic payload, not a permission denial — it does **not** require grant and is **not** treated as NeverInSemi. Inspect `project_get_render_pipeline` first when you see this error.
-
-## Guardrails
-
-**Routing**:
-- For Volume container/profile CRUD: use this module
-- For high-level modern post-processing effects like Bloom/DOF/Tonemapping: prefer `postprocess`
-
-**Runtime-first rules**:
-- Always call `volume_list_component_types` before assuming a component type exists on the active pipeline
-- Use `volume_get_component` after add/create to inspect the actual parameter names before writing values
-- Prefer exact parameter names returned by the live component data instead of guessing from memory
-- `volume_set_parameter_batch` expects `items` to be a JSON array string
+## Rules
+- Without SRP Core every skill returns `{ error: "Scriptable Render Pipeline Core package … is not installed." }` (`RenderPipelineSkillsCommon.NoSRP()`). This is a diagnostic payload, not a permission denial; inspect `project_get_render_pipeline` first.
+- Call `volume_list_component_types` before assuming a component type exists on the active pipeline.
+- After adding or creating a component, call `volume_get_component` and use the parameter names it returns instead of names from memory.
+- `volume_set_parameter_batch` expects `items` as a JSON array string.
+- For high-level post-processing effects such as Bloom, DOF or Tonemapping, prefer the [postprocess](../postprocess/SKILL.md) module. This module covers Volume container and profile CRUD.
 
 ## Skills
 
-### `volume_profile_create`
+### volume_profile_create
 Create a VolumeProfile asset.
 
-### `volume_create`
+### volume_create
 Create a global or local Volume GameObject.
 
-### `volume_set_profile`
+### volume_set_profile
 Assign or replace the profile on an existing Volume.
 
-### `volume_list_component_types`
-List explicit supported VolumeComponent types for the active SRP pipeline.
+### volume_list_component_types
+List the explicitly supported VolumeComponent types for the active SRP pipeline.
 
-### `volume_add_component`
+### volume_add_component
 Add a VolumeComponent override to a VolumeProfile.
 
-### `volume_remove_component`
+### volume_remove_component
 Remove a VolumeComponent override from a VolumeProfile.
 
-### `volume_get_component`
+### volume_get_component
 Inspect a VolumeComponent override and its parameters.
 
-### `volume_set_parameter`
+### volume_set_parameter
 Set one override parameter on a VolumeComponent.
 
-### `volume_set_parameter_batch`
+### volume_set_parameter_batch
 Set multiple override parameters on one VolumeComponent.
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

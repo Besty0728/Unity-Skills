@@ -3,16 +3,9 @@ name: unity-addressables-design
 description: Source-anchored design rules for Unity Addressables 1.22.3/2.9.1
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Writing or reviewing Addressables code
-- Async asset/scene loading
-- Hot-update or catalog refresh
-- Version migration
-- 编写或审查 Addressables 代码、异步加载资源/场景、配置热更新或目录刷新、版本迁移
-
 # Addressables - Design Rules
+
+**Version scope:** Addressables 1.22.3 (Unity 2022) and 2.9.1 (Unity 6). The migration table below lists the cross-version differences.
 
 Advisory module. Every rule is distilled from Unity Addressables source at two versions:
 - **1.22.3** — `com.unity.addressables@1.22.3` (Unity 2022, min 2019.4)
@@ -20,9 +13,7 @@ Advisory module. Every rule is distilled from Unity Addressables source at two v
 
 Each rule cites a concrete file/line so the reasoning is auditable and the AI does not improvise against stale memory.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
-## When to Load This Module
+## When to use
 
 Load before writing or reviewing any of:
 

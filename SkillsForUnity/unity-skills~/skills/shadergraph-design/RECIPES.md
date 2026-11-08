@@ -1,6 +1,6 @@
 ---
 name: unity-shadergraph-recipes
-description: "Shader Graph recipes limited to the supported node subset — proven node chains like the BaseColor texture-sample chain. 限定在受支持节点子集内的 Shader Graph 配方(经验证的节点链,如 BaseColor 贴图采样链)。"
+description: "Shader Graph recipes limited to the supported node subset — proven node chains like the BaseColor texture-sample chain."
 type: reference
 ---
 

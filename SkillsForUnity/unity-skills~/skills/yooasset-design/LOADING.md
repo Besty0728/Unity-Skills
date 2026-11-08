@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset-loading
-description: "YooAsset loading of assets, scenes, and raw files (v2.3.18) — the five load families, sync vs async, and the type guard. YooAsset 加载资源、场景与原始文件(v2.3.18:五大加载族、同步与异步、类型守卫)。"
+description: "YooAsset loading of assets, scenes, and raw files (v2.3.18) — the five load families, sync vs async, and the type guard."
 type: reference
 ---
 

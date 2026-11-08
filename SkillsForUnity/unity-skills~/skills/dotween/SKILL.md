@@ -3,35 +3,21 @@ name: unity-dotween
 description: Automate DOTween Free/Pro at editor time
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Setting up DOTween
-- Validating install/modules
-- Configuring DOTweenAnimation components
-- 接入 DOTween、校验安装/模块、配置 DOTweenAnimation 组件
-
 # DOTween Skills
 
-DOTween Free/Pro support for project diagnostics, settings, module/API discovery, and runtime script generation. DOTween Pro-only `DOTweenAnimation` editor-time configuration remains available through `dotween_pro_*` skills.
+DOTween Free and Pro support: project diagnostics, settings, module and API discovery, runtime script generation, and editor-time configuration of `DOTweenAnimation` components through the `dotween_pro_*` skills. Parameters come from the schema (`GET /skills/schema?category=DOTween&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-## Guardrails
+## When to use
+- Setting up DOTween
+- Validating install and modules
+- Configuring DOTweenAnimation components
 
-**Operating Mode** (v1.9 three-tier):
-- **Approval** (default): query/diagnostic skills (`dotween_get_status`, `dotween_settings_get`, `dotween_settings_find`, `dotween_settings_validate`, `dotween_list_modules`, `dotween_list_shortcuts`, `dotween_pro_get_animation`, `dotween_pro_list_animations`) run directly. Mutators (settings configure, the remaining `dotween_pro_*` writers) are FullAuto — on `MODE_RESTRICTED`, run the grant protocol. The script generators and `dotween_pro_remove_animation` are auto-forbidden instead (next bullet); grant does **not** unlock those.
-- **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
-- Auto-forbidden in this module: `dotween_generate_tween_script`, `dotween_generate_sequence_script`, `dotween_generate_lifetime_script` (all carry `MayTriggerReload = true`, `RiskLevel = "high"` because writing a new `.cs` triggers script compilation + Domain Reload), plus `dotween_pro_remove_animation` (`SkillOperation.Delete` — the Delete bit alone triggers NeverInSemi even though its `RiskLevel` stays `"low"`). All four return `MODE_FORBIDDEN` under Approval **and** Auto, and are reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN` too. Note the other Pro writers (`dotween_pro_add_animation`, `dotween_pro_set_*`, `dotween_pro_copy_animation`, …) carry no Delete bit and stay grantable.
-- When DOTween Free/Pro is missing, the `DOTweenPresenceDetector` does not add the `DOTWEEN` / `DOTWEEN_PRO` defines, so most skills return a "not installed" diagnostic instead of executing. The `dotween_pro_*` family additionally requires Pro because `DG.Tweening.DOTweenAnimation` is Pro-only.
-
-**Prerequisites**:
-- DOTween Free or Pro must be installed. `DOTweenPresenceDetector` adds `DOTWEEN` / `DOTWEEN_PRO` defines automatically after install.
-- Free skills work with DOTween Free and Pro: status, settings read/find/validate/configure, module/shortcut listing, runtime script generation.
-- `dotween_pro_*` skills require DOTween **Pro** because `DG.Tweening.DOTweenAnimation` is Pro-only.
-
-**Do not confuse Free with Pro**:
-- Free skills do **not** create or emulate `DOTweenAnimation` components.
-- Runtime tween generation creates `.cs` scripts only; it does not auto-attach scripts to scene objects because Unity may need a Domain Reload first.
-- For source-level runtime API design rules, load [dotween-design](../dotween-design/SKILL.md).
+## Rules
+- Install DOTween Free or Pro first. `DOTweenPresenceDetector` adds the `DOTWEEN` / `DOTWEEN_PRO` defines after install; without them most skills return a "not installed" diagnostic.
+- Free skills work with Free and Pro. The `dotween_pro_*` family requires Pro, because `DG.Tweening.DOTweenAnimation` is Pro-only. Free skills do not create or emulate `DOTweenAnimation` components.
+- Runtime tween generation writes `.cs` files only. It never attaches them to scene objects, because Unity may need a Domain Reload first.
+- `dotween_generate_tween_script`, `dotween_generate_sequence_script` and `dotween_generate_lifetime_script` are refused under Approval and Auto (`MODE_FORBIDDEN`; writing a `.cs` triggers compilation and a reload), and so is `dotween_pro_remove_animation` (delete-class). Only Bypass or an Allowlist entry runs them, and a grant does not unlock them. The other Pro writers, such as `dotween_pro_add_animation` and `dotween_pro_set_*`, are grantable.
+- For source-level runtime API design, load [dotween-design](../dotween-design/SKILL.md).
 
 ## Free Skills
 
@@ -132,8 +118,3 @@ Remove one DOTweenAnimation component by index.
 | `Color / CameraBackgroundColor` | `endValueColor` (`"#FF8800"` or `"1,0.5,0,1"`) |
 | `Text` | `endValueString` |
 | `UIRect` | `endValueRect` (`"x,y,width,height"`) |
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

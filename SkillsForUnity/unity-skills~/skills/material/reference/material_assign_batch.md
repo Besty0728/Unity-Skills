@@ -7,9 +7,6 @@ Assign materials to multiple objects.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, material}]}` — each item echoes `gameObject` (the object name) and `material` (the assigned asset path); failures come back as `{error, target}`.
 
-```python
-unity_skills.call_skill("material_assign_batch", items=[
-    {"name": "Cube1", "materialPath": "Assets/Materials/Red.mat"},
-    {"name": "Cube2", "materialPath": "Assets/Materials/Blue.mat"}
-])
+```bash
+curl -s "http://localhost:<port>/skill/material_assign_batch?expectProject=<project>" -d '{"items": "[{\"name\": \"Cube1\", \"materialPath\": \"Assets/Materials/Red.mat\"}, {\"name\": \"Cube2\", \"materialPath\": \"Assets/Materials/Blue.mat\"}]"}'
 ```

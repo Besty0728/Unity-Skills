@@ -178,6 +178,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 
   模块文档订正了 sample、debug、editor、animator、cinemachine、history、addressables、script、scene 及模块索引里与代码不符的说法；72 个模块开头的提示不再要求先 dryRun。
 - **根 Skill 与试点模块（产品主线）** — 见 Changed：入口变薄、参考按需加载、去掉 `SKILL_FULL`；Workflow 模块文档按「检查点优先」重写（回退协议、`workflow_list` 行格式、检查点、回退契约、「撤销单步与 scope」、已知局限）。
+- **85 个模块文档整体订正** — 统一为 frontmatter → 说明 → When to use → Rules → Pitfalls → 技能表 / `reference/` 的结构，入口第一段指向 `GET /skills/schema`，删去重复根文档的样板（「Before calling any skill」横幅、Operating Mode 段、Exact Signatures 结尾、`(v1.9 three-tier)` 标记）与 Python `call_skill` 片段（改为带 `expectProject` 的 curl）。正文只用英文：80 个文件里的中文改写为英文，pico-design 与 qframework-design 全文翻译，仅保留引号内的上游界面文案。超过 12 KB 的 15 个模块拆成入口（≤ 6 KB）加 `reference/`：addressables、asset、behavior、camera、event、light、prefab、qframework、terrain、ui 按技能拆分（9 个登记为试点，入口受字节预算约束），hybridclr、netcode、uitoolkit、yooasset、unity-cli 按主题拆分。各 `*-design` 入口开头写明适用的包版本与先读哪一节。逐条对照 C# 订正参数、返回字段与错误码（如 `physics_raycast` 返回 `objectName`、behavior 缺包是 `MISSING_PACKAGE`、`navmesh_calculate_path` 的 `NoPath`、`smart_reference_bind.componentName` 必填）。`/skillcheck` 的告警从 41 条降到 17 条。
+- **根 `SKILL.md` 增加 advisory 路由（7433 → 7661 字节）** — 用 NGO、YooAsset、Addressables、UniTask、DOTween、PrimeTween、ShaderGraph、PICO、QFramework 写 C# 之前，先读对应的 `*-design` 文档：Agent 的训练数据可能早于这些包的 API。
 - **评测集** — README 新增评测集一节：题目位置（`SkillsForUnity/Evaluation~/pack/`）、运行方式与题目总览。`eval/docs/` 收纳 v3 合约、已知缺陷与协议；v1 的模型对照与用量结论不再保留（旧题库与旧插件下的结果，对新题库没有参考价值），新题库的模型成绩另行发布。
 - 技能计数与模块数同步到 **872** 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
 

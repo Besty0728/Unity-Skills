@@ -3,22 +3,13 @@ name: unity-netcode-design
 description: Source-anchored design rules for Netcode for GameObjects 2.x
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Writing or reviewing multiplayer code
-- Designing server/distributed authority
-- Wiring RPCs or NetworkVariables
-- Debugging netcode
-- 编写或审查多人联机代码、设计服务器/分布式权威、连接 RPC 或网络变量、排查 netcode 问题
-
 # Netcode for GameObjects - Design Rules
+
+**Version scope:** `com.unity.netcode.gameobjects` 2.x. Every rule is distilled from its source, with a file and line cited so the reasoning is auditable.
 
 Advisory module. Every rule is distilled from `com.unity.netcode.gameobjects` 2.x source. Each rule cites a concrete file/line so the reasoning is auditable.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
-## When to Load This Module
+## When to use
 
 Load before writing or reviewing any of:
 - NetworkBehaviour scripts (OnNetworkSpawn / OnNetworkDespawn / RPCs / NetworkVariables)

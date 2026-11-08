@@ -11,15 +11,11 @@ Start a new session (conversation-level). All changes will be tracked and can be
 **Example**
 
 
-```python
-import unity_skills
-
-# Session-level: wrap entire conversation for bulk undo
-unity_skills.call_skill("workflow_session_start", tag="Build Player")
-unity_skills.call_skill("gameobject_create", name="Player", primitiveType="Capsule")
-unity_skills.call_skill("component_add", name="Player", componentType="Rigidbody")
-unity_skills.call_skill("workflow_session_end")
-# Later: undo entire session
-sessions = unity_skills.call_skill("workflow_session_list")
-unity_skills.call_skill("workflow_session_undo", sessionId=sessions["sessions"][0]["sessionId"])
+```
+curl -s "http://localhost:<port>/skill/workflow_session_start?expectProject=<project>" -d '{"tag":"Build Player"}'
+curl -s "http://localhost:<port>/skill/gameobject_create?expectProject=<project>" -d '{"name":"Player","primitiveType":"Capsule"}'
+curl -s "http://localhost:<port>/skill/component_add?expectProject=<project>" -d '{"name":"Player","componentType":"Rigidbody"}'
+curl -s "http://localhost:<port>/skill/workflow_session_end?expectProject=<project>" -d '{}'
+curl -s "http://localhost:<port>/skill/workflow_session_list?expectProject=<project>" -d '{}'
+curl -s "http://localhost:<port>/skill/workflow_session_undo?expectProject=<project>" -d '{"sessionId":"<sessionId from workflow_session_list>"}'
 ```

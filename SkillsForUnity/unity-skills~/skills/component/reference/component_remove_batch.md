@@ -9,9 +9,7 @@ Remove components from several GameObjects in one call.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, removed, count, remainingOfType}]}` (`count` = components removed, `remainingOfType` = that type still on the object). All-or-nothing. NeverInSemi.
 
-```python
-unity_skills.call_skill("component_remove_batch", items=[
-    {"entityId": wall_a_id, "componentType": "BoxCollider"},
-    {"entityId": wall_b_id, "componentType": "BoxCollider"}
-])
+```bash
+# Each item names the object by entityId; the batch is all-or-nothing
+curl -s "http://localhost:<port>/skill/component_remove_batch?expectProject=<project>" -d '{"items":"[{\"entityId\":\"<wall_a_entityId>\",\"componentType\":\"BoxCollider\"},{\"entityId\":\"<wall_b_entityId>\",\"componentType\":\"BoxCollider\"}]"}'
 ```

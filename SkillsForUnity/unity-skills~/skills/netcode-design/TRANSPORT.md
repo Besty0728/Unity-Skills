@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-transport
-description: "Netcode for GameObjects transport (UnityTransport) — connection setup, endpoints, and NetworkTransport configuration. Netcode for GameObjects 的传输层(UnityTransport:连接设置、端点、NetworkTransport 配置)。"
+description: "Netcode for GameObjects transport (UnityTransport) — connection setup, endpoints, and NetworkTransport configuration."
 type: reference
 ---
 

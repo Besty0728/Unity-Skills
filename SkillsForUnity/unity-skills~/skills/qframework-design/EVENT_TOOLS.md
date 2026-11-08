@@ -1,6 +1,6 @@
-# EVENT_TOOLS — TypeEventSystem / EasyEvent / IOCContainer vs IOCKit / 注销模式
+# EVENT_TOOLS - TypeEventSystem / EasyEvent / IOCContainer vs IOCKit / Unregister Patterns
 
-`Doc.md:3198` 原文："QFramework 还提供三个可以脱离架构使用的工具 TypeEventSystem、EasyEvent、BindableProperty、IOCContainer"——原文写"三个"却列了四个名字，是教程笔误，不代表工具数量真是三个；这四个工具本身就是 `Architecture<T>` 内部拼出来的构件（BindableProperty 见 [BINDABLE_QUERY.md](./BINDABLE_QUERY.md)）。
+`Doc.md:3198` says verbatim: "QFramework also provides three tools that can be used outside the architecture: TypeEventSystem, EasyEvent, BindableProperty, IOCContainer". The original text says "three" but lists four names, a typo in the tutorial. The tool count is not really three. These four tools are the building blocks that `Architecture<T>` assembles internally (for BindableProperty see [BINDABLE_QUERY.md](./BINDABLE_QUERY.md)).
 
 ## 1. TypeEventSystem
 
@@ -16,11 +16,11 @@ public class TypeEventSystem
     public void UnRegister<T>(Action<T> onEvent) => mEvents.GetEvent<EasyEvent<T>>()?.UnRegister(onEvent);
 }
 ```
-`QFramework.cs:624-641`。内部按**泛型实参的类型**（不是事件值的运行时类型）在 `EasyEvents` 字典里查表。`Architecture<T>.SendEvent/RegisterEvent` 就是转发到私有的 `mTypeEventSystem` 实例（`QFramework.cs:197-205`），架构内的事件系统和 `TypeEventSystem.Global` 是两个独立实例，互不干扰。
+Source: `QFramework.cs:624-641`. It looks up the `EasyEvents` dictionary by the **generic type argument** (not the runtime type of the event value). `Architecture<T>.SendEvent/RegisterEvent` forward to a private `mTypeEventSystem` instance (`QFramework.cs:197-205`). The architecture's event system and `TypeEventSystem.Global` are two independent instances that do not interfere with each other.
 
-**事件继承的关键细节**：`Register<IEventA>` 会在字典里建一条 `EasyEvent<IEventA>`；`Send<IEventA>(new EventB())` 能命中这条（`EventB : IEventA` 隐式转换）；但 `Send<EventB>()` 是查 `EasyEvent<EventB>` 这条**从未注册过的键**，`GetEvent` 返回 `default` 再 `?.Trigger` 短路，**静默无效、不报错**（`Doc.md:3288-3301`，"无效"标注在 3291）。踩坑点：调用方以为事件类型看运行时类型，实际上看的是调用 `Send<T>`/`Register<T>` 时写的那个 `T`。
+**Key detail of event inheritance**: `Register<IEventA>` creates an entry keyed `EasyEvent<IEventA>`. `Send<IEventA>(new EventB())` hits it (`EventB : IEventA` converts implicitly). But `Send<EventB>()` looks up the key `EasyEvent<EventB>`, which was never registered, so `GetEvent` returns `default` and the `?.Trigger` short-circuits. It is **silently ineffective and raises no error** (`Doc.md:3288-3301`; "ineffective" marked at 3291). Pitfall: the caller assumes events are keyed by runtime type, but they are keyed by the `T` written in the `Send<T>` / `Register<T>` call.
 
-**接口事件模式**依赖 `IOnEvent<T>` + `OnGlobalEventExtension`：
+**The interface-event pattern** relies on `IOnEvent<T>` plus `OnGlobalEventExtension`:
 ```csharp
 public static class OnGlobalEventExtension
 {
@@ -30,59 +30,59 @@ public static class OnGlobalEventExtension
         TypeEventSystem.Global.UnRegister<T>(self.OnEvent);
 }
 ```
-`QFramework.cs:208-220`。**这两个扩展方法要求 `T : struct`**——接口事件模式只对结构体事件生效，用 class 定义事件类型走这条路会直接编译不过。普通的 `Action<T>` 显式注册（`TypeEventSystem.Global.Register<T>(handler)`）没有这个限制，class/struct 事件都能用。
+Source: `QFramework.cs:208-220`. **These two extension methods require `T : struct`**, so the interface-event pattern only works with struct events. Defining an event type as a class and going this route fails to compile. Explicit `Action<T>` registration (`TypeEventSystem.Global.Register<T>(handler)`) has no such restriction, and both class and struct events work there.
 
-## 2. 手动注销 vs 自动注销
+## 2. Manual vs automatic unregistration
 
-- **手动注销必须用具名方法**：`Register<EventA>(OnEventA)` 配 `UnRegister<EventA>(OnEventA)`（`Doc.md:3305-3338`）；如果注册时传的是匿名 lambda，没有引用可以拿来 `-=`，就没法手动注销
-- **自动注销**：`.UnRegisterWhenGameObjectDestroyed(gameObject)` 挂 `UnRegisterOnDestroyTrigger`，`.UnRegisterWhenDisabled(gameObject)` 挂 `UnRegisterOnDisableTrigger`（二者都是 `GetOrAddComponent<T>` 幂等添加，`QFramework.cs:592-608`）
-- **`.UnRegisterWhenCurrentSceneUnloaded()`**（`QFramework.cs:610-611`）不需要传任何 GameObject：内部是一个 `DontDestroyOnLoad` 且 `HideFlags.HideInHierarchy` 的单例 `UnRegisterCurrentSceneUnloadedTrigger`，订阅 `SceneManager.sceneUnloaded`，当前场景卸载时自动触发注销（`QFramework.cs:546-573`）
-- **非 MonoBehaviour 类**用 `IUnRegisterList` + `AddToUnregisterList` + `UnRegisterAll()` 手动批量清理（`QFramework.cs:473-492`，示例 `Doc.md:3417-3434`）
+- **Manual unregistration must use named methods**: `Register<EventA>(OnEventA)` paired with `UnRegister<EventA>(OnEventA)` (`Doc.md:3305-3338`). If the registration used an anonymous lambda, there is no reference to `-=` with, so manual unregistration is impossible.
+- **Automatic unregistration**: `.UnRegisterWhenGameObjectDestroyed(gameObject)` attaches `UnRegisterOnDestroyTrigger`; `.UnRegisterWhenDisabled(gameObject)` attaches `UnRegisterOnDisableTrigger`. Both use idempotent `GetOrAddComponent<T>` (`QFramework.cs:592-608`).
+- **`.UnRegisterWhenCurrentSceneUnloaded()`** (`QFramework.cs:610-611`) needs no GameObject argument. Internally, it is a `DontDestroyOnLoad` singleton with `HideFlags.HideInHierarchy` named `UnRegisterCurrentSceneUnloadedTrigger`, which subscribes to `SceneManager.sceneUnloaded` and unregisters when the current scene unloads (`QFramework.cs:546-573`).
+- **Non-MonoBehaviour classes** use `IUnRegisterList` + `AddToUnregisterList` + `UnRegisterAll()` to clean up in batch manually (`QFramework.cs:473-492`, example `Doc.md:3417-3434`).
 
-小结（`Doc.md:3440-3461`）：事件定义建议用 `struct`——GC 更少；接口事件模式约束更强、能借 IDE 生成样板代码，但受限于 `struct`。
+Summary (`Doc.md:3440-3461`): define event types as `struct` to reduce GC. The interface-event pattern is more constrained but lets the IDE generate boilerplate; the cost is the `struct` requirement.
 
-## 3. EasyEvent 家族
+## 3. EasyEvent family
 
 ```csharp
-public class EasyEvent : IEasyEvent           // 无参
-public class EasyEvent<T> : IEasyEvent        // 1 个泛型
-public class EasyEvent<T, K> : IEasyEvent      // 2 个泛型
-public class EasyEvent<T, K, S> : IEasyEvent    // 3 个泛型，QFramework 支持的上限
+public class EasyEvent : IEasyEvent           // no parameters
+public class EasyEvent<T> : IEasyEvent        // 1 generic argument
+public class EasyEvent<T, K> : IEasyEvent      // 2 generic arguments
+public class EasyEvent<T, K, S> : IEasyEvent    // 3 generic arguments, the QFramework upper limit
 ```
-`QFramework.cs:800-883`。全部通过 `IUnRegister Register(...)` 返回一个 `CustomUnRegister`，`Trigger(...)` 触发。`EasyEvents`（`QFramework.cs:885-913`）是按类型存 `IEasyEvent` 的字典，`TypeEventSystem` 内部就是包了一层 `EasyEvents`。
+Source: `QFramework.cs:800-883`. All return an `IUnRegister` from `Register(...)`, backed by a `CustomUnRegister`, and fire via `Trigger(...)`. `EasyEvents` (`QFramework.cs:885-913`) is a dictionary storing `IEasyEvent` by type; `TypeEventSystem` internally wraps an `EasyEvents`.
 
-对比取舍（`Doc.md:3549-3560`）：
+Trade-offs (`Doc.md:3549-3560`):
 
-| | 自动注销 | 相对性能 | 参数可读性 | 典型场景 |
+| | Auto unregister | Relative performance | Parameter readability | Typical use |
 |---|---|---|---|---|
-| C# 原生委托/事件 | 无 | 最高 | 有名字 | — |
-| `EasyEvent` | 有 | 接近原生委托 | 无名字，需自己记参数顺序 | 通用系统内部（背包、对话），早期原型快速迭代 |
-| `TypeEventSystem` | 有 | 略低于 EasyEvent | 靠事件类型自文档化 | 跨模块广播、协作项目、长期维护 |
+| C# native delegate/event | No | Highest | Named | - |
+| `EasyEvent` | Yes | Close to native delegate | No names; you must remember parameter order | Internals of general systems (inventory, dialogue); rapid early prototyping |
+| `TypeEventSystem` | Yes | Slightly below EasyEvent | Self-documenting via event type | Cross-module broadcast, collaborative projects, long-term maintenance |
 
-`OrEvent`（`QFramework.cs:921-957`）可以把多个 `IEasyEvent`（包括 `BindableProperty`，因为它实现了 `IEasyEvent`）合并成"任意一个触发就触发"：`a.Or(b).Or(c).Register(...)`。
+`OrEvent` (`QFramework.cs:921-957`) merges several `IEasyEvent`s (including `BindableProperty`, since it implements `IEasyEvent`) into "fires when any one fires": `a.Or(b).Or(c).Register(...)`.
 
-## 4. IOCContainer（核心） vs IOCKit（Toolkits）——两套完全不同的容器
+## 4. Core IOCContainer vs Toolkits IOCKit: two entirely different containers
 
-### 核心 IOCContainer
+### Core IOCContainer
 ```csharp
 public class IOCContainer
 {
     private Dictionary<Type, object> mInstances = new Dictionary<Type, object>();
-    public void Register<T>(T instance) { /* 存在则覆盖，否则 Add */ }
-    public T Get<T>() where T : class { /* 查不到返回 null，不抛异常 */ }
+    public void Register<T>(T instance) { /* overwrite if present, otherwise Add */ }
+    public T Get<T>() where T : class { /* returns null if not found, does not throw */ }
     public IEnumerable<T> GetInstancesByType<T>() => mInstances.Values.Where(i => typeof(T).IsInstanceOfType(i)).Cast<T>();
     public void Clear() => mInstances.Clear();
 }
 ```
-`QFramework.cs:647-684`。就是一个 `Dictionary<Type,object>` 的极薄封装：**只支持单例注册/获取**，没有工厂、没有对象池、没有反射注入。`Architecture<T>` 内部私有持有一个实例（`QFramework.cs:130`），`RegisterSystem/RegisterModel/RegisterUtility`/`GetSystem/GetModel/GetUtility` 全部委托给它。作者原话：这是"非常简易版本的控制反转容器"，对比 Zenject 这类"内置对象池和对象工厂"的容器故意做得更简单（`Doc.md:3641-3647`）。
+Source: `QFramework.cs:647-684`. It is a very thin wrapper over a `Dictionary<Type,object>`: **it only supports singleton registration and retrieval**, with no factories, no object pools and no reflection-based injection. `Architecture<T>` holds one instance privately (`QFramework.cs:130`), and `RegisterSystem/RegisterModel/RegisterUtility` and `GetSystem/GetModel/GetUtility` all delegate to it. The author's words: this is a "very simple inversion-of-control container". Compared with containers like Zenject that have built-in object pools and object factories, it is deliberately simpler (`Doc.md:3641-3647`).
 
-### Toolkits IOCKit（`_CoreKit/IOCKit/IOCKit.cs`，不在 QFramework.cs 里）
-接口 `IQFrameworkContainer`（`IOCKit.cs:33-136`）比核心 `IOCContainer` 重得多：
+### Toolkits IOCKit (`_CoreKit/IOCKit/IOCKit.cs`, not in QFramework.cs)
+The interface `IQFrameworkContainer` (`IOCKit.cs:33-136`) is far heavier than the core `IOCContainer`:
 
-- `[Inject]` 特性（`IOCKit.cs:19-31`，`AttributeUsage(Field | Property)`，可选 `Name` 做命名注入）
-- `Register<TSource,TTarget>(name)` / `RegisterInstance<TBase>(instance, name, injectNow)`：既支持类型映射（按需 `Activator.CreateInstance`），也支持直接注册实例，都可以带命名空间式的 `name` 做多实现区分
-- `RegisterRelation<TFor,TBase,TConcrete>()` / `ResolveRelation<TFor,TBase>()`：**"在 TFor 这个语境下，把 TBase 解析成 TConcrete"**的关系映射，核心 IOCContainer 完全没有这个概念
-- `Inject(object obj)`（`IOCKit.cs:239-263`）用反射扫成员（默认只扫 public，见 `MemberSearchModes`，`IOCKit.cs:143-150,220-233`），凡带 `[Inject]` 的 Field/Property 都用 `Resolve(memberType, name)` 塞值
-- `CreateInstance(Type, args)`（`IOCKit.cs:315-358`）会挑**参数最多的公开构造函数**，递归对每个参数类型调用 `Resolve`，构造完再 `Inject`——这是核心 IOCContainer 完全不具备的"自动装配"能力
+- `[Inject]` attribute (`IOCKit.cs:19-31`, `AttributeUsage(Field | Property)`, optional `Name` for named injection)
+- `Register<TSource,TTarget>(name)` / `RegisterInstance<TBase>(instance, name, injectNow)`: supports both type mapping (creating instances on demand with `Activator.CreateInstance`) and direct instance registration. Both accept a namespace-like `name` to distinguish multiple implementations
+- `RegisterRelation<TFor,TBase,TConcrete>()` / `ResolveRelation<TFor,TBase>()`: relationship mapping, meaning "in the context of TFor, resolve TBase to TConcrete". The core IOCContainer has no such concept
+- `Inject(object obj)` (`IOCKit.cs:239-263`) scans members by reflection (public only by default, see `MemberSearchModes`, `IOCKit.cs:143-150,220-233`). Every Field/Property with `[Inject]` is filled via `Resolve(memberType, name)`
+- `CreateInstance(Type, args)` (`IOCKit.cs:315-358`) picks the **public constructor with the most parameters**, recursively calls `Resolve` for each parameter type, constructs, then calls `Inject`. This automatic assembly is a capability the core IOCContainer completely lacks
 
-**结论：不要把 `[Inject]`/`IQFrameworkContainer` 相关的用法套到 `Architecture<T>` 的核心容器上，也不要以为 `RegisterSystem/RegisterModel/RegisterUtility` 背后支持特性注入——那是 IOCKit 的能力，核心架构只做 `Dictionary<Type,object>` 级别的单例登记。** 两者除了都叫"IOC"、都用 `Register`/`Resolve`（核心叫 `Get`）这类相似动词外，没有任何代码共享关系。
+**Conclusion: do not apply `[Inject]` / `IQFrameworkContainer` usage to the `Architecture<T>` core container, and do not assume `RegisterSystem/RegisterModel/RegisterUtility` support attribute injection behind the scenes.** That is an IOCKit capability. The core architecture only performs `Dictionary<Type,object>`-level singleton registration. Apart from both being called "IOC" and using similar verbs like `Register` and `Resolve` (the core calls it `Get`), they share no code.

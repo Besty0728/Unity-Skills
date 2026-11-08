@@ -9,9 +9,6 @@ Duplicate several GameObjects in one call; each copy is a sibling named `<name>_
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, originalName, copyName, copyEntityId, copyInstanceId, copyPath, copyParentPath}]}`. All-or-nothing: one missing object reverts every copy.
 
-```python
-unity_skills.call_skill("gameobject_duplicate_batch", items=[
-    {"entityId": tree_id},
-    {"entityId": rock_id}
-])
+```bash
+curl -s "http://localhost:<port>/skill/gameobject_duplicate_batch?expectProject=<project>" -d '{"items":"[{\"entityId\":\"<tree_entityId>\"},{\"entityId\":\"<rock_entityId>\"}]"}'
 ```

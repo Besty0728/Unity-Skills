@@ -1,6 +1,6 @@
 ---
 name: unity-addressables-update
-description: "Addressables catalog update flow (1.22.3 & 2.9.1) — the strictly-ordered CheckForCatalogUpdates / UpdateCatalogs / CleanBundleCache sequence and why skipping steps wastes bandwidth. Addressables 目录更新流程(1.22.3 与 2.9.1:严格有序的 CheckForCatalogUpdates/UpdateCatalogs/CleanBundleCache 序列,以及跳步为何浪费带宽)。"
+description: "Addressables catalog update flow (1.22.3 & 2.9.1) — the strictly-ordered CheckForCatalogUpdates / UpdateCatalogs / CleanBundleCache sequence and why skipping steps wastes bandwidth."
 type: reference
 ---
 

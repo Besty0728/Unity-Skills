@@ -3,13 +3,14 @@ name: unity-manual-scene
 description: Manually navigate, save, and manage scenes using Unity Editor UI. For simple Scene view workflows that do not need REST automation.
 ---
 
-## Triggers
+# Manual Scene Tasks
+
+## When to use
 - Navigating the Scene view with the mouse and keyboard
 - Saving the current scene
 - Switching between loaded scenes or additive scene workflows
 - Telling a user how to frame the camera on an object
 
-# Manual Scene Tasks
 
 Step-by-step instructions for Scene view navigation and scene management inside the Unity Editor. Paths assume the default English Unity UI; translate the labels into the user's Unity language when replying.
 

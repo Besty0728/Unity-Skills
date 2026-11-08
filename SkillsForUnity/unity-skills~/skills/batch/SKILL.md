@@ -3,15 +3,14 @@ name: unity-batch
 description: Unified batch and async-job orchestration
 ---
 
-## Triggers
+# Unity Batch Skills
+
+## When to use
 - Operating on many objects at once
 - Running or polling long async jobs
 - Preview-then-commit bulk edits
-- 一次性操作大量对象、运行或轮询长时异步任务、先预览后提交的批量编辑
 
-# Unity Batch Skills
-
-The `POST /skills/batch` endpoint, query → preview → execute bulk edits, execution reports and async jobs. Parameters come from the schema, never from a skill's name; execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+The `POST /skills/batch` endpoint, query → preview → execute bulk edits, execution reports and async jobs. Parameters come from the schema (`GET /skills/schema?category=Workflow&wire=v2`, or `?category=Validation` for the fixers), never from a skill's name; execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
 ## POST /skills/batch — several skills, one HTTP call
 
@@ -62,14 +61,12 @@ POST /skills/batch
 
 Under the `guide` surface profile previews still work but carry `surfaceExclusion`; `batch_execute` then returns `SURFACE_EXCLUDED` without consuming the token.
 
-## Operating Mode
-All but four of the 22 skills are read-only `SemiAuto` (query, preview, fixers, validation, reports, job status/progress/logs/list) and run directly under Approval; the 4 `FullAuto` ones (`batch_execute`, `job_wait`, `job_cancel`, `batch_retry_failed`) answer `MODE_RESTRICTED` there first and need a grant. Auto/Bypass run all; none is NeverInSemi → [operating mode](../../references/protocol-operating-mode.md).
-
 ## Skills Overview
 - Query: `batch_query_gameobjects`, `batch_query_components`, `batch_query_assets` (type/folder/name regex/label).
 - Preview: `batch_preview_rename` (prefix/suffix/replace/regex_replace), `batch_preview_set_property`, `batch_preview_replace_material`, plus the fixers above; `batch_validate_scene_objects` only reports (missing scripts/references, duplicate names, empty objects).
 - Execute and reports: `batch_execute`, `batch_retry_failed`, `batch_report_get`, `batch_report_list`.
 - Jobs: `job_status`, `job_progress`, `job_logs`, `job_list`, `job_wait`, `job_cancel`.
+- Fixers (preview and execute through `batch_execute`): `batch_fix_missing_scripts`, `batch_standardize_naming`, `batch_set_render_layer`, `batch_replace_material`, `batch_cleanup_temp_objects`.
 
 Per-skill tables and result shapes: `reference/<skill_name>.md` — rarely needed, the schema notes the parameters.
 
@@ -80,7 +77,3 @@ Per-skill tables and result shapes: `reference/<skill_name>.md` — rarely neede
 - `batch_delete` / `batch_move` do not exist → use `asset_*` skills for asset-level operations
 
 **Elsewhere**: asset bulk move/copy/delete → `asset_*`; workflow session undo → `workflow_*`.
-
-## Exact Signatures
-
-There is no `Batch` category: `GET /skills/schema?category=Workflow` holds 16 of these skills (query, preview, execute, reports, jobs) and `?category=Validation` the 5 fixers plus `batch_validate_scene_objects`; or use `?names=a,b`.

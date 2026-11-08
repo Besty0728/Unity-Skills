@@ -11,30 +11,19 @@ Poll `job_status` with the returned `jobId` until `status="completed"`; its `det
 
 **Example**:
 
-```python
-import unity_skills
+```bash
+# Enter Play Mode with a generous observation window
+curl -s "http://localhost:<port>/skill/editor_play_capture?expectProject=<project>" -d '{"durationSeconds":30}'
+# Poll job_status with the returned jobId until currentStage leaves entering_play_mode / domain_reload_recovery (it is then observing)
+curl -s "http://localhost:<port>/skill/job_status?expectProject=<project>" -d '{"jobId":"<capture jobId>"}'
 
-# Step through Play Mode frame-by-frame and assert state changed
-import time
+# Read the Player position before stepping
+curl -s "http://localhost:<port>/skill/editor_playmode_inspect?expectProject=<project>" -d '{"name":"Player"}'
 
-# Enter Play Mode with a generous observation window so there's time left to step
-capture = unity_skills.call_skill("editor_play_capture", durationSeconds=30)
-while True:
-    capture_status = unity_skills.call_skill("job_status", jobId=capture["jobId"])
-    if capture_status["currentStage"] not in ("entering_play_mode", "domain_reload_recovery"):
-        break  # Play Mode has been entered; capture_status["currentStage"] == "observing"
-    time.sleep(0.2)
+# Step three frames, then poll job_status (not job_wait: it would block the ticks the step needs) until status is completed or failed
+curl -s "http://localhost:<port>/skill/editor_playmode_step?expectProject=<project>" -d '{"frames":3}'
+curl -s "http://localhost:<port>/skill/job_status?expectProject=<project>" -d '{"jobId":"<step jobId>"}'
 
-before = unity_skills.call_skill("editor_playmode_inspect", name="Player")["transform"]["position"]
-
-step = unity_skills.call_skill("editor_playmode_step", frames=3)
-while True:
-    step_status = unity_skills.call_skill("job_status", jobId=step["jobId"])  # not job_wait, see above
-    if step_status["status"] in ("completed", "failed"):
-        break
-    time.sleep(0.1)
-
-after = unity_skills.call_skill("editor_playmode_inspect", name="Player")["transform"]["position"]
-assert after != before, "Player did not move after 3 frames"
-print(step_status["details"]["frameCount"], step_status["details"]["isPaused"])
+# Read the Player position again: it must differ from the first read; details.frameCount and details.isPaused are in the final job_status
+curl -s "http://localhost:<port>/skill/editor_playmode_inspect?expectProject=<project>" -d '{"name":"Player"}'
 ```

@@ -3,21 +3,17 @@ name: unity-component
 description: Manage GameObject components
 ---
 
-## Triggers
-- Attaching or removing components
-- Copying components between objects
-- Toggling components
-- Reading/writing serialized fields
-- 挂载或移除组件、在对象间复制组件、开关组件、读写序列化字段
-
 # Unity Component Skills
 
 Add, remove, copy, toggle and edit components. Parameters come from the schema (recommend `includeSchema=true` or `/skills/schema?names=`), which notes the non-obvious ones — never from a skill's name. Execution, dryRun and verification rules: root [SKILL.md](../../SKILL.md).
 
-## Operating Mode
-`component_list`, `component_get_methods`, `component_get_methods_batch`, `component_get_properties`, `component_get_serialized_properties` are `SemiAuto` (read-only); every writer is `FullAuto`. `component_remove` / `component_remove_batch` (`Operation.Delete`) and `component_invoke_method*` (high risk) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+## When to use
+- Attaching or removing components
+- Copying components between objects
+- Toggling components
+- Reading/writing serialized fields
 
-## Shared rules
+## Rules
 
 - **Targets**: single-object skills and batch items take `entityId`, `name`, `instanceId` or `path`, matched like GameObjects: an id that names nothing is `TARGET_NOT_FOUND`, never a fallback; an ambiguous fuzzy name returns `TARGET_NOT_FOUND` with `candidates`; non-exact matches are listed in `resolutionNotes`. `component_copy*` use `source*` / `target*` identifiers (`sourceEntityId`, `targetEntityId`, ...).
 - **`componentType`** (required): the class name — `Rigidbody`, `BoxCollider`, `Namespace.ClassName` for custom scripts. Unity, UI, TextMeshPro, Cinemachine and Input System namespaces are searched first, then a case-insensitive scan that takes the first matching type; the response's `component` / `fullTypeName` show what was resolved.
@@ -47,10 +43,6 @@ Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` —
 **DO NOT** (common hallucinations):
 - `component_create` / `component_get` do not exist → use `component_add` (add) and `component_get_properties` (read)
 - `component_find` does not exist → use `component_list` to list components on an object
-
-## Exact Signatures
-
-Names, parameters, defaults and required flags come from `GET /skills/schema?category=Component` (or `?names=a,b`), not this file.
 
 ## Common Errors
 

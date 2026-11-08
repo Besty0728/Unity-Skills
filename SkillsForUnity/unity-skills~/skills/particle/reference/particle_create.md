@@ -1,6 +1,11 @@
 ### particle_create
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `parentName` | string | No | null | Parent GameObject name |
+| `parentPath` | string | No | null | Parent hierarchy path |
+| `parentInstanceId` | int | No | 0 | Parent instance ID (older Unity only) |
+| `rotY` | float | No | 0 | Euler degrees |
+| `rotZ` | float | No | 0 | Euler degrees |
 | `name` | string | No | "Particle System" | New object name |
 | `x`, `y`, `z` | float | No | 0 | Position, local to the parent unless `space='world'` |
 | `parentEntityId` | string | No | null | Parent (also `parentName` / `parentPath` / `parentInstanceId`); must exist |

@@ -3,69 +3,45 @@ name: unity-urp
 description: Manage the Universal Render Pipeline (URP)
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity URP Skills
 
-## Triggers
+URP asset and renderer-feature management for Unity 2022.3+ (URP 14 and Unity 6 / URP 17). Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Configuring the URP asset
-- Adding or editing renderer features
+- Adding, editing or toggling renderer features
 - Adjusting URP rendering settings
-- 配置 URP 资产、添加或编辑渲染器特性、调整 URP 渲染设置
 
-# URP Skills
+## Rules
+- Call `urp_get_info` before `urp_add_renderer_feature`, and use only names from its `creatableRendererFeatures`.
+- Resolve existing feature names and indexes with `urp_list_renderer_features` before `urp_set_renderer_feature_active` or `urp_remove_renderer_feature`.
+- The creatable set depends on the version: Unity 2022.3 with URP 14 may expose a smaller set (for example `DecalRendererFeature`, `ScreenSpaceAmbientOcclusion`), Unity 6 with URP 17 a larger one. Do not assume `RenderObjects`, `FullScreenPassRendererFeature` or `ScreenSpaceReflectionRendererFeature` exist.
+- Without the URP package every skill returns `{ error: "Universal Render Pipeline package … is not installed." }` (`RenderPipelineSkillsCommon.NoURP()`). This is a diagnostic payload, not a permission denial; call `project_get_render_pipeline` first.
+- Do not instantiate arbitrary custom renderer features; this module covers only built-in ones.
+- ShaderGraph is not in this module; see [shadergraph](../shadergraph/SKILL.md).
 
-URP-specific asset and renderer feature management for Unity 2022.3+ (URP 14 and Unity 6 / URP 17).
-
-## Operating Mode
-
-- Query skills (`urp_get_info`, `urp_list_renderers`, `urp_list_renderer_features`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
-- Mutating skills (`urp_set_asset_settings`, `urp_add_renderer_feature`, `urp_set_renderer_feature_active`) are `SkillMode.FullAuto` — under **Approval** they need user grant (grant triggers one server-side execute returning the result); under **Auto** / **Bypass** they execute directly.
-- `urp_remove_renderer_feature` carries `SkillOperation.Delete` and is **auto-forbidden** in Approval / Auto modes (NeverInSemi). Only **Bypass** or the user-managed **Allowlist** can run it.
-
-## URP Package Stub
-
-This module is compiled against `com.unity.render-pipelines.universal` (`URP`). When URP is not installed, **every** skill returns a stub `{ error: "Universal Render Pipeline package … is not installed." }` (`RenderPipelineSkillsCommon.NoURP()`). The stub is a diagnostic payload, not a permission denial — it does **not** require grant and is **not** treated as NeverInSemi. Call `project_get_render_pipeline` first when you see this error.
-
-## Guardrails
-
-**DO NOT**:
-- Use this module for ShaderGraph
-- Assume arbitrary custom renderer features are safe to instantiate
-- Assume Unity 2022 and Unity 6 expose the same built-in renderer features
-
-**Runtime-first rules**:
-- Always call `urp_get_info` before `urp_add_renderer_feature`
-- Only use names returned by `urp_get_info.creatableRendererFeatures`
-- Do not hardcode `RenderObjects`, `FullScreenPassRendererFeature`, `ScreenSpaceReflectionRendererFeature`, etc. as universally available
-- Use `urp_list_renderer_features` to resolve existing feature names/indexes before calling `urp_set_renderer_feature_active` or `urp_remove_renderer_feature`
-
-**Validated behavior**:
-- Unity 2022.3 + URP 14 real environment may expose a smaller creatable set, e.g. `DecalRendererFeature` and `ScreenSpaceAmbientOcclusion`
-- Unity 6 + URP 17 real environment may expose a larger set
+## Pitfalls
+- Unity 2022 and Unity 6 do not expose the same built-in renderer features.
 
 ## Skills
 
-### `urp_get_info`
+### urp_get_info
 Inspect the active URP asset and renderer layout.
 
-### `urp_set_asset_settings`
-Modify key URP asset settings like HDR, MSAA, render scale, shadows, and camera textures.
+### urp_set_asset_settings
+Modify key URP asset settings such as HDR, MSAA, render scale, shadows and camera textures.
 
-### `urp_list_renderers`
+### urp_list_renderers
 List renderer data assets on the active URP asset.
 
-### `urp_list_renderer_features`
+### urp_list_renderer_features
 List renderer features on a specific renderer.
 
-### `urp_add_renderer_feature`
-Add a safe built-in renderer feature to a renderer.
+### urp_add_renderer_feature
+Add a built-in renderer feature to a renderer.
 
-### `urp_remove_renderer_feature`
+### urp_remove_renderer_feature
 Remove a renderer feature from a renderer.
 
-### `urp_set_renderer_feature_active`
+### urp_set_renderer_feature_active
 Enable or disable a renderer feature.
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

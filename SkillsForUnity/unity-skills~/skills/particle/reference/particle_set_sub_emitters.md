@@ -1,6 +1,9 @@
 ### particle_set_sub_emitters
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `name` | string | No | null | GameObject name (`entityId` preferred) |
+| `path` | string | No | null | Hierarchy path |
+| `instanceId` | int | No | 0 | Instance ID (older Unity only) |
 | `entityId` | string | No* | null | Target (or `name` / `path` / `instanceId`) |
 | `subEmittersJson` | string | Yes | - | Complete list, at most 16: `[{system, type, properties?, emitProbability?}]`; `[]` clears |
 

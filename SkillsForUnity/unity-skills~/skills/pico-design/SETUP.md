@@ -1,210 +1,210 @@
-# PICO Unity SDK — 安装、项目配置与快速入门（v3.4.0）
+# PICO Unity SDK — Installation, Project Configuration and Quick Start (v3.4.0)
 
-> 锚定：PICO 官方文档 v3.4.0（2026-08-13 抓取）。规则均可通过来源 URL 复核。
+> Anchor: PICO official documentation v3.4.0 (fetched 2026-08-13). Every rule can be verified against the source URLs.
 
-## 何时加载本文档
+## When to Load This Document
 
-- 从零搭建 PICO 项目：装编辑器、导入 PICO Unity Integration SDK、建第一个 XR 场景、打出能在头显上跑的 APK。
-- 在 **PICO XR（PXR_）传统路线** 与 **Unity OpenXR 插件路线** 之间做技术选型，或从旧的 PICO Unity OpenXR SDK 迁移。
-- 配 Player Settings / XR Plug-in Management / Project Validation，或排查"构建失败、装上去黑屏、Activity 显示异常"。
-- 处理 AndroidManifest 的 metadata 与权限（哪些 SDK 自动写、哪些必须手写）。
-- 用 PICO Building Blocks 一键配置功能，或接入 AR Foundation（Session / Camera / Anchors / Meshing / Face / Body）。
-- 核对设备型号、系统版本、Unity 版本与 SDK 版本的能力矩阵。
+- Building a PICO project from scratch: installing the editor, importing the PICO Unity Integration SDK, creating the first XR scene, and producing an APK that runs on the headset.
+- Choosing between the **PICO XR (PXR_) traditional route** and the **Unity OpenXR plugin route**, or migrating from the legacy PICO Unity OpenXR SDK.
+- Configuring Player Settings / XR Plug-in Management / Project Validation, or troubleshooting "build fails, black screen after install, abnormal Activity display".
+- Handling AndroidManifest metadata and permissions (which the SDK writes automatically and which must be written by hand).
+- Using PICO Building Blocks to configure features in one step, or integrating AR Foundation (Session / Camera / Anchors / Meshing / Face / Body).
+- Checking the capability matrix of device model, system version, Unity version and SDK version.
 
-## 关键规则
+## Key Rules
 
-| # | 规则 | 来源 |
+| # | Rule | Source |
 |---|---|---|
-| 1 | **两条 XR 路线互斥**：同时启用 PICO XR 插件和 Unity OpenXR 插件时，**只有 PICO XR 插件生效**；要走 OpenXR 路线必须"仅启用 Unity OpenXR 插件"。也不要勾选其他厂商的插件，否则应用无法在 PICO 设备上正常运行。 | [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
-| 2 | Unity OpenXR 路线自 **SDK 3.3.0** 起才支持；启用后功能接入要查**另一套文档**《PICO Unity OpenXR SDK 开发指南》（`/document/unity-openxr/`），不能照搬本套 PXR_ 指南。 | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
-| 3 | 从 PICO Unity OpenXR SDK 1.4.0 及更低版本迁到 Integration SDK 3.3.0+ 的四处改名：`PICOScreenFade`→`PXR_ScreenFade`；`EnableSeeThroughManual`（已废弃）→`EnableVideoSeeThrough`；`TryGetSupportedDisplayRefreshRates` / `GetDisplayRefreshRateCount`（均已废弃）→`GetDisplayFrequenciesAvailable`；透视不再需要 `PICO Manager (Script)` 组件。 | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
-| 4 | 迁移时枚举/结构体命名空间**统一改为 `pxr`** 并迁到 `PXR_Type.cs`：`SecureContentFlag`、`BodyJointSet`、`BodyTrackingData`、`BodyTrackingDataInfo`、`BodyTrackingBoneLength`、`GeometryInstanceTransform`、`PassThroughStyle`。 | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
-| 5 | **每个场景都要挂 `PXR_Manager`，包括画面加载场景**。Project Validation 把"当前打开的场景是否添加了 PXR_Manager (Script)"列为 Required，不满足直接报错。 | [about-pxr-manager](https://developer-cn.picoxr.com/document/unity/about-pxr-manager/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 6 | 自 **3.1.0** 起 SDK **仅支持开发 64 位应用**：`Scripting Backend` 必须 `IL2CPP`、`Target Architectures` 必须勾 `ARM64` 并**取消勾选 `ARMv7`**。 | [about-pico-unity-integration-sdk](https://developer-cn.picoxr.com/document/unity/about-pico-unity-integration-sdk/) · [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
-| 7 | `Minimum API Level` 必须 ≥ **Android 10.0 (API Level 29)**，低于会构建报错；`Target API Level` 用 `Automatic (highest installed)`（Recommended 规则也要求 targetSdkVersion=Auto）。 | [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 8 | Unity 编辑器**最低 2021.3.26，最高 Unity 6.3**，推荐 LTS。版本联动下限：Unity 2022 需 SDK ≥ 2.1.5 且 OS ≥ 5.5.0；Unity 2023 需 SDK ≥ 3.0.0 且 OS ≥ 5.11.0；Unity 6 需 SDK ≥ 3.1.0 且 OS ≥ 5.12.0。 | [hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) |
-| 9 | `Graphics API` 必须是 **Vulkan 或 OpenGLES3.0 之一**；用 ETFR（眼动追踪注视点渲染）时列表**第一个必须是 OpenGLES3.0**。 | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 10 | **Unity 2022 + Vulkan + 勾选 `Development Build` 会崩溃**（Validation 的 Required 规则会直接报错）；**Unity 2022.1.14+ 同时用 URP + Linear + 4xMSAA + OpenGL 也会崩溃**。 | [hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 11 | 包名格式固定 `com.companyName.productName`，且 PICO SDK **不支持** `com.epicgames.xxx`、`com.unity.xxxx`、`com.test.xxx`、`com.DefaultCompany.xxx`、`com.Unity-Technologies.xxx`、`com.vr.xxx`、`com.xr.xxx`、`com.UnityTechnologies.xxx`——用了无法通过商店上架申请。 | [naming-conventions-for-app-package-name](https://developer-cn.picoxr.com/document/unity/naming-conventions-for-app-package-name/) |
-| 12 | AndroidManifest 里有两条 metadata **必须手动添加**，否则 Activity 显示异常：`pvr.app.type = vr`、`pvr.display.orientation = 180`。 | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
-| 13 | 眼动/面部追踪的 metadata 与权限（`picovr.software.eye_tracking`、`com.picovr.permission.EYE_TRACKING`、`picovr.software.face_tracking`、`com.picovr.permission.FACE_TRACKING`、`android.permission.RECORD_AUDIO`）由 SDK **在启用功能后自动写入**，"若非必要请不要修改"；但**用自定义 Manifest 时要按功能自行补齐**。 | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
-| 14 | 安卓标准权限（读外部存储、蓝牙、互联网、震动、写入配置、更改配置）**必须手写**进 AndroidManifest.xml，SDK 不代写。 | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
-| 15 | 自定义清单路径唯一：`Edit > Project Settings > Player > Publishing Settings > Build` 勾 **`Custom Main Manifest`** 后，文件生成在 **`Assets/Plugins/Android/AndroidManifest.xml`**。 | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) · [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
-| 16 | Project Validation 需 **SDK ≥ 3.0.0**，入口 `Edit > Project Settings > XR Plug-in Management > Project Validation`；`Selected Profiles` 保持默认 `Turn Off`。Required 未修复会影响构建；实在要放行可勾 `Ignore build errors`，但相关 XR 功能可能不可用。 | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 17 | 场景唯一性 Required 三连：场景中**只能有一个 `MainCamera` Tag、一个 `Audio Listener`、一个 `XR Origin`**。另外 Keystore 的 `keystoreName`/`keystorePass` 与 Key 的 `keyaliasName`/`keyaliasPass` 不能为空，`Default Orientation` 必须 `LandscapeLeft`，`Application Entry Point` 必须 `Activity`。 | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 18 | 合成层数量：**最大 7 个**（超过 Required 报错），**建议不超过 4 个**（Recommended）。 | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
-| 19 | AR Foundation 必须先在 `Edit > Project Settings > XR Plug-in Management > PICO > Android Settings` 勾 **`AR Foundation`**，再按需勾 `Body Tracking` / `Face Tracking` / `Anchor` / `Meshing` 开权限。环境绑定：SDK 3.0.0 & 3.0.5 → Unity 2022.3 + AR Foundation 5.1；SDK 3.1.0 → Unity 6 + AR Foundation 6.0。**暂不支持图片追踪（Image Tracking）**。 | [ar-foundation](https://developer-cn.picoxr.com/document/unity/ar-foundation-for-pico-unity-integration-sdk/) |
-| 20 | 发布设置里**启用 Minify 相关选项会导致应用崩溃**；PICO 4 系列与"Unity 6 + Vulkan"存在兼容性问题，推荐 Unity 2022 LTS 或更低。 | [known-issues](https://developer-cn.picoxr.com/document/unity/known-issues/) |
+| 1 | **The two XR routes are mutually exclusive**: when both the PICO XR plugin and the Unity OpenXR plugin are enabled, **only the PICO XR plugin takes effect**; to use the OpenXR route you must enable *only* the Unity OpenXR plugin. Do not tick other vendors' plugins either, or the app will not run properly on PICO devices. | [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
+| 2 | The Unity OpenXR route is supported only from **SDK 3.3.0**; once enabled, feature integration must follow **a separate set of docs**, the *PICO Unity OpenXR SDK Development Guide* (`/document/unity-openxr/`), and the PXR_ guides in this set must not be copied over. | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
+| 3 | Four renames when migrating from PICO Unity OpenXR SDK 1.4.0 or earlier to Integration SDK 3.3.0+: `PICOScreenFade` → `PXR_ScreenFade`; `EnableSeeThroughManual` (deprecated) → `EnableVideoSeeThrough`; `TryGetSupportedDisplayRefreshRates` / `GetDisplayRefreshRateCount` (both deprecated) → `GetDisplayFrequenciesAvailable`; see-through no longer needs the `PICO Manager (Script)` component. | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
+| 4 | When migrating, the enum/struct namespaces are **unified to `pxr`** and moved into `PXR_Type.cs`: `SecureContentFlag`, `BodyJointSet`, `BodyTrackingData`, `BodyTrackingDataInfo`, `BodyTrackingBoneLength`, `GeometryInstanceTransform`, `PassThroughStyle`. | [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/) |
+| 5 | **Every scene must have `PXR_Manager` attached, including loading/splash scenes.** Project Validation lists "the currently open scene has PXR_Manager (Script) added" as Required, and reports an error if it is not met. | [about-pxr-manager](https://developer-cn.picoxr.com/document/unity/about-pxr-manager/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 6 | From **3.1.0** the SDK **supports only 64-bit app development**: `Scripting Backend` must be `IL2CPP`, `Target Architectures` must tick `ARM64` and **untick `ARMv7`**. | [about-pico-unity-integration-sdk](https://developer-cn.picoxr.com/document/unity/about-pico-unity-integration-sdk/) · [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
+| 7 | `Minimum API Level` must be ≥ **Android 10.0 (API Level 29)**; lower values cause a build error. Use `Automatic (highest installed)` for `Target API Level` (the Recommended rule also requires targetSdkVersion=Auto). | [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 8 | The Unity editor **minimum is 2021.3.26, maximum is Unity 6.3**; an LTS version is recommended. Version-linked minimums: Unity 2022 requires SDK ≥ 2.1.5 and OS ≥ 5.5.0; Unity 2023 requires SDK ≥ 3.0.0 and OS ≥ 5.11.0; Unity 6 requires SDK ≥ 3.1.0 and OS ≥ 5.12.0. | [hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) |
+| 9 | `Graphics API` must be **one of Vulkan or OpenGLES3.0**; when using ETFR (eye-tracked foveated rendering) the **first entry in the list must be OpenGLES3.0**. | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 10 | **Unity 2022 + Vulkan + ticking `Development Build` crashes** (the Validation Required rule reports it directly); **Unity 2022.1.14+ combined with URP + Linear + 4xMSAA + OpenGL also crashes**. | [hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) · [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 11 | The package name format is fixed as `com.companyName.productName`, and the PICO SDK **does not support** `com.epicgames.xxx`, `com.unity.xxxx`, `com.test.xxx`, `com.DefaultCompany.xxx`, `com.Unity-Technologies.xxx`, `com.vr.xxx`, `com.xr.xxx`, `com.UnityTechnologies.xxx`; using them makes store submission fail. | [naming-conventions-for-app-package-name](https://developer-cn.picoxr.com/document/unity/naming-conventions-for-app-package-name/) |
+| 12 | Two metadata entries in AndroidManifest **must be added manually**, otherwise the Activity displays abnormally: `pvr.app.type = vr`, `pvr.display.orientation = 180`. | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
+| 13 | The eye/face tracking metadata and permissions (`picovr.software.eye_tracking`, `com.picovr.permission.EYE_TRACKING`, `picovr.software.face_tracking`, `com.picovr.permission.FACE_TRACKING`, `android.permission.RECORD_AUDIO`) are **written automatically by the SDK after the feature is enabled**; the docs say "do not modify unless necessary". However, **when using a custom Manifest you must add them yourself per feature**. | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
+| 14 | Standard Android permissions (read external storage, Bluetooth, internet, vibrate, write settings, change configuration) **must be handwritten** into AndroidManifest.xml; the SDK does not write them for you. | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) |
+| 15 | The custom manifest path is unique: after ticking **`Custom Main Manifest`** under `Edit > Project Settings > Player > Publishing Settings > Build`, the file is generated at **`Assets/Plugins/Android/AndroidManifest.xml`**. | [android-manifest](https://developer-cn.picoxr.com/document/unity/android-manifest/) · [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) |
+| 16 | Project Validation requires **SDK ≥ 3.0.0**; its entry point is `Edit > Project Settings > XR Plug-in Management > Project Validation`; keep `Selected Profiles` at the default `Turn Off`. Unfixed Required items affect the build; to let it through anyway you can tick `Ignore build errors`, but the related XR features may then be unavailable. | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 17 | Scene uniqueness Required trio: the scene may contain **only one `MainCamera` tag, one `Audio Listener`, and one `XR Origin`**. In addition, the Keystore `keystoreName`/`keystorePass` and Key `keyaliasName`/`keyaliasPass` must not be empty, `Default Orientation` must be `LandscapeLeft`, and `Application Entry Point` must be `Activity`. | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 18 | Composition layer count: **maximum 7** (exceeding it is a Required error), **recommended no more than 4** (Recommended). | [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) |
+| 19 | AR Foundation requires you first to tick **`AR Foundation`** under `Edit > Project Settings > XR Plug-in Management > PICO > Android Settings`, then tick `Body Tracking` / `Face Tracking` / `Anchor` / `Meshing` as needed to enable permissions. Environment pairing: SDK 3.0.0 & 3.0.5 → Unity 2022.3 + AR Foundation 5.1; SDK 3.1.0 → Unity 6 + AR Foundation 6.0. **Image Tracking is not supported for now.** | [ar-foundation](https://developer-cn.picoxr.com/document/unity/ar-foundation-for-pico-unity-integration-sdk/) |
+| 20 | **Enabling Minify-related options in the publishing settings crashes the app**; the PICO 4 series and "Unity 6 + Vulkan" have compatibility issues, so Unity 2022 LTS or lower is recommended. | [known-issues](https://developer-cn.picoxr.com/document/unity/known-issues/) |
 
-### 文档内部口径冲突（照抄前先确认）
+### Internal Inconsistencies in the Documentation (Confirm Before Copying)
 
-- **XR Interaction Toolkit 版本**：《创建一个 XR 场景》写"PICO Unity Integration SDK 暂未支持 3.x.x 版本的 XR Interaction Toolkit"（其手动配置步骤基于 2.x 的 `XR Controller (Action-Based)` + 预设）；而《PICO Building Blocks》写"XR Interaction Toolkit 版本：3.x.x"，且 SDK 3.1.0+ 的 Building Blocks 就是基于 XRI 3.x.x 开发的。写代码前按项目实际装的 XRI 版本分支处理。来源：[create-an-xr-scene](https://developer-cn.picoxr.com/document/unity/create-an-xr-scene/) vs [pico-building-blocks](https://developer-cn.picoxr.com/document/unity/pico-building-blocks/)
-- **最低 Unity 版本**：《硬件和软件要求》写 2021.3.26；PICO XR Portal 的 Information 面板写"Unity 2020.3.21 及以上"。以前者为准。来源：[hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) vs [pico-xr-portal](https://developer-cn.picoxr.com/document/unity/pico-xr-portal/)
+- **XR Interaction Toolkit version**: *Create an XR Scene* says "PICO Unity Integration SDK does not yet support XR Interaction Toolkit 3.x.x" (its manual configuration steps are based on 2.x `XR Controller (Action-Based)` plus presets); *PICO Building Blocks* says "XR Interaction Toolkit version: 3.x.x", and Building Blocks in SDK 3.1.0+ were developed on XRI 3.x.x. Branch according to the XRI version the project actually has installed before writing code. Sources: [create-an-xr-scene](https://developer-cn.picoxr.com/document/unity/create-an-xr-scene/) vs [pico-building-blocks](https://developer-cn.picoxr.com/document/unity/pico-building-blocks/)
+- **Minimum Unity version**: *Hardware and Software Requirements* says 2021.3.26; the Information panel of PICO XR Portal says "Unity 2020.3.21 and above". Follow the former. Sources: [hardware-and-software-requirements](https://developer-cn.picoxr.com/document/unity/hardware-and-software-requirements/) vs [pico-xr-portal](https://developer-cn.picoxr.com/document/unity/pico-xr-portal/)
 
-## 工作流程
+## Workflow
 
-### A. 六步快速入门（PXR_ 传统路线，从零到 APK）
+### A. Six-Step Quick Start (PXR_ Traditional Route, From Zero to APK)
 
-1. **建帐号与应用**：注册 PICO 开发者帐号 → 创建组织（组织名即商店发行商）→ 创建应用，发布平台选 **6 DOF 平台（推荐）**。仅体验开发流程可跳过资质认证；要走分发必须完成。[create-a-developer-account-organization-and-app](https://developer-cn.picoxr.com/document/unity/create-a-developer-account-organization-and-app/)
-2. **配环境**：设备 `设置 > 通用 > 关于本机`（PICO 4 Ultra 为 `控制中心 > 设置 > 关于本机`）连点 **软件版本号** 开出"开发者"选项 → 打开 **USB 调试开关**；非中国大陆版设备需在头戴上登录 PICO 帐号。装 Unity 时务必勾 **Android Build Support 下所有选项**（含 `Android SDK & NDK Tools`、`OpenJDK`）。[set-up-the-development-environment](https://developer-cn.picoxr.com/document/unity/set-up-the-development-environment/)
-3. **导入 SDK**：Unity Hub 建 **核心模板 > 3D** 项目（**项目名和路径不能含中文**）→ `Window > Package Manager > + > Add package from disk` 选 `package.json`，或 `Add package from git URL` 填仓库 HTTPS 地址。导入后会弹 **PXR SDK Setting** 窗口，关闭即可。[import-the-sdk](https://developer-cn.picoxr.com/document/unity/import-the-sdk/)
-4. **项目配置**：`Edit > Project Settings > XR Plug-in Management > 安卓页签` 勾 **PICO** → `Player` 设 `Company Name`/`Product Name`/`Version` → Android 页签 `Other Settings`：`Minimum API Level = Android 10.0 (API Level 29)`、`Target API Level = Automatic (highest installed)`、`Scripting Backend = IL2CPP`、`Target Architectures = ARM64`（去掉 ARMv7）→ 从开发者平台应用的 **API 测试** 页拿 **APP ID**，填进 `PICO > Platform Settings` 并点应用。[complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/)
-5. **搭 XR 场景**：Package Manager 里给 **XR Interaction Toolkit** 导入 `Starter Assets` 和 `XR Device Simulator` 两个 Sample → 删掉默认 `Main Camera`，`+ > XR > XR Origin (VR)` → 给 `XR Origin` `Add Component` 加 **`PXR_Manager`** → 加 `Plane` 当地面（Scale 10,1,10）→ 手柄：XRI 2.x 走 `XR Controller (Action-Based)` 预设 `XRI Default Left Controller` + `Model Prefab` 指向 `Packages > PICO Integration > Assets > Resources > Prefabs` 下的 `LeftControllerModel`/`RightControllerModel`；XRI 3.x 直接用 PICO Building Blocks 的 `PICO Controller Tracking` → 给 `XR Origin` 加 **`Input Action Manager`**，`Action Assets > Element 0` 设为 `XRI Default Input Actions`。[create-an-xr-scene](https://developer-cn.picoxr.com/document/unity/create-an-xr-scene/)
-6. **打包运行**：`File > Build Settings > Platform = Android > Switch Platform` → 设备登录帐号并 USB 连 PC → `Add Open Scenes` → `Run Device` 选 `All compatible devices` 或具体机型 → `Build And Run`。[build-and-run-the-scene](https://developer-cn.picoxr.com/document/unity/build-and-run-the-scene/)
+1. **Create an account and app**: register a PICO developer account → create an organization (the organization name becomes the store publisher name) → create an app, choosing the **6 DOF platform (recommended)** as the publishing platform. You may skip qualification certification when only trying out the development flow; it must be completed to distribute. [create-a-developer-account-organization-and-app](https://developer-cn.picoxr.com/document/unity/create-a-developer-account-organization-and-app/)
+2. **Set up the environment**: on the device, go to `"设置 > 通用 > 关于本机"` (on PICO 4 Ultra, `"控制中心 > 设置 > 关于本机"`), then tap the **software version number** repeatedly to unlock the "Developer" option → turn on the **USB debugging switch**; non-mainland-China devices must sign in with a PICO account on the headset. When installing Unity, be sure to tick **all options under Android Build Support** (including `Android SDK & NDK Tools` and `OpenJDK`). The quoted Chinese strings are the device's on-screen menu labels. [set-up-the-development-environment](https://developer-cn.picoxr.com/document/unity/set-up-the-development-environment/)
+3. **Import the SDK**: in Unity Hub create a **Core template > 3D** project (**the project name and path must not contain Chinese characters**) → `Window > Package Manager > + > Add package from disk` and select `package.json`, or `Add package from git URL` and enter the repository HTTPS address. After importing, a **PXR SDK Setting** window pops up; close it. [import-the-sdk](https://developer-cn.picoxr.com/document/unity/import-the-sdk/)
+4. **Project configuration**: `Edit > Project Settings > XR Plug-in Management > Android tab`, tick **PICO** → under `Player` set `Company Name` / `Product Name` / `Version` → on the Android tab's `Other Settings`: `Minimum API Level = Android 10.0 (API Level 29)`, `Target API Level = Automatic (highest installed)`, `Scripting Backend = IL2CPP`, `Target Architectures = ARM64` (untick ARMv7) → get the **APP ID** from the **API test** page of the developer platform app and enter it into `PICO > Platform Settings`, then click apply. [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/)
+5. **Build the XR scene**: in Package Manager, import the `Starter Assets` and `XR Device Simulator` samples of **XR Interaction Toolkit** → delete the default `Main Camera`, then `+ > XR > XR Origin (VR)` → on `XR Origin`, `Add Component` and add **`PXR_Manager`** → add a `Plane` as the ground (Scale 10,1,10) → controllers: XRI 2.x uses the `XR Controller (Action-Based)` preset `XRI Default Left Controller` with `Model Prefab` pointing to `LeftControllerModel` / `RightControllerModel` under `Packages > PICO Integration > Assets > Resources > Prefabs`; XRI 3.x directly uses `PICO Controller Tracking` from PICO Building Blocks → add **`Input Action Manager`** to `XR Origin`, and set `Action Assets > Element 0` to `XRI Default Input Actions`. [create-an-xr-scene](https://developer-cn.picoxr.com/document/unity/create-an-xr-scene/)
+6. **Build and run**: `File > Build Settings > Platform = Android > Switch Platform` → sign in on the device and connect it to the PC via USB → `Add Open Scenes` → under `Run Device` choose `All compatible devices` or a specific model → `Build And Run`. [build-and-run-the-scene](https://developer-cn.picoxr.com/document/unity/build-and-run-the-scene/)
 
-### B. 切换到 Unity OpenXR 插件路线
+### B. Switching to the Unity OpenXR Plugin Route
 
-1. 项目内先导入 **PICO Unity Integration SDK 3.3.0 及更高版本**。
-2. `Window > Package Manager > + > Add package by name`，填 **`com.unity.xr.openxr`** → `Add`；完成后 `Project Settings > XR Plug-in Management` 下出现 **OpenXR**。
-3. **取消勾选 PICO XR 插件**，只保留 Unity OpenXR 插件（否则 PICO XR 插件会抢先生效）。
-4. 按上表规则 3/4 做接口与命名空间适配，随后功能接入改查《PICO Unity OpenXR SDK 开发指南》。
-   来源：[complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) · [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/)
+1. First import **PICO Unity Integration SDK 3.3.0 or later** into the project.
+2. `Window > Package Manager > + > Add package by name`, enter **`com.unity.xr.openxr`** → `Add`; once complete, **OpenXR** appears under `Project Settings > XR Plug-in Management`.
+3. **Untick the PICO XR plugin**, keeping only the Unity OpenXR plugin (otherwise the PICO XR plugin takes precedence).
+4. Adapt the interfaces and namespaces per rules 3/4 in the table above, then consult the *PICO Unity OpenXR SDK Development Guide* for feature integration.
+   Sources: [complete-project-settings](https://developer-cn.picoxr.com/document/unity/complete-project-settings/) · [support-for-the-unity-openxr-plugin](https://developer-cn.picoxr.com/document/unity/support-for-the-unity-openxr-plugin/)
 
-### C. Project Validation 修复回路（构建失败第一站）
+### C. Project Validation Fix Loop (First Stop When a Build Fails)
 
-1. `Edit > Project Settings > XR Plug-in Management > Project Validation`，默认只列未正确配置项；勾 `Show all` 可看全部。
-2. 看图标分级：**绿勾**=已配置或不适用；**黄叹号**=Recommended，不影响构建，可按项目实际忽略；**红叉**=Required，会影响构建，必须修。
-3. 点 `Fix All` 一键修，或逐条 `Fix`。
-4. 也可以走 `PICO > Portal > Configs`：面板上用 `To Apply` / `To Apply All` 修复，并可跳转到 **`PXR_ProjectSetting.asset`** 直接改项目设置（Portal 需 SDK ≥ 3.2.0）。
-   来源：[project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) · [pico-xr-portal](https://developer-cn.picoxr.com/document/unity/pico-xr-portal/)
+1. `Edit > Project Settings > XR Plug-in Management > Project Validation` lists only misconfigured items by default; tick `Show all` to see every item.
+2. Read the icon levels: **green check** = configured or not applicable; **yellow exclamation** = Recommended, does not affect the build, may be ignored depending on the project; **red cross** = Required, affects the build, must be fixed.
+3. Click `Fix All` to fix everything at once, or `Fix` items one by one.
+4. You can also go through `PICO > Portal > Configs`: on the panel, use `To Apply` / `To Apply All` to fix items, and jump to **`PXR_ProjectSetting.asset`** to edit project settings directly (the Portal requires SDK ≥ 3.2.0).
+   Sources: [project-validation](https://developer-cn.picoxr.com/document/unity/project-validation/) · [pico-xr-portal](https://developer-cn.picoxr.com/document/unity/pico-xr-portal/)
 
-### D. 用 PICO Building Blocks 一键配置
+### D. One-Step Configuration With PICO Building Blocks
 
-- **入口三选一**：Scene/Game 视图右上角 `··· > Overlay Menu > XR Building Blocks`（Unity 2022/2023）；`Hierarchy > + > PICO Building Blocks`；`GameObject > PICO Building Blocks`（后两者 Unity 2020–2023）。
-- **共同副作用**：几乎每个 Block 都会检查场景内有无 `XR Origin`，没有就自动生成 `[Building Block] XR Origin (XR Rig)`，并给它挂 **`PXR_Manager (Script)`**、按功能勾上对应选框（如 `Hand Tracking`、`Video Seethrough`、`Body Tracking`、`Spatial Anchor`、`Scene Capture`、`Spatial Mesh`）。
-- **XRI 3.x.x 带来的四个变更**：① `XR Origin` 不再包含左右手柄，需用 `/Assets/XR Interaction Toolkit/{version}/prefabs` 下的 **`XR Origin (XR Rig).prefab`** 替换旧 `XR Origin`；② `XRI DefaultInputActions.inputactions` 的 Action Map 去掉了 "Hand" 字样（`XRI LeftHand`→`XRI Left`，`XRI LeftHand Interaction`→`XRI Left Interaction`，`XRI LeftHand Locomotion`→`XRI Left Locomotion`，右手同理）；③ 手势相关主相机 `XR Interaction Hands Setup` 换成 **`XR Origin Hands (XR Rig)`**；④ 用 Canvas 与手柄交互时**需隐藏 `EventSystem`**。
-  来源：[pico-building-blocks](https://developer-cn.picoxr.com/document/unity/pico-building-blocks/)
+- **Three entry points**: `··· > Overlay Menu > XR Building Blocks` in the top-right of the Scene/Game view (Unity 2022/2023); `Hierarchy > + > PICO Building Blocks`; `GameObject > PICO Building Blocks` (the last two are for Unity 2020–2023).
+- **Shared side effects**: almost every Block checks whether the scene has an `XR Origin`; if not, it automatically generates `[Building Block] XR Origin (XR Rig)`, attaches **`PXR_Manager (Script)`** to it, and ticks the corresponding checkboxes per feature (such as `Hand Tracking`, `Video Seethrough`, `Body Tracking`, `Spatial Anchor`, `Scene Capture`, `Spatial Mesh`).
+- **Four changes brought by XRI 3.x.x**: ① `XR Origin` no longer contains the left and right controllers; replace the old `XR Origin` with **`XR Origin (XR Rig).prefab`** under `/Assets/XR Interaction Toolkit/{version}/prefabs`; ② the Action Maps in `XRI DefaultInputActions.inputactions` dropped the word "Hand" (`XRI LeftHand` → `XRI Left`, `XRI LeftHand Interaction` → `XRI Left Interaction`, `XRI LeftHand Locomotion` → `XRI Left Locomotion`; the right hand is the same); ③ for gesture-related setups, the main camera's `XR Interaction Hands Setup` is replaced with **`XR Origin Hands (XR Rig)`**; ④ when interacting with a Canvas using controllers, you **must hide `EventSystem`**.
+  Source: [pico-building-blocks](https://developer-cn.picoxr.com/document/unity/pico-building-blocks/)
 
-### E. 接入 AR Foundation
+### E. Integrating AR Foundation
 
-1. `Edit > Project Settings > XR Plug-in Management > PICO > Android Settings` 勾 `AR Foundation` 及所需功能权限。
-2. 场景里用 **`+ > XR > XR Origin (AR)`**（加进来的对象名为 `XR Origin (XR Rig)`），需要会话时再加 `+ > XR > AR Session`。
-3. 启用后 AR Foundation 会自动把 `camera.backgroundColor` 设为 `new Color(0, 0, 0, 0)`，并给 `XR Origin (XR Rig)` 下的 `Main Camera` 挂 **`PXR_AR Camera Effect Manager (Script)`**。
-4. 各功能的额外硬件门槛：相机 = PICO 4 系列/4 Ultra 系列 + OS ≥ 5.12.0；全身动捕 = Neo3/4/4 Ultra 系列 + OS ≥ 5.12.0 + PICO 体感追踪器（正式版）；面部追踪 = 搭载面部追踪相机的 PICO 4 Enterprise + OS ≥ 5.12.0；锚点 = PICO 4 系列 + OS ≥ 5.12.0；网格 = PICO 4 Ultra 系列 + OS ≥ 5.12.0。
-5. 适配官方 `arfoundation-samples` 时的组件替换：`Bone Controller (Script)` → **`PXR_Bone Controller (Script)`**；`AR Kit Blend Shape Visualizer (Script)` → **`PXR_Blend Shape Visualizer (Script)`**；`Human Body Tracking` 对象上的组件 → **`PXR_Human Body Tracker (Script)`**（并在 `AR Human Body Manager (Script)` 上**取消勾选 `Pose 2D`**）。
-   来源：[ar-foundation](https://developer-cn.picoxr.com/document/unity/ar-foundation-for-pico-unity-integration-sdk/)
+1. `Edit > Project Settings > XR Plug-in Management > PICO > Android Settings`: tick `AR Foundation` and the required feature permissions.
+2. In the scene use **`+ > XR > XR Origin (AR)`** (the added object is named `XR Origin (XR Rig)`); add `+ > XR > AR Session` only when a session is needed.
+3. Once enabled, AR Foundation automatically sets `camera.backgroundColor` to `new Color(0, 0, 0, 0)` and attaches **`PXR_AR Camera Effect Manager (Script)`** to the `Main Camera` under `XR Origin (XR Rig)`.
+4. Extra hardware thresholds per feature: camera = PICO 4 series / 4 Ultra series + OS ≥ 5.12.0; full-body motion capture = Neo3 / 4 / 4 Ultra series + OS ≥ 5.12.0 + PICO motion tracker (official release); face tracking = PICO 4 Enterprise with a face-tracking camera + OS ≥ 5.12.0; anchors = PICO 4 series + OS ≥ 5.12.0; mesh = PICO 4 Ultra series + OS ≥ 5.12.0.
+5. Component replacements when adapting the official `arfoundation-samples`: `Bone Controller (Script)` → **`PXR_Bone Controller (Script)`**; `AR Kit Blend Shape Visualizer (Script)` → **`PXR_Blend Shape Visualizer (Script)`**; components on the `Human Body Tracking` object → **`PXR_Human Body Tracker (Script)`** (and on `AR Human Body Manager (Script)`, **untick `Pose 2D`**).
+   Source: [ar-foundation](https://developer-cn.picoxr.com/document/unity/ar-foundation-for-pico-unity-integration-sdk/)
 
-## 核心 API 锚点
+## Core API Anchors
 
-### SDK 目录与获取
+### SDK Directory and Acquisition
 
-- 导入后位于 **`Packages/PICO Integration`**，五个子目录：`Assets`（手柄/手部资产、预制体、Shader）、`Editor`（含 `PXR_BuildProcessor`、`PXR_MetaData`、`PXR_OverLayEditor`）、`Platform`、`Runtime`、`SpatialAudio`。
-- 获取途径：PICO 开发者官网资源页；GitHub 仓库 **`https://github.com/Pico-Developer/PICO-Unity-XR-SDK`**（文中称"PICO-Unity-Integration-SDK 仓库"，但仓库名是 `PICO-Unity-XR-SDK`）。
-- AR Foundation 官方适配示例仓库：**`https://github.com/Pico-Developer/PICOARFoundationSamples-Unity`**（适配场景在 `Assets/Scenes/PICO` 下）。
+- After import it sits at **`Packages/PICO Integration`**, with five subdirectories: `Assets` (controller/hand assets, prefabs, shaders), `Editor` (containing `PXR_BuildProcessor`, `PXR_MetaData`, `PXR_OverLayEditor`), `Platform`, `Runtime`, `SpatialAudio`.
+- Acquisition: the resources page of the PICO developer website; GitHub repository **`https://github.com/Pico-Developer/PICO-Unity-XR-SDK`** (the text calls it the "PICO-Unity-Integration-SDK repository", but the repository name is `PICO-Unity-XR-SDK`).
+- AR Foundation official adaptation sample repository: **`https://github.com/Pico-Developer/PICOARFoundationSamples-Unity`** (adapted scenes are under `Assets/Scenes/PICO`).
 
-### 组件 / 脚本（PICO 侧）
+### Components / Scripts (PICO Side)
 
-| 名称 | 说明 |
+| Name | Description |
 |---|---|
-| `PXR_Manager` / `PXR_Manager (Script)` | 每个场景必挂的总管组件；面板集中管理 Home 键校准、`Open Screen Fade`、ETFR、FFR、Eye/Face/Hand/Body Tracking、`Use Content Protect`、`MRC`、Late Latching、`Use Recommended MSAA`、Adaptive Resolution、Video Seethrough、Spatial Anchor |
-| `PXR_ScreenFade` | 勾选 `Open Screen Fade` 后由 `PXR_Manager` 自动挂到 GameObject 上 |
-| `PXR_ProjectSetting.asset` | 项目设置资产，可从 PICO XR Portal 的 `Open PICO XR Project Setting` 跳转 |
-| `PXR_Composition Layer (Script)` | Building Blocks 配置 Overlay / Underlay 时挂载的合成层组件 |
-| `PXR_Scene Capture Manager (Script)` | 场景标定 Block 挂载，配 `Box 2D Prefab` / `Box 3D Prefab` |
-| `PXR_BodyTrackingBlock.cs` / `PXR_ObjectTrackingBlock.cs` | 全身动捕 / 独立追踪 Block 的实现脚本 |
-| `PXR_AR Camera Effect Manager (Script)` | AR Foundation 启用后自动挂到 `Main Camera`，配透视特效与 LUT |
-| `PXR_Human Body Tracker (Script)` | AR Foundation 全身动捕组件，配 `Skeleton Prefab` 与 `Human Body Manager` |
-| `PXR_Bone Controller (Script)` | 驱动 Avatar 骨骼，枚举值名需与模型节点名匹配 |
-| `PXR_Blend Shape Visualizer (Script)` | AR Foundation 面部追踪的 BlendShape 可视化组件 |
-| 脚本文件 | `PXR_BoneController.cs`、`PXR_HumanBodyTracker.cs`、`PXR_BlendShapeVisualizer.cs` |
-| Shader | `PXR_SDK/PXR_UnderlayHole`（Underlay 打洞） |
-| 预制体 | `LeftControllerModel`、`RightControllerModel`、`BodyTracking.prefab`、`BodyTrackingDebug.prefab` |
+| `PXR_Manager` / `PXR_Manager (Script)` | The master component every scene must have; the panel centrally manages Home key calibration, `Open Screen Fade`, ETFR, FFR, Eye/Face/Hand/Body Tracking, `Use Content Protect`, `MRC`, Late Latching, `Use Recommended MSAA`, Adaptive Resolution, Video Seethrough, Spatial Anchor |
+| `PXR_ScreenFade` | After ticking `Open Screen Fade`, it is automatically attached by `PXR_Manager` to a GameObject |
+| `PXR_ProjectSetting.asset` | Project settings asset; can be reached from `Open PICO XR Project Setting` in PICO XR Portal |
+| `PXR_Composition Layer (Script)` | Composition layer component attached when Building Blocks configure Overlay / Underlay |
+| `PXR_Scene Capture Manager (Script)` | Attached by the scene capture Block; configure `Box 2D Prefab` / `Box 3D Prefab` |
+| `PXR_BodyTrackingBlock.cs` / `PXR_ObjectTrackingBlock.cs` | Implementation scripts for the full-body motion capture / independent tracking Blocks |
+| `PXR_AR Camera Effect Manager (Script)` | Automatically attached to `Main Camera` once AR Foundation is enabled; configure see-through effects and LUT |
+| `PXR_Human Body Tracker (Script)` | AR Foundation full-body motion capture component; configure `Skeleton Prefab` and `Human Body Manager` |
+| `PXR_Bone Controller (Script)` | Drives avatar bones; enum value names must match the model's node names |
+| `PXR_Blend Shape Visualizer (Script)` | BlendShape visualization component for AR Foundation face tracking |
+| Script files | `PXR_BoneController.cs`, `PXR_HumanBodyTracker.cs`, `PXR_BlendShapeVisualizer.cs` |
+| Shader | `PXR_SDK/PXR_UnderlayHole` (Underlay hole punching) |
+| Prefabs | `LeftControllerModel`, `RightControllerModel`, `BodyTracking.prefab`, `BodyTrackingDebug.prefab` |
 
-### 接口 / 枚举（本域出现的原样写法）
+### Interfaces / Enums (Verbatim Forms Used in This Domain)
 
 ```csharp
-PXR_Manager.EnableVideoSeeThrough = true;                                 // 开启视频透视
-PXR_MixedReality.EnableVideoSeeThroughEffect(true);                       // 开启视频透视特效
-PXR_MixedReality.SetVideoSeeThroughEffect(PxrLayerEffect.Colortemp, x, 0);// 色温/亮度/饱和度/对比度
-PXR_MixedReality.SetVideoSeeThroughLut(lutTex, row, col);                 // LUT 纹理行列数
+PXR_Manager.EnableVideoSeeThrough = true;                                 // Enable video see-through
+PXR_MixedReality.EnableVideoSeeThroughEffect(true);                       // Enable video see-through effects
+PXR_MixedReality.SetVideoSeeThroughEffect(PxrLayerEffect.Colortemp, x, 0);// Color temperature / brightness / saturation / contrast
+PXR_MixedReality.SetVideoSeeThroughLut(lutTex, row, col);                 // LUT texture row and column count
 ```
 
-- `PxrLayerEffect`：`Colortemp`、`Brightness`、`Saturation`、`Contrast`
-- `BodyTrackerRole`（24 值，AR Foundation 页给出完整定义）：`Root`(0)、`LeftUpLeg`、`RightUpLeg`、`Spine3`、`LeftLeg`、`RightLeg`、`Spine6`、`LeftFoot`、`RightFoot`、`Spine7`、`LeftToes`、`RightToes`、`Neck1`、`LeftShoulder1`、`RightShoulder1`、`Neck4`、`LeftArm`、`RightArm`、`LeftForearm`、`RightForearm`、`LeftHand`、`RightHand`、`LeftHandMid1`、`RightHandMid1`(23)
-- `BlendShapeIndex`：面部 52 个 BlendShape 的索引枚举（如 `EyeLookDown_L`、`JawOpen`、`TongueOut`）
-- `GetDisplayFrequenciesAvailable`：查询设备支持的所有屏幕刷新率（替代两个已废弃接口）
+- `PxrLayerEffect`: `Colortemp`, `Brightness`, `Saturation`, `Contrast`
+- `BodyTrackerRole` (24 values; the AR Foundation page gives the full definition): `Root`(0), `LeftUpLeg`, `RightUpLeg`, `Spine3`, `LeftLeg`, `RightLeg`, `Spine6`, `LeftFoot`, `RightFoot`, `Spine7`, `LeftToes`, `RightToes`, `Neck1`, `LeftShoulder1`, `RightShoulder1`, `Neck4`, `LeftArm`, `RightArm`, `LeftForearm`, `RightForearm`, `LeftHand`, `RightHand`, `LeftHandMid1`, `RightHandMid1`(23)
+- `BlendShapeIndex`: enum of indices for the 52 face BlendShapes (such as `EyeLookDown_L`, `JawOpen`, `TongueOut`)
+- `GetDisplayFrequenciesAvailable`: queries all screen refresh rates the device supports (replaces two deprecated interfaces)
 
-### Unity 侧对象 / 组件（PICO 文档中引用的原名）
+### Unity-Side Objects / Components (Original Names Referenced in PICO Docs)
 
-`XR Origin (VR)`、`XR Origin (AR)`、`XR Origin (XR Rig)`、`XR Origin Hands (XR Rig)`、`Camera Offset`、`Left Controller` / `Right Controller`、`XR Controller (Action-Based)`、`Input Action Manager`、`XR Interaction Manager`、`Tracker Device Graphic Raycast`（PICO Building Blocks 页的写法；Unity 实际组件名见《创建可交互 UI》页的 `Tracked Device Graphic Raycaster`）、`AR Session`、`AR Human Body Manager (Script)`、`AR Face Manager (Script)`、`AR Session (Script)`、`AR Anchor Manager`、`AR Mesh Manager (Script)`、`Starter Assets`、`XR Device Simulator`、`XRI Default Input Actions`、`XRI Default Left Controller`
+`XR Origin (VR)`, `XR Origin (AR)`, `XR Origin (XR Rig)`, `XR Origin Hands (XR Rig)`, `Camera Offset`, `Left Controller` / `Right Controller`, `XR Controller (Action-Based)`, `Input Action Manager`, `XR Interaction Manager`, `Tracker Device Graphic Raycast` (as written on the PICO Building Blocks page; the actual Unity component name is `Tracked Device Graphic Raycaster`, see the *Create Interactive UI* page), `AR Session`, `AR Human Body Manager (Script)`, `AR Face Manager (Script)`, `AR Session (Script)`, `AR Anchor Manager`, `AR Mesh Manager (Script)`, `Starter Assets`, `XR Device Simulator`, `XRI Default Input Actions`, `XRI Default Left Controller`
 
-### 菜单路径
+### Menu Paths
 
-`Edit > Project Settings > XR Plug-in Management`｜`… > Project Validation`｜`… > PICO > Android Settings`｜`Edit > Project Settings > Player > Publishing Settings > Build`｜`Window > Package Manager`｜`File > Build Settings`｜`PICO > Platform Settings`｜`PICO > Portal`｜`GameObject > PICO Building Blocks`｜`Hierarchy > + > XR > XR Origin (VR) / XR Origin (AR) / AR Session`
+`Edit > Project Settings > XR Plug-in Management` | `… > Project Validation` | `… > PICO > Android Settings` | `Edit > Project Settings > Player > Publishing Settings > Build` | `Window > Package Manager` | `File > Build Settings` | `PICO > Platform Settings` | `PICO > Portal` | `GameObject > PICO Building Blocks` | `Hierarchy > + > XR > XR Origin (VR) / XR Origin (AR) / AR Session`
 
 ## DO NOT
 
-| ❌ 错误写法 | ✅ 正确写法 |
+| ❌ Wrong | ✅ Correct |
 |---|---|
-| XR Plug-in Management 里同时勾 `PICO` 和 `OpenXR`（以为能双跑） | 二选一；走 OpenXR 就**只**勾 Unity OpenXR 插件（同时勾只有 PICO XR 插件生效） |
-| OpenXR 路线沿用 `PICOScreenFade` / `EnableSeeThroughManual` / `PICO Manager (Script)` | `PXR_ScreenFade` / `EnableVideoSeeThrough`；透视不再需要 Manager 组件 |
-| `TryGetSupportedDisplayRefreshRates()`、`GetDisplayRefreshRateCount()` | `GetDisplayFrequenciesAvailable()`（前两者已废弃） |
-| 只在主场景挂 `PXR_Manager` | 每个场景都挂，**包括画面加载场景** |
-| `Scripting Backend = Mono` 或保留 `ARMv7` | `IL2CPP` + 仅 `ARM64`（3.1.0 起只支持 64 位） |
-| `Minimum API Level` 用默认低版本 | ≥ `Android 10.0 (API Level 29)` |
-| 包名写 `com.DefaultCompany.MyApp`、`com.vr.demo` | `com.<真实公司>.<产品>`，避开 8 个被禁前缀 |
-| 手写 `picovr.software.eye_tracking` / `com.picovr.permission.FACE_TRACKING` 之类 | 在编辑器里勾功能让 SDK 自动写；只有 `pvr.app.type`、`pvr.display.orientation` 和安卓标准权限需手写 |
-| 以为自定义 Manifest 在 `Assets/Android/` 或项目根 | 勾 `Custom Main Manifest` 后固定生成在 **`Assets/Plugins/Android/AndroidManifest.xml`** |
-| 找 SDK 资源时去 `Assets/PICO/…` | 在 **`Packages/PICO Integration/…`**（手柄预制体在 `Assets/Resources/Prefabs`） |
-| AR Foundation 场景里加 `XR Origin (VR)` | 加 **`XR Origin (AR)`**，并按需加 `AR Session` |
-| 直接照抄 `arfoundation-samples` 的 `Bone Controller` / `AR Kit Blend Shape Visualizer` | 换成 `PXR_Bone Controller (Script)` / `PXR_Blend Shape Visualizer (Script)`，`Human Body Tracking` 换 `PXR_Human Body Tracker (Script)` |
-| 计划用 AR Foundation 的 Image Tracking | **暂不支持**，换其它方案 |
-| 发布包勾 Minify 做体积优化 | 不要勾，会导致应用崩溃 |
-| Unity 2022 下勾 `Development Build` 配 Vulkan 调试 | 会崩溃；换 OpenGLES 或去掉 Development Build |
-| 场景里留多个 `Audio Listener` / 多个 `MainCamera` Tag / 多个 `XR Origin` | 各保留一个，否则 Project Validation Required 报错 |
+| Ticking both `PICO` and `OpenXR` under XR Plug-in Management, believing they run side by side | Pick one; for OpenXR tick **only** the Unity OpenXR plugin (when both are ticked, only the PICO XR plugin takes effect) |
+| Carrying `PICOScreenFade` / `EnableSeeThroughManual` / `PICO Manager (Script)` over to the OpenXR route | `PXR_ScreenFade` / `EnableVideoSeeThrough`; see-through no longer needs the Manager component |
+| `TryGetSupportedDisplayRefreshRates()`, `GetDisplayRefreshRateCount()` | `GetDisplayFrequenciesAvailable()` (the first two are deprecated) |
+| Attaching `PXR_Manager` only to the main scene | Attach it to every scene, **including loading/splash scenes** |
+| `Scripting Backend = Mono` or keeping `ARMv7` | `IL2CPP` + `ARM64` only (64-bit only since 3.1.0) |
+| Leaving `Minimum API Level` at a default low version | ≥ `Android 10.0 (API Level 29)` |
+| Package name `com.DefaultCompany.MyApp`, `com.vr.demo` | `com.<real company>.<product>`, avoiding the 8 banned prefixes |
+| Handwriting `picovr.software.eye_tracking` / `com.picovr.permission.FACE_TRACKING` and the like | Tick the feature in the editor and let the SDK write them; only `pvr.app.type`, `pvr.display.orientation` and standard Android permissions need handwriting |
+| Assuming a custom Manifest lives in `Assets/Android/` or the project root | After ticking `Custom Main Manifest`, it is always generated at **`Assets/Plugins/Android/AndroidManifest.xml`** |
+| Looking for SDK resources under `Assets/PICO/…` | Look under **`Packages/PICO Integration/…`** (controller prefabs are in `Assets/Resources/Prefabs`) |
+| Adding `XR Origin (VR)` to an AR Foundation scene | Add **`XR Origin (AR)`**, and add `AR Session` as needed |
+| Copying `Bone Controller` / `AR Kit Blend Shape Visualizer` from `arfoundation-samples` verbatim | Replace them with `PXR_Bone Controller (Script)` / `PXR_Blend Shape Visualizer (Script)`, and replace `Human Body Tracking` with `PXR_Human Body Tracker (Script)` |
+| Planning to use AR Foundation Image Tracking | **Not supported for now**; use another approach |
+| Ticking Minify in the release build for size optimization | Do not tick it; it crashes the app |
+| Ticking `Development Build` with Vulkan for debugging under Unity 2022 | Crashes; switch to OpenGLES or remove Development Build |
+| Leaving multiple `Audio Listener`s / multiple `MainCamera` tags / multiple `XR Origin`s in the scene | Keep one of each, otherwise Project Validation Required reports an error |
 
-## 开发者工具索引
+## Developer Tools Index
 
-| 工具 | 一句话用途 | URL |
+| Tool | One-line purpose | URL |
 |---|---|---|
-| 开发者工具概览 | PICO 提供或支持的全部开发者工具总览（调试、性能监测、交互编辑） | https://developer-cn.picoxr.com/document/unity/developer-tools-overview/ |
-| PICO 开发者中心快速开始 | PDC 工具的快速上手入口 | https://developer-cn.picoxr.com/document/unity/pdc-basic-info/ |
-| 创建和调试 adb 命令 | 用 PDC 调试系统默认命令或创建自定义 adb 命令 | https://developer-cn.picoxr.com/document/unity/create-and-debug-adb-commands/ |
-| 实时预览场景 | 基于串流在头戴上实时预览应用内场景 | https://developer-cn.picoxr.com/document/unity/preview-app-scenes/ |
-| 监测设备性能 | PC 端实时监测设备性能指标并配置阈值预警 | https://developer-cn.picoxr.com/document/unity/monitor-device-performance/ |
-| 截屏、录屏与投屏 | PDC 的截屏/录屏/投屏快捷工具 | https://developer-cn.picoxr.com/document/unity/quick-tools/ |
-| 推送 URL 到 PICO 设备 | 把指定 URL 推到设备并用 PICO 浏览器打开 | https://developer-cn.picoxr.com/document/unity/push-url-to-pico-device/ |
-| 下载开发资源 | 在 PDC 下载中心获取开发者工具、SDK 和示例 | https://developer-cn.picoxr.com/document/unity/download-developer-tools/ |
-| 安装串流服务 | 装串流服务以监控性能数据，Windows 可配 PICO Unity Live Preview Plugin | https://developer-cn.picoxr.com/document/unity/download-streaming-service/ |
-| 管理文件 | 查看 PICO 设备与 PDC 中的文件 | https://developer-cn.picoxr.com/document/unity/manage-files/ |
-| PDC 问题排查指南 | PDC 使用中常见问题及解决方法 | https://developer-cn.picoxr.com/document/unity/pdc-troubleshooting/ |
-| SpatialMLCapture 使用指南 | 录制立体 RGB+深度+实时位姿的多模态数据并存为 SpatialMP4 | https://developer-cn.picoxr.com/document/unity/spatialmlcapture/ |
-| SpatialMP4 白皮书 | 基于 MP4 的空间视频容器格式规范 | https://developer-cn.picoxr.com/document/unity/spatialmp4-whitepaper/ |
-| SpatialMLCapture 服务协议（中国大陆） | SpatialMLCapture 的服务条款 | https://developer-cn.picoxr.com/document/unity/spatialmlcapture-terms-of-service/ |
-| SpatialMLCapture 隐私声明 | SpatialMLCapture 的隐私声明 | https://developer-cn.picoxr.com/document/unity/spatialmlcapture-privacy-policy/ |
-| XR Profiling Toolkit | 自动化图形性能分析 Unity 包，支持特性切换、数据导出与报告 | https://developer-cn.picoxr.com/document/unity/xr-profiling-toolkit/ |
-| 头戴端性能监测工具 (Metrics HUD) | 在头戴端实时监测设备性能指标 | https://developer-cn.picoxr.com/document/unity/metrics-hud/ |
-| RenderDoc for PICO | 图像分析和调试工具 | https://developer-cn.picoxr.com/document/unity/renderdoc-for-pico/ |
-| CLI 命令行工具 | 命令行管理 PICO 开发者平台的文件 | https://developer-cn.picoxr.com/document/unity/command-line-utility/ |
-| PICO 触觉编辑器 | 编辑宽频、多通道触觉反馈（支持 .phf/.wav/.mp4 导入） | https://developer-cn.picoxr.com/document/unity/pico-haptic-editor/ |
-| PICO 图像分析和调试工具 | 对应用性能进行图形层面的分析和调试 | https://developer-cn.picoxr.com/document/unity/pico-graphics-probe-tool/ |
-| 骁龙分析器 | Snapdragon Profiler，分析 CPU/GPU/DSP/内存/功耗/网络瓶颈 | https://developer-cn.picoxr.com/document/unity/242767/ |
-| PICO Debugger | 查看日志与场景信息，并用内置工具做针对性优化 | https://developer-cn.picoxr.com/document/unity/pico-debugger/ |
+| Developer tools overview | Overview of all developer tools PICO provides or supports (debugging, performance monitoring, interaction editing) | https://developer-cn.picoxr.com/document/unity/developer-tools-overview/ |
+| PICO Developer Center quick start | Quick-start entry for the PDC tool | https://developer-cn.picoxr.com/document/unity/pdc-basic-info/ |
+| Create and debug adb commands | Debug system default commands or create custom adb commands with PDC | https://developer-cn.picoxr.com/document/unity/create-and-debug-adb-commands/ |
+| Preview scenes in real time | Preview in-app scenes on the headset in real time via streaming | https://developer-cn.picoxr.com/document/unity/preview-app-scenes/ |
+| Monitor device performance | Monitor device performance metrics in real time on the PC and configure threshold alerts | https://developer-cn.picoxr.com/document/unity/monitor-device-performance/ |
+| Screenshots, recording and casting | Screenshot / recording / casting quick tools in PDC | https://developer-cn.picoxr.com/document/unity/quick-tools/ |
+| Push a URL to a PICO device | Push a specified URL to the device and open it in the PICO browser | https://developer-cn.picoxr.com/document/unity/push-url-to-pico-device/ |
+| Download development resources | Get developer tools, SDKs and samples from the PDC download center | https://developer-cn.picoxr.com/document/unity/download-developer-tools/ |
+| Install the streaming service | Install the streaming service to monitor performance data; on Windows you can configure the PICO Unity Live Preview Plugin | https://developer-cn.picoxr.com/document/unity/download-streaming-service/ |
+| Manage files | View files on the PICO device and in PDC | https://developer-cn.picoxr.com/document/unity/manage-files/ |
+| PDC troubleshooting guide | Common problems and fixes when using PDC | https://developer-cn.picoxr.com/document/unity/pdc-troubleshooting/ |
+| SpatialMLCapture user guide | Record stereo RGB + depth + real-time pose multimodal data and save it as SpatialMP4 | https://developer-cn.picoxr.com/document/unity/spatialmlcapture/ |
+| SpatialMP4 white paper | Specification for the MP4-based spatial video container format | https://developer-cn.picoxr.com/document/unity/spatialmp4-whitepaper/ |
+| SpatialMLCapture service agreement (mainland China) | Terms of service for SpatialMLCapture | https://developer-cn.picoxr.com/document/unity/spatialmlcapture-terms-of-service/ |
+| SpatialMLCapture privacy statement | Privacy statement for SpatialMLCapture | https://developer-cn.picoxr.com/document/unity/spatialmlcapture-privacy-policy/ |
+| XR Profiling Toolkit | Unity package for automated graphics performance analysis, supporting feature toggles, data export and reports | https://developer-cn.picoxr.com/document/unity/xr-profiling-toolkit/ |
+| Headset performance monitoring tool (Metrics HUD) | Monitor device performance metrics in real time on the headset | https://developer-cn.picoxr.com/document/unity/metrics-hud/ |
+| RenderDoc for PICO | Graphics analysis and debugging tool | https://developer-cn.picoxr.com/document/unity/renderdoc-for-pico/ |
+| CLI command-line tool | Manage files on the PICO developer platform from the command line | https://developer-cn.picoxr.com/document/unity/command-line-utility/ |
+| PICO Haptic Editor | Edit wideband, multi-channel haptic feedback (supports .phf/.wav/.mp4 import) | https://developer-cn.picoxr.com/document/unity/pico-haptic-editor/ |
+| PICO graphics analysis and debugging tool | Graphics-level analysis and debugging of app performance | https://developer-cn.picoxr.com/document/unity/pico-graphics-probe-tool/ |
+| Snapdragon Profiler | Snapdragon Profiler; analyzes CPU/GPU/DSP/memory/power/network bottlenecks | https://developer-cn.picoxr.com/document/unity/242767/ |
+| PICO Debugger | View logs and scene information, and use built-in tools for targeted optimization | https://developer-cn.picoxr.com/document/unity/pico-debugger/ |
 
-## 官方示例索引
+## Official Sample Index
 
-| 示例 | 一句话用途 | URL |
+| Sample | One-line purpose | URL |
 |---|---|---|
-| 入门示例 | GetStartedDemo：室内/室外场景，体验视角转动、连续运动、传送与场景切换 | https://developer-cn.picoxr.com/document/unity/get-started-demo/ |
-| 运动追踪示例 | PICOMotionTrackerSample：体感追踪器的全身动捕与独立追踪 | https://developer-cn.picoxr.com/document/unity/pico-motion-tracking-sample/ |
-| 交互示例 | InteractionSample：手柄/手势交互、触觉反馈、键盘输入、动态运动 | https://developer-cn.picoxr.com/document/unity/pico-interaction-sample/ |
-| 空间音频示例 | PICOSpatialAudioSample：配置空间音频参数、场景内移动与播放声源 | https://developer-cn.picoxr.com/document/unity/spatial-audio-sample/ |
-| 混合现实示例 | 视频透视、场景标定、空间网格、空间锚点与共享空间锚点 | https://developer-cn.picoxr.com/document/unity/mixed-reality-sample/ |
-| 卡通世界 | Toon World：多视图渲染 + AppSW + 延迟锁定的性能优化展示 | https://developer-cn.picoxr.com/document/unity/toon-world/ |
-| 太空竞技场 | Space Arena Party：好友、社交互动、房间&匹配的多人社交 Demo | https://developer-cn.picoxr.com/document/unity/space-arena-party/ |
-| 迷你战争 | MicroWar：交互套件 + 平台服务核心功能的综合游戏示例 | https://developer-cn.picoxr.com/document/unity/micro-war/ |
-| 人体追踪示例 | Pico-Body-Tracking-Demo：人体追踪功能示例项目 | https://developer-cn.picoxr.com/document/unity/body-tracking-demo/ |
-| 自适应分辨率示例 | AdaptiveResolutionSample：按 GPU 负载自动调分辨率的多房间场景 | https://developer-cn.picoxr.com/document/unity/adaptive-resolution-demo/ |
-| 平台服务简单示例 | SimpleDemo：初始化平台服务、申请用户权限、获取登录用户信息 | https://developer-cn.picoxr.com/document/unity/simple-demo/ |
-| 帐号&好友示例 | UserDemo：调试"帐号&好友"服务 | https://developer-cn.picoxr.com/document/unity/user-demo/ |
-| 实时语音示例 | RtcDemo：调试 RTC 实时语音服务的大部分功能 | https://developer-cn.picoxr.com/document/unity/rtc-demo/ |
-| 房间&匹配示例 | RoomAndMatchmakingEntry / GameAPITest：房间与匹配服务调试 | https://developer-cn.picoxr.com/document/unity/room-and-matchmaking-demo/ |
-| 排行榜示例 | GameAPITest：排行榜服务全部接口的调试面板 | https://developer-cn.picoxr.com/document/unity/leaderboard-demo/ |
-| 成就示例 | GameAPITest：成就服务全部接口的调试面板 | https://developer-cn.picoxr.com/document/unity/achievement-demo/ |
-| 挑战示例 | Challenges Demo：调试"挑战"服务接口 | https://developer-cn.picoxr.com/document/unity/challenge-demo/ |
-| 应用内购（IAP）示例 | IAP Demo：内购服务全部接口与基本实现原理 | https://developer-cn.picoxr.com/document/unity/iap-demo/ |
-| 可下载内容（DLC）示例 | DLC Demo：DLC 服务的基本用法 | https://developer-cn.picoxr.com/document/unity/dlc-demo/ |
-| 订阅示例 | IAPDemo.cs：订阅功能调试（需勾选 UseV2） | https://developer-cn.picoxr.com/document/unity/subscription-demo/ |
-| 运动数据授权示例 | SportCenter：调试运动数据授权接口 | https://developer-cn.picoxr.com/document/unity/sports-demo/ |
-| 高光时刻示例 | HighlightsDemo：截屏、录屏、跨端分享 | https://developer-cn.picoxr.com/document/unity/highlights-demo/ |
-| 语音转文字示例 | SpeechToTextDemo：初始化 ASR 引擎、开始/停止语音识别 | https://developer-cn.picoxr.com/document/unity/speech-to-text-demo/ |
+| Get Started demo | GetStartedDemo: indoor/outdoor scenes; experience view rotation, continuous movement, teleportation and scene switching | https://developer-cn.picoxr.com/document/unity/get-started-demo/ |
+| Motion tracking sample | PICOMotionTrackerSample: full-body motion capture and independent tracking with motion trackers | https://developer-cn.picoxr.com/document/unity/pico-motion-tracking-sample/ |
+| Interaction sample | InteractionSample: controller/gesture interaction, haptic feedback, keyboard input, dynamic movement | https://developer-cn.picoxr.com/document/unity/pico-interaction-sample/ |
+| Spatial audio sample | PICOSpatialAudioSample: configure spatial audio parameters, move within the scene and play sound sources | https://developer-cn.picoxr.com/document/unity/spatial-audio-sample/ |
+| Mixed reality sample | Video see-through, scene capture, spatial mesh, spatial anchors and shared spatial anchors | https://developer-cn.picoxr.com/document/unity/mixed-reality-sample/ |
+| Toon World | Toon World: showcase of performance optimization with multi-view rendering + AppSW + late latching | https://developer-cn.picoxr.com/document/unity/toon-world/ |
+| Space Arena | Space Arena Party: multiplayer social demo with friends, social interaction, and rooms & matchmaking | https://developer-cn.picoxr.com/document/unity/space-arena-party/ |
+| MicroWar | MicroWar: comprehensive game sample combining the interaction kit and core platform services features | https://developer-cn.picoxr.com/document/unity/micro-war/ |
+| Body tracking sample | Pico-Body-Tracking-Demo: sample project for body tracking features | https://developer-cn.picoxr.com/document/unity/body-tracking-demo/ |
+| Adaptive resolution sample | AdaptiveResolutionSample: multi-room scene that automatically adjusts resolution based on GPU load | https://developer-cn.picoxr.com/document/unity/adaptive-resolution-demo/ |
+| Platform services simple sample | SimpleDemo: initialize platform services, request user permissions, get signed-in user info | https://developer-cn.picoxr.com/document/unity/simple-demo/ |
+| Account & friends sample | UserDemo: debug the "account & friends" service | https://developer-cn.picoxr.com/document/unity/user-demo/ |
+| Real-time voice sample | RtcDemo: debug most functions of the RTC real-time voice service | https://developer-cn.picoxr.com/document/unity/rtc-demo/ |
+| Rooms & matchmaking sample | RoomAndMatchmakingEntry / GameAPITest: debug the rooms and matchmaking services | https://developer-cn.picoxr.com/document/unity/room-and-matchmaking-demo/ |
+| Leaderboard sample | GameAPITest: debug panel for all leaderboard service interfaces | https://developer-cn.picoxr.com/document/unity/leaderboard-demo/ |
+| Achievement sample | GameAPITest: debug panel for all achievement service interfaces | https://developer-cn.picoxr.com/document/unity/achievement-demo/ |
+| Challenge sample | Challenges Demo: debug the challenge service interfaces | https://developer-cn.picoxr.com/document/unity/challenge-demo/ |
+| In-app purchase (IAP) sample | IAP Demo: all in-app purchase service interfaces and basic implementation principles | https://developer-cn.picoxr.com/document/unity/iap-demo/ |
+| Downloadable content (DLC) sample | DLC Demo: basic usage of the DLC service | https://developer-cn.picoxr.com/document/unity/dlc-demo/ |
+| Subscription sample | IAPDemo.cs: debug subscription features (requires ticking UseV2) | https://developer-cn.picoxr.com/document/unity/subscription-demo/ |
+| Sports data authorization sample | SportCenter: debug the sports data authorization interfaces | https://developer-cn.picoxr.com/document/unity/sports-demo/ |
+| Highlights sample | HighlightsDemo: screenshots, recording, cross-device sharing | https://developer-cn.picoxr.com/document/unity/highlights-demo/ |
+| Speech-to-text sample | SpeechToTextDemo: initialize the ASR engine, start/stop speech recognition | https://developer-cn.picoxr.com/document/unity/speech-to-text-demo/ |

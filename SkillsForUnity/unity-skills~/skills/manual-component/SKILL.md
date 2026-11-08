@@ -3,13 +3,14 @@ name: unity-manual-component
 description: Manually add, configure, reorder, and copy components on GameObjects using Unity Editor UI. For one-off Inspector workflows that do not need REST automation.
 ---
 
-## Triggers
+# Manual Component Tasks
+
+## When to use
 - Adding a single component to a GameObject
 - Tuning component fields in the Inspector
 - Reordering components on one object
 - Copying component values to another object
 
-# Manual Component Tasks
 
 Step-by-step instructions for component operations inside the Unity Editor. Paths assume the default English Unity UI; translate the labels into the user's Unity language when replying.
 

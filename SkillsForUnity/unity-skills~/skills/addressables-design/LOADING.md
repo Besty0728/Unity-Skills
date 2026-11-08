@@ -1,6 +1,6 @@
 ---
 name: unity-addressables-loading
-description: "Addressables asset loading and instantiation (1.22.3 & 2.9.1) — LoadAssetAsync<T>, LoadAssetsAsync, InstantiateAsync, and key/label/IResourceLocation overloads. Addressables 资源加载与实例化(1.22.3 与 2.9.1:LoadAssetAsync、LoadAssetsAsync、InstantiateAsync,以及 key/label/IResourceLocation 重载)。"
+description: "Addressables asset loading and instantiation (1.22.3 & 2.9.1) — LoadAssetAsync<T>, LoadAssetsAsync, InstantiateAsync, and key/label/IResourceLocation overloads."
 type: reference
 ---
 

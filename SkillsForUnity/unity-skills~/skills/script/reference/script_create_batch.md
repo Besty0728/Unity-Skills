@@ -11,11 +11,6 @@ Create several scripts in one call: one domain reload instead of one per script.
 
 Before creating, decide each class role: thin MonoBehaviour bridge, ScriptableObject configuration asset, or plain C# domain/service class (pass it as `content`).
 
-```python
-# 1 call + 1 domain reload instead of 3 calls + 3 reloads
-unity_skills.call_skill("script_create_batch", items=[
-    {"scriptName": "PlayerController", "folder": "Assets/Scripts/Player", "template": "MonoBehaviour"},
-    {"scriptName": "EnemyAI", "folder": "Assets/Scripts/Enemy", "template": "MonoBehaviour"},
-    {"scriptName": "GameSettings", "folder": "Assets/Scripts/Data", "template": "ScriptableObject"}
-])
+```
+curl -s "http://localhost:<port>/skill/script_create_batch?expectProject=<project>" -d '{"items":"[{\"scriptName\":\"PlayerController\",\"folder\":\"Assets/Scripts/Player\",\"template\":\"MonoBehaviour\"},{\"scriptName\":\"GameSettings\",\"folder\":\"Assets/Scripts/Data\",\"template\":\"ScriptableObject\"}]"}'
 ```

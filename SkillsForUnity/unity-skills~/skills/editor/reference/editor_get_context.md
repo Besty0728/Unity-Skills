@@ -15,11 +15,7 @@ Get full editor context including selection, assets, and scene info.
 
 **Example**:
 
-```python
-import unity_skills
-
-# Get full context (useful for understanding current state)
-context = unity_skills.call_skill("editor_get_context", includeComponents=True)
-for obj in context['selectedGameObjects']['objects']:
-    print(f"Selected: {obj['name']} (entityId: {obj['entityId']})")
+```bash
+# Full context (useful for understanding current state)
+curl -s "http://localhost:<port>/skill/editor_get_context?expectProject=<project>" -d '{"includeComponents":true}'
 ```

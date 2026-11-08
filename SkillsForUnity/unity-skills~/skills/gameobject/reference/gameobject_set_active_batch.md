@@ -9,9 +9,6 @@ Enable or disable several GameObjects in one call.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, entityId, success, active, activeInHierarchy}]}`. All-or-nothing.
 
-```python
-unity_skills.call_skill("gameobject_set_active_batch", items=[
-    {"name": "Enemy1", "active": False},
-    {"name": "Enemy2", "active": False}
-])
+```bash
+curl -s "http://localhost:<port>/skill/gameobject_set_active_batch?expectProject=<project>" -d '{"items":"[{\"name\":\"Enemy1\",\"active\":false},{\"name\":\"Enemy2\",\"active\":false}]"}'
 ```

@@ -3,25 +3,15 @@ name: unity-yooasset-design
 description: Source-anchored design rules for YooAsset v2.3.18, with a 3.x delta sheet
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Writing or reviewing YooAsset code
-- Initializing packages
-- Loading assets via handles
-- Setting up hot-update/download
-- Choosing a play mode
-- 编写或审查 YooAsset 代码、初始化 package、用句柄加载资源、配置热更/下载、选择运行模式
-
 # YooAsset - Design Rules
+
+**Version scope:** YooAsset 2.3.18 (plugin range `[2.3.15,2.4.0-0)`) and 3.x (`[3.0.4,3.1.0-0)`). The rules below are 2.x; read [V3.md](./V3.md) for the 3.x delta.
 
 Advisory module. Every rule is distilled from YooAsset **v2.3.18** (2025-12-04) source at `Assets/YooAsset/`. Each rule cites a concrete file/line so the reasoning is auditable and the AI does not improvise against stale memory.
 
 > **Version gate**: these files describe the **2.x line** (2.3.15+). On **YooAsset 3.0.4+** most runtime and Editor names changed (Options-style `InitializePackageAsync` / `LoadPackageManifestAsync`, `EOperationStatus.Succeeded`, `Bundle*` Editor types, no default-package shortcuts, no AssetArt). Call `yooasset_check_installed` and read `apiLine`; when it is `"3.x"`, read [V3.md](./V3.md) first and translate every 2.x name in the other sub-docs through it.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
-## When to Load This Module
+## When to use
 
 Load before writing or reviewing any of:
 

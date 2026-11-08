@@ -21,10 +21,8 @@ On disk the journal is up to 11 files: the active `editor_changes.jsonl` plus ro
 
 **Example**:
 
-```python
-import unity_skills
-
+```bash
 # On resume or after file-watch notification, inspect semantic changes first.
-changes = unity_skills.call_skill("editor_get_changes", since=last_cursor)
-last_cursor = changes["cursor"]
+# Pass the cursor returned by the previous call as `since`; keep the new `cursor` from the response.
+curl -s "http://localhost:<port>/skill/editor_get_changes?expectProject=<project>" -d '{"since":"<cursor from the last call>"}'
 ```

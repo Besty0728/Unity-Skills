@@ -3,146 +3,129 @@ name: unity-physics
 description: Run Unity physics queries and configure physics
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Physics Skills
 
-## Triggers
-- Casting rays
+Editor-time physics queries (raycast, sphere and box casts, overlap), gravity, PhysicMaterial assets and the layer collision matrix. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
+- Casting rays or shapes
 - Testing overlaps
 - Querying colliders
-- Adjusting gravity/physics settings
-- 发射射线、检测重叠、查询碰撞体、调整重力/物理设置
+- Adjusting gravity or physics settings
 
-# Physics Skills
+## Rules
+- Each query is a single-frame check on the editor thread. Simulation (integration, collision response) advances only in Play Mode; these skills never start a simulation.
+- Raycast and cast results use world-space coordinates.
+- `layerMask` on queries is a bit mask (bit n = layer n; for example 256 = layer 8 only), not a layer index. `-1` means all layers.
+- `layer1` and `layer2` on the layer-collision skills are indices 0-31. A name from `layer1Name` / `layer2Name` overrides the index on the same side.
+- Adding physics components belongs to the [component](../component/SKILL.md) module (`component_add` with `Rigidbody`, `BoxCollider`, etc.).
 
-Editor-time physics queries (raycast / overlap), gravity, PhysicMaterial assets, and layer collision matrix.
-
-## Operating Mode
-
-- **Approval**：查询类 skill（`physics_raycast` / `physics_check_overlap` / `physics_get_gravity` / `physics_get_layer_collision` 等，源码标 `SkillMode.SemiAuto`）直接执行；变更类（`physics_set_gravity` / `physics_create_material` / `physics_set_material` / `physics_set_layer_collision`，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**：所有 skill 直接执行；Auto 走 AI 自我评估，Bypass 全放行。
-- 本模块**不含** Delete / PlayMode / Reload / 高危 skill，无 Bypass-only 拦截项。
-- 注意：所有 skill 都在编辑器线程同步运行。真实物理模拟（积分、碰撞响应）仅在 Play mode 下推进；本模块只做单帧 query + 资产/全局设置写入，不会启动模拟。
-
-**DO NOT** (common hallucinations):
-- `physics_add_rigidbody` / `physics_add_collider` do not exist → use `component_add` with componentType "Rigidbody"/"BoxCollider"/etc.
-- `physics_simulate` does not exist → physics simulation runs during Play mode; this module does not step the simulation
-- Raycast results use world-space coordinates
-
-**Routing**:
-- For adding physics components → use `component` module
-- For physics material → use `physics_create_material` (this module)
-- For layer collision matrix → `physics_set_layer_collision` (this module)
+## Pitfalls
+- `physics_add_rigidbody`, `physics_add_collider` and `physics_simulate` do not exist.
+- `physics_raycast` returns `collider` (the collider name) and `objectName` (the GameObject name), not `hitObjectName`.
+- A zero direction vector returns `error: "Direction vector cannot be zero"`. Radius and half-extent values must be non-negative.
+- `TARGET_NOT_FOUND` on `physics_set_material` means the target has no `Collider` (add one with `component_add`) or the PhysicMaterial path did not load (check it with `asset_find`).
+- `physics_create_material` refuses a read-only package (registry, git or built-in) or a path no package owns with `SEMANTIC_INVALID`, before anything is created.
 
 ## Skills
 
-### `physics_raycast`
-Cast a ray and get hit info.
-**Parameters:**
-- `originX`, `originY`, `originZ` (float): Origin point.
-- `dirX`, `dirY`, `dirZ` (float): Direction vector.
-- `maxDistance` (float, optional): Max distance (default 1000).
-- `layerMask` (int, optional): Layer mask (default -1).
-
-**Returns:** `{ hit: true, collider: "Cube", distance: 5.2, ... }`
-
-### `physics_check_overlap`
-Check for colliders in a sphere.
-**Parameters:**
-- `x`, `y`, `z` (float): Center point.
-- `radius` (float): Sphere radius.
-- `layerMask` (int, optional): Layer mask.
-
-### `physics_get_gravity`
-Get global gravity setting.
-**Parameters:** None.
-
-### `physics_set_gravity`
-Set global gravity setting.
-**Parameters:**
-- `x`, `y`, `z` (float): Gravity vector (e.g. 0, -9.81, 0).
-
-### `physics_raycast_all`
-Cast a ray and return ALL hits (penetrating).
+### physics_raycast
+Cast a ray and return the first hit.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| originX | float | Yes | - | Ray origin X |
-| originY | float | Yes | - | Ray origin Y |
-| originZ | float | Yes | - | Ray origin Z |
-| dirX | float | Yes | - | Direction X |
-| dirY | float | Yes | - | Direction Y |
-| dirZ | float | Yes | - | Direction Z |
+| originX, originY, originZ | float | Yes | - | Ray origin |
+| dirX, dirY, dirZ | float | Yes | - | Direction (normalized by the skill) |
 | maxDistance | float | No | 1000 | Max ray distance |
-| layerMask | int | No | -1 | Layer mask filter |
+| layerMask | int | No | -1 | Layer bit mask |
 
-**Returns:** `{ count, hits: [{ objectName, instanceId, path, point, normal, distance }] }`
+**Returns**: `{hit, collider, colliderEntityId, colliderInstanceId, objectName, objectEntityId, objectInstanceId, path, point, normal, distance}`; `{hit: false}` on a miss.
 
-### `physics_spherecast`
-Cast a sphere along a direction and get hit info.
+### physics_raycast_all
+Cast a ray and return all hits, including those behind the first.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| originX | float | Yes | - | Origin X |
-| originY | float | Yes | - | Origin Y |
-| originZ | float | Yes | - | Origin Z |
-| dirX | float | Yes | - | Direction X |
-| dirY | float | Yes | - | Direction Y |
-| dirZ | float | Yes | - | Direction Z |
+| originX, originY, originZ | float | Yes | - | Ray origin |
+| dirX, dirY, dirZ | float | Yes | - | Direction |
+| maxDistance | float | No | 1000 | Max ray distance |
+| layerMask | int | No | -1 | Layer bit mask |
+
+**Returns**: `{count, hits: [{objectName, instanceId, path, point, normal, distance}]}`
+
+### physics_spherecast
+Cast a sphere along a direction and return the first hit.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| originX, originY, originZ | float | Yes | - | Origin |
+| dirX, dirY, dirZ | float | Yes | - | Direction |
 | radius | float | Yes | - | Sphere radius |
 | maxDistance | float | No | 1000 | Max cast distance |
-| layerMask | int | No | -1 | Layer mask filter |
+| layerMask | int | No | -1 | Layer bit mask |
 
-**Returns:** `{ hit, objectName, instanceId, point, distance }`
+**Returns**: `{hit, objectName, entityId, instanceId, point, distance}`
 
-### `physics_boxcast`
-Cast a box along a direction and get hit info.
+### physics_boxcast
+Cast a box along a direction and return the first hit.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| originX | float | Yes | - | Origin X |
-| originY | float | Yes | - | Origin Y |
-| originZ | float | Yes | - | Origin Z |
-| dirX | float | Yes | - | Direction X |
-| dirY | float | Yes | - | Direction Y |
-| dirZ | float | Yes | - | Direction Z |
-| halfExtentX | float | No | 0.5 | Box half extent X |
-| halfExtentY | float | No | 0.5 | Box half extent Y |
-| halfExtentZ | float | No | 0.5 | Box half extent Z |
+| originX, originY, originZ | float | Yes | - | Origin |
+| dirX, dirY, dirZ | float | Yes | - | Direction |
+| halfExtentX, halfExtentY, halfExtentZ | float | No | 0.5 | Box half extents |
 | maxDistance | float | No | 1000 | Max cast distance |
-| layerMask | int | No | -1 | Layer mask filter |
+| layerMask | int | No | -1 | Layer bit mask |
 
-**Returns:** `{ hit, objectName, instanceId, point, distance }`
+**Returns**: `{hit, objectName, entityId, instanceId, point, distance}`
 
-### `physics_overlap_box`
+### physics_check_overlap
+Check for colliders inside a sphere.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| x, y, z | float | Yes | - | Sphere center |
+| radius | float | Yes | - | Sphere radius, non-negative |
+| layerMask | int | No | -1 | Layer bit mask |
+
+### physics_overlap_box
 Check for colliders overlapping a box volume.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| x | float | Yes | - | Box center X |
-| y | float | Yes | - | Box center Y |
-| z | float | Yes | - | Box center Z |
-| halfExtentX | float | No | 0.5 | Box half extent X |
-| halfExtentY | float | No | 0.5 | Box half extent Y |
-| halfExtentZ | float | No | 0.5 | Box half extent Z |
-| layerMask | int | No | -1 | Layer mask filter |
+| x, y, z | float | Yes | - | Box center |
+| halfExtentX, halfExtentY, halfExtentZ | float | No | 0.5 | Box half extents |
+| layerMask | int | No | -1 | Layer bit mask |
 
-**Returns:** `{ count, colliders: [{ objectName, path, isTrigger }] }`
+**Returns**: `{count, colliders: [{objectName, path, isTrigger}]}`
 
-### `physics_create_material`
+### physics_get_gravity
+Get the global gravity setting.
+
+**Parameters**: none.
+
+### physics_set_gravity
+Set the global gravity vector.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| x, y, z | float | Yes | - | Gravity vector, e.g. 0, -9.81, 0 |
+
+### physics_create_material
 Create a PhysicMaterial asset.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | "New PhysicMaterial" | Material name |
-| savePath | string | No | "Assets" | Save folder under `Assets/`, or inside an embedded/local package (`Packages/<id>/...`); it and any missing parent folders are created. A read-only package (registry, git, built-in) or a path no package owns is refused with `SEMANTIC_INVALID` before anything is created |
-| dynamicFriction | float | No | 0.6 | Dynamic friction value |
-| staticFriction | float | No | 0.6 | Static friction value |
-| bounciness | float | No | 0 | Bounciness value |
+| savePath | string | No | "Assets" | Folder under `Assets/`, or inside an embedded or local package (`Packages/<id>/...`). Missing folders are created. |
+| dynamicFriction | float | No | 0.6 | Dynamic friction |
+| staticFriction | float | No | 0.6 | Static friction |
+| bounciness | float | No | 0 | Bounciness |
 
-**Returns:** `{ success, path }` — `path` is `<savePath>/<name>.physicMaterial`; a name already taken there gets a numeric suffix (`<name> 1.physicMaterial`).
+**Returns**: `{success, path}`. `path` is `<savePath>/<name>.physicMaterial`; a name already taken gets a numeric suffix (`<name> 1.physicMaterial`).
 
-### `physics_set_material`
-Set PhysicMaterial on a collider (supports name/entityId/instanceId/path).
+### physics_set_material
+Assign a PhysicMaterial to a collider.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -152,55 +135,37 @@ Set PhysicMaterial on a collider (supports name/entityId/instanceId/path).
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 
-**Returns:** `{ success, gameObject, material, collider }` — `material` is the resolved asset path read back from the collider, and `collider` is the collider component's type name (e.g. `BoxCollider`).
+**Returns**: `{success, gameObject, material, collider}`. `material` is the asset path read back from the collider; `collider` is the component type name (e.g. `BoxCollider`).
 
-### `physics_get_layer_collision`
-Get whether two layers collide.
+### physics_get_layer_collision
+Check whether two layers collide.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| layer1 | int | Yes | - | First layer index |
-| layer2 | int | Yes | - | Second layer index |
+| layer1 | int | No | -1 | First layer index (0-31); required unless `layer1Name` is given |
+| layer2 | int | No | -1 | Second layer index (0-31); required unless `layer2Name` is given |
+| layer1Name | string | No | null | First layer name from Tags & Layers; overrides `layer1` when given |
+| layer2Name | string | No | null | Second layer name from Tags & Layers; overrides `layer2` when given |
 
-**Returns:** `{ layer1, layer2, collisionEnabled }`
+**Returns**: `{layer1, layer2, collisionEnabled}`
 
-### `physics_set_layer_collision`
+### physics_set_layer_collision
 Set whether two layers collide.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| layer1 | int | Yes | - | First layer index |
-| layer2 | int | Yes | - | Second layer index |
-| enableCollision | bool | No | true | Whether to enable collision |
+| layer1 | int | No | -1 | First layer index (0-31); required unless `layer1Name` is given |
+| layer2 | int | No | -1 | Second layer index (0-31); required unless `layer2Name` is given |
+| enableCollision | bool | No | true | Whether the two layers collide |
+| layer1Name | string | No | null | First layer name from Tags & Layers; overrides `layer1` when given |
+| layer2Name | string | No | null | Second layer name from Tags & Layers; overrides `layer2` when given |
 
-**Returns:** `{ success, layer1, layer2, collisionEnabled }`
+**Returns**: `{success, layer1, layer2, collisionEnabled}`
 
----
-## Minimal Example
+## Example
 
-```python
-import unity_skills
+Raycast downward from (0, 5, 0):
 
-# Raycast from position downward, check for hits
-result = unity_skills.call_skill("physics_raycast",
-    originX=0, originY=5, originZ=0,
-    dirX=0, dirY=-1, dirZ=0,
-    maxDistance=10
-)
-if result.get("hit"):
-    print(f"Hit: {result['hitObjectName']} at distance {result['distance']}")
 ```
-
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
-
-## Common Errors
-
-Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
-
-| Error | Trigger | Fix |
-|---|---|---|
-| `SEMANTIC_INVALID` | An invalid value was supplied, such as a zero direction vector, a name containing path separators, or an out-of-range parameter. | Provide a non-zero direction, remove path separators from the material name, and clamp values to the valid range. |
-| `TARGET_NOT_FOUND` | The target GameObject has no `Collider`, or the requested `PhysicMaterial` asset could not be loaded. | Add a collider via `component_add` or verify the material path with `asset_find`, then retry. |
-| `MISSING_PARAM` | A required parameter is missing, such as `name` in `physics_create_material`. | Provide the parameter named in the error; use `mode=dryRun` for the schema. |
+curl -s "http://localhost:<port>/skill/physics_raycast?expectProject=<project>" -d '{"originX":0,"originY":5,"originZ":0,"dirX":0,"dirY":-1,"dirZ":0,"maxDistance":10}'
+```

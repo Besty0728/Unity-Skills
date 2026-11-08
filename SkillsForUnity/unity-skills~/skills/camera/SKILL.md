@@ -3,185 +3,41 @@ name: unity-camera
 description: Control Unity Scene View and Game cameras
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Camera Skills
 
-## Triggers
+Control the Scene View camera and Game Cameras: creation, transform, properties, culling mask, orthographic mode and screenshots. Parameters come from the schema (`GET /skills/schema?category=Camera&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Framing the Scene View
-- Creating or adjusting cameras
-- Tweaking FOV or clipping planes
-- 取景 Scene View、创建或调整相机、修改 FOV 或裁剪面
+- Creating or adjusting Game Cameras
+- Tweaking FOV, clipping planes or culling
+- Capturing a Game Camera or Scene View screenshot
 
-# Camera Skills
+## Rules
+- The skills control two different cameras. `camera_get_info`, `camera_set_transform`, `camera_look_at` and `camera_align_view_to_object` act on the editor Scene View viewport. `camera_create`, `camera_get_properties`, `camera_set_properties`, `camera_set_culling_mask`, `camera_set_orthographic` and `camera_screenshot` act on Game Cameras. `camera_get_info` will not show a camera you just created: use `camera_get_properties` or `camera_list`.
+- `camera_set_transform` positions the pivot (the framed world point), not the eye.
+- `camera_set_properties` echoes the post-write state and `applied`; that is the verification, so do not re-read. An unparseable `clearFlags` rejects the whole call before any write.
+- `camera_screenshot` and `camera_sceneview_screenshot` save to a file. Use `returnImage` only for clients that cannot read the project's files; a local agent should read the PNG at `path`.
+- `camera_sceneview_screenshot` needs the Scene View window open and visible for the overlay capture; it falls back to a clean offscreen render when the internal API is missing (`mode` says which).
+- Cinemachine virtual cameras belong to the [cinemachine](../cinemachine/SKILL.md) module. Timeline camera tracks belong to [timeline](../timeline/SKILL.md). For screenshots of the whole Game View, use `scene_screenshot`.
 
-Control the Scene View camera and Game Cameras (creation, transform, properties, screenshot, culling, orthographic toggle).
+## Pitfalls
+- `camera_move`, `camera_rotate` and `camera_delete` do not exist: use `camera_set_transform` (Scene View), `gameobject_set_transform` (Game Camera) and `gameobject_delete` (Game Camera).
+- `camera_set_fov` does not exist: use `camera_set_properties` with `fieldOfView`.
 
-## Operating Mode
+## Skills Overview
 
-- **Approval** (default): mutating skills (`camera_set_transform`, `camera_create`, `camera_set_properties`, `camera_set_culling_mask`, `camera_screenshot`, `camera_sceneview_screenshot`, `camera_set_orthographic`, `camera_align_view_to_object`, `camera_look_at`) need user grant; grant triggers a single server-side execution that returns the result.
-- **Auto / Bypass**: those skills execute directly.
-- Query skills (`camera_get_info`, `camera_get_properties`, `camera_list`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
-- This module contains **no** Delete / PlayMode / Reload / high-risk skills (no NeverInSemi).
-
-## Guardrails
-
-**DO NOT** (common hallucinations):
-- `camera_move` / `camera_rotate` do not exist → use `camera_set_transform` (Scene View) or `gameobject_set_transform` (Game Camera)
-- `camera_set_fov` does not exist → use `camera_set_properties` with `fieldOfView` parameter
-- `camera_*` skills control **two different cameras**: `camera_set_transform`/`camera_look_at`/`camera_align_view_to_object` control the **Scene View camera**; `camera_create`/`camera_set_properties`/`camera_screenshot` control **Game Cameras**
-- `camera_delete` does not exist → use `gameobject_delete` on the camera GameObject
-
-**Routing**:
-- For Cinemachine virtual cameras → use `cinemachine` module
-- For Game Camera component properties → `camera_set_properties` / `camera_get_properties` (this module)
-- For screenshots → three options: `scene_screenshot` (scene module) = the **Game View** final composite (all cameras + UI; Play mode = live runtime frame); `camera_screenshot` (this module) = a **single Game Camera** off-screen render; `camera_sceneview_screenshot` (this module) = the **editor Scene View** (developer viewport, incl. grid/gizmos)
-
-## Skills
-
-### `camera_align_view_to_object`
-Align Scene View camera to look at an object.
-**Parameters:**
-- `name` (string, optional): Target GameObject name.
-- `entityId` (string, optional): Target GameObject entity ID (preferred; the only id on Unity 6000.4+).
-- `instanceId` (int, optional): Target GameObject instance ID.
-- `path` (string, optional): Target GameObject hierarchy path.
-
-### `camera_get_info`
-Get **the editor Scene View viewport camera's** position and rotation — the developer's viewport, *not* a Camera component in the scene. It takes no target parameters for exactly that reason. For a Game Camera's state use `camera_get_properties` (or `camera_list` to find one); if you just created a camera with `camera_create` and want to confirm its transform, `camera_get_info` will not show it.
-**Parameters:** None.
-
-### `camera_set_transform`
-Set the Scene View camera by pivot (the framed world point, not the eye position), rotation and size.
-**Parameters:**
-- `posX`, `posY`, `posZ` (float): Pivot — the world point framed, not the eye position.
-- `rotX`, `rotY`, `rotZ` (float): Rotation (Euler).
-- `size` (float, optional): Scene View size (zoom) (default 5).
-- `instant` (bool, optional): true: applied immediately and read back; false: animated (default true).
-
-**Returns:** `{ success, message, pivot, rotation, size, orthographic }`, plus `cameraPosition` (the eye position) when `instant=true`, or `animating: true` when `instant=false`.
-
-### `camera_look_at`
-Focus Scene View camera on a world-space point. Applied immediately.
-**Parameters:**
-- `x`, `y`, `z` (float): Target point.
-- Does not support `targetName` or GameObject lookup. For object focus, use `camera_align_view_to_object`.
-
-**Returns:** `{ success, pivot, rotation, size }`.
-
-### `camera_create`
-Create a new Game Camera.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | No | "New Camera" | Name of the new camera GameObject |
-| x | float | No | 0 | Position X |
-| y | float | No | 1 | Position Y |
-| z | float | No | -10 | Position Z |
-| addAudioListener | bool | No | false | Also attach an `AudioListener` component |
-
-**Returns:** `{ success, name, instanceId }`
-
-### `camera_get_properties`
-Get Game Camera properties (supports name/entityId/instanceId/path).
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | No | null | Name of the camera GameObject |
-| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | Instance ID of the camera GameObject |
-| path | string | No | null | Hierarchy path of the camera GameObject |
-
-**Returns:** `{ success, name, fieldOfView, nearClipPlane, farClipPlane, orthographic, orthographicSize, depth, cullingMask, clearFlags, backgroundColor, rect }`
-
-### `camera_set_properties`
-Set Game Camera properties (FOV, clip planes, clear flags, background color, depth).
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | No | null | Name of the camera GameObject |
-| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | Instance ID of the camera GameObject |
-| path | string | No | null | Hierarchy path of the camera GameObject |
-| fieldOfView | float? | No | null | Camera field of view |
-| nearClipPlane | float? | No | null | Near clipping plane distance |
-| farClipPlane | float? | No | null | Far clipping plane distance |
-| depth | float? | No | null | Camera rendering depth |
-| clearFlags | string | No | null | Clear flags: `Skybox`, `Color`, `SolidColor`, `Depth`, `Nothing`. `Color` and `SolidColor` are two names for the same underlying `CameraClearFlags` value, so both are accepted and the response always echoes it back as `Color` — do not read that as the write having been ignored |
-| bgR | float? | No | null | Background color red component (0-1) |
-| bgG | float? | No | null | Background color green component (0-1) |
-| bgB | float? | No | null | Background color blue component (0-1) |
-| bgA | float? | No | null | Background color alpha (0-1) |
-
-Any `bg*` channel you omit keeps the camera's current value, so you can set alpha alone.
-
-**Returns:** `{ success, name, applied, fieldOfView, nearClipPlane, farClipPlane, orthographic, orthographicSize, depth, cullingMask, clearFlags, backgroundColor, rect }` — the response echoes the camera's state **after** the write, and `applied` lists which parameters were actually changed, named exactly as you passed them (the background channels appear individually as `bgR`, `bgG`, `bgB`, `bgA`, not lumped under `backgroundColor`), so a parameter absent from `applied` was not supplied. That echo is your verification: a second `camera_get_properties` call is redundant. An unparseable `clearFlags` rejects the whole call with `SEMANTIC_INVALID` + `validValues` before anything is applied, so the numeric parameters in the same call are never half-written.
-
-### `camera_set_culling_mask`
-Set Game Camera culling mask by layer names (comma-separated).
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| layerNames | string | Yes | - | Comma-separated layer names |
-| name | string | No | null | Name of the camera GameObject |
-| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | Instance ID of the camera GameObject |
-| path | string | No | null | Hierarchy path of the camera GameObject |
-
-**Returns:** `{ success, cullingMask, layers }` — `layers` lists the layer names the resulting mask includes.
-
-### `camera_screenshot`
-Capture a screenshot from a Game Camera to file.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| savePath | string | No | "Assets/screenshot.png" | File path to save the screenshot |
-| width | int | No | 1920 | Screenshot width in pixels |
-| height | int | No | 1080 | Screenshot height in pixels |
-| name | string | No | null | Name of the camera GameObject |
-| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | Instance ID of the camera GameObject |
-| path | string | No | null | Hierarchy path of the camera GameObject |
-| returnImage | bool | No | false | Also return the PNG as base64 in the response (`imageBase64`), for clients without filesystem access |
-| maxDimension | int | No | 1280 | Only used when `returnImage=true`; downscales the returned image (not the saved file) so its longer edge is ≤ this value. Clamped to 256–4096 |
-
-**Returns:** `{ success, path, width, height }`, plus `{ imageBase64, imageWidth, imageHeight, imageBytes }` when `returnImage=true`. If the base64 payload would exceed 8MB, the skill returns an error asking for a smaller `maxDimension` — the file at `path` is still saved.
-
-### `camera_sceneview_screenshot`
-Capture the **editor Scene View** (the developer's editing viewport — can overlook the whole scene incl. off-camera objects). Distinct from `scene_screenshot` (Game View / player camera) and `camera_screenshot` (one Game Camera). By default captures the full Scene View incl. grid/gizmos/selection (on-screen read); auto-falls back to a clean offscreen render if the editor build lacks the internal API. The Scene View window must be open and visible for the overlay capture.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| filename | string | No | "sceneview.png" | Bare filename only (no path separators); saved under `Assets/Screenshots/` |
-| includeOverlays | bool | No | true | True = full Scene View with grid/gizmos/selection (falls back to a clean render if unsupported); false = clean offscreen scene render only |
-| returnImage | bool | No | false | Also return the PNG as base64 in the response (`imageBase64`), for clients without filesystem access |
-| maxDimension | int | No | 1280 | Only used when `returnImage=true`; downscales the returned image (not the saved file) so its longer edge is ≤ this value. Clamped to 256–4096 |
-
-**Returns:** `{ success, path, width, height, mode, note }` — `mode` is `"screen_with_overlays"` or `"offscreen_clean"` — plus `{ imageBase64, imageWidth, imageHeight, imageBytes }` when `returnImage=true`. If the base64 payload would exceed 8MB, the skill returns an error asking for a smaller `maxDimension` — the file at `path` is still saved.
-
-**returnImage usage tip:** a local agent that can read files (e.g. Claude Code against a local Unity Editor) should generally omit `returnImage` and just read the PNG at `path` — it's cheaper on tokens. Use `returnImage=true` for remote/MCP clients that have no filesystem access to the Unity project.
-
-### `camera_set_orthographic`
-Switch Game Camera between orthographic and perspective mode.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| orthographic | bool | Yes | - | True for orthographic, false for perspective |
-| orthographicSize | float? | No | null | Orthographic size (only applies in orthographic mode) |
-| name | string | No | null | Name of the camera GameObject |
-| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | Instance ID of the camera GameObject |
-| path | string | No | null | Hierarchy path of the camera GameObject |
-
-**Returns:** `{ success, orthographic, orthographicSize }`
-
-### `camera_list`
-List all cameras in the scene.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-
-**Returns:** `{ count, cameras: [{ name, instanceId, path, depth, orthographic, enabled }] }`
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+| Skill | Purpose |
+|---|---|
+| [`camera_get_info`](reference/camera_get_info.md) | Scene View viewport position and rotation |
+| [`camera_set_transform`](reference/camera_set_transform.md) | Set the Scene View pivot, rotation and size |
+| [`camera_look_at`](reference/camera_look_at.md) | Focus the Scene View on a world point |
+| [`camera_align_view_to_object`](reference/camera_align_view_to_object.md) | Align the Scene View to a GameObject |
+| [`camera_create`](reference/camera_create.md) | Create a Game Camera |
+| [`camera_list`](reference/camera_list.md) | List cameras in the scene |
+| [`camera_get_properties`](reference/camera_get_properties.md) | Read Game Camera properties |
+| [`camera_set_properties`](reference/camera_set_properties.md) | Set FOV, clip planes, clear flags, background, depth |
+| [`camera_set_culling_mask`](reference/camera_set_culling_mask.md) | Set the culling mask by layer names |
+| [`camera_set_orthographic`](reference/camera_set_orthographic.md) | Switch a Game Camera between orthographic and perspective |
+| [`camera_screenshot`](reference/camera_screenshot.md) | Render one Game Camera to a PNG |
+| [`camera_sceneview_screenshot`](reference/camera_sceneview_screenshot.md) | Capture the editor Scene View to a PNG |

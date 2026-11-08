@@ -1,6 +1,6 @@
 ---
 name: unity-addressables-init
-description: "Addressables initialization and catalog-loading rules anchored to Addressables.cs / AddressablesImpl.cs / InitializationOperation.cs (1.22.3 & 2.9.1). Addressables 初始化与目录加载规则(锚定 1.22.3 与 2.9.1 引擎源码)。"
+description: "Addressables initialization and catalog-loading rules anchored to Addressables.cs / AddressablesImpl.cs / InitializationOperation.cs (1.22.3 & 2.9.1)."
 type: reference
 ---
 

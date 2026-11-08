@@ -3,13 +3,14 @@ name: unity-manual-gameobject
 description: Manually create GameObjects, organize the Hierarchy, and adjust Transforms using Unity Editor UI. For clicks-and-drag workflows that do not need REST automation.
 ---
 
-## Triggers
+# Manual GameObject Tasks
+
+## When to use
 - Creating a single GameObject by hand
 - Parenting or reordering objects in the Hierarchy
 - Moving, rotating, or scaling objects via the Inspector or Scene view
 - Telling a user the exact menu path when they want to do it themselves
 
-# Manual GameObject Tasks
 
 Step-by-step instructions for common GameObject operations inside the Unity Editor. Paths assume the default English Unity UI; translate the labels into the user's Unity language when replying.
 

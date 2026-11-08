@@ -53,7 +53,7 @@ Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":
 
 **dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a failed validation runs nothing and returns the dryRun report. Script writes (`script_create`/`script_append`/`script_replace`) execute directly too. DryRun first (`?mode=dryRun&wire=v2`) only for deletes (`operation` has `Delete`: any `*_delete*`/`*_remove*`, asset/folder cleanup), every other `mayTriggerReload` skill, non-transactional multi-step batches, approval mode or when unsure.
 
-Never invent skill or parameter names. On failure read `suggestedFixes`; open a module doc only when a response names one.
+Never invent skill or parameter names. On failure read `suggestedFixes`; open a module doc only when a response names one, or before writing C# against NGO, YooAsset, Addressables, UniTask, DOTween, PrimeTween, ShaderGraph, PICO or QFramework: read its `*-design` doc ([module index](skills/SKILL.md)) first, since its API may postdate your training.
 
 **Undo**: `workflow_restore {"to":"last"}` or an id/label from `workflow_list` → [workflow](skills/workflow/SKILL.md).
 

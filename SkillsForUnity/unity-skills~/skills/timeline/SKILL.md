@@ -3,197 +3,151 @@ name: unity-timeline
 description: Edit Unity Timeline assets and tracks
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Timeline Skills
 
-## Triggers
+Create and modify Unity Timeline assets: add typed tracks, place clips, bind objects, set duration and wrap mode, and play, pause or stop the editor preview through the PlayableDirector. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Building cutscenes or sequences
 - Creating Timeline assets
 - Adding tracks and clips
-- 制作过场或序列、创建 Timeline 资产、添加轨道与片段
 
-# Timeline Skills
+## Rules
+- Track and clip skills take the target GameObject by `name`, `entityId`, `instanceId` or `path`. That GameObject must carry a PlayableDirector.
+- `timeline_set_duration` sets the Timeline asset duration and wrap mode, not the duration of an individual clip.
+- `timeline_play` drives the editor preview only (`PlayableDirector.Evaluate` or `Play` in editor context). It does not enter Play Mode.
+- Animator parameters and states belong to the [animator](../animator/SKILL.md) module. For runtime playback use `editor_play`, or write C# through the [script](../script/SKILL.md) module.
+- `timeline_remove_track` is a delete operation; its `approvalBehavior` in the schema shows how it is gated.
 
-Create and modify Unity Timeline assets — add typed tracks, drop clips on tracks, bind objects, set duration / wrap mode, and play/pause/stop the editor preview through the PlayableDirector.
-
-## Operating Mode
-
-- **Approval**：查询类 skill（`timeline_list_tracks`，源码标 `SkillMode.SemiAuto`）直接执行；其余变更/播放类（`timeline_create` / add_*_track / `timeline_add_clip` / `timeline_set_duration` / `timeline_play` / `timeline_set_binding`，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**：未被禁列表拦截的 skill 直接执行。
-- 本模块**含 Delete 类 skill**：`timeline_remove_track` 标记为 `SkillOperation.Delete`，被 `IsForbiddenInSemi` 静态拦截 —— 仅 **Bypass** 模式或加入 **Allowlist** 才能调用。
-- `timeline_play` 仅驱动 Editor 预览（PlayableDirector.Evaluate / Play 在编辑器上下文），不会进入 Play mode。
-
-**DO NOT** (common hallucinations):
-- `timeline_create_animation` / `timeline_add_track` do not exist → use the typed track skills: `timeline_add_animation_track`, `timeline_add_audio_track`, `timeline_add_activation_track`, `timeline_add_control_track`, `timeline_add_signal_track`
-- `timeline_add_keyframe` does not exist → Timeline uses clips, not direct keyframes; use `timeline_add_clip`
-- `timeline_set_duration` sets the Timeline asset duration, not individual clip duration
-
-**Routing**:
-- For Animator parameters/states → use `animator` module
-- For runtime animation playback → use `editor_play` or write C# via `script` module
+## Pitfalls
+- `timeline_create_animation`, `timeline_add_track` and `timeline_add_keyframe` do not exist. Use the typed track skills (`timeline_add_animation_track`, `timeline_add_audio_track`, `timeline_add_activation_track`, `timeline_add_control_track`, `timeline_add_signal_track`), and `timeline_add_clip` for clips. Timeline uses clips, not direct keyframes.
 
 ## Skills
 
-### `timeline_create`
-Create a new Timeline asset and Director instance.
+### timeline_create
+Create a Timeline asset and a PlayableDirector instance.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | Yes | - | Name of the timeline/object |
-| folder | string | No | "Assets/Timelines" | Folder to save asset |
+| name | string | Yes | - | Name of the timeline and its GameObject |
+| folder | string | No | "Assets/Timelines" | Folder to save the asset |
 
-**Returns:** `{ success, assetPath, gameObjectName, directorInstanceId }`
+**Returns**: `{success, assetPath, gameObjectName, directorInstanceId}`
 
-### `timeline_add_audio_track`
-Add an Audio track to a Timeline.
+### timeline_add_audio_track
+Add an Audio track.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector (`name`, `entityId`, `instanceId` default 0, or `path`) |
 | trackName | string | No | "Audio Track" | Name of the new track |
 
-**Returns:** `{ success, trackName }`
+**Returns**: `{success, trackName}`
 
-### `timeline_add_animation_track`
-Add an Animation track to a Timeline, optionally binding an object.
+### timeline_add_animation_track
+Add an Animation track, optionally binding an object.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | No | "Animation Track" | Name of the new track |
-| bindingObjectName | string | No | - | Name of the GameObject to bind (animator) |
-| bindingEntityId | string | No | - | Entity ID of the GameObject to bind; outranks bindingObjectName |
+| bindingObjectName | string | No | - | Name of the GameObject to bind (with an Animator) |
+| bindingEntityId | string | No | - | Entity ID of the GameObject to bind; outranks `bindingObjectName` |
 
-**Returns:** `{ success, trackName, boundObject }`
+**Returns**: `{success, trackName, boundObject}`
 
-### `timeline_add_activation_track`
+### timeline_add_activation_track
 Add an Activation track to control object visibility.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | No | "Activation Track" | Name of the new track |
 
-**Returns:** `{ success, trackName }`
+**Returns**: `{success, trackName}`
 
-### `timeline_add_control_track`
+### timeline_add_control_track
 Add a Control track for nested Timelines or prefab spawning.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | No | "Control Track" | Name of the new track |
 
-**Returns:** `{ success, trackName }`
+**Returns**: `{success, trackName}`
 
-### `timeline_add_signal_track`
+### timeline_add_signal_track
 Add a Signal track for event markers.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | No | "Signal Track" | Name of the new track |
 
-**Returns:** `{ success, trackName }`
+**Returns**: `{success, trackName}`
 
-### `timeline_remove_track`
-Remove a track by name from a Timeline.
+### timeline_remove_track
+Remove a track by name.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | Yes | - | Name of the track to remove |
 
-**Returns:** `{ success, removed }`
+**Returns**: `{success, removed}`
 
-### `timeline_list_tracks`
-List all tracks in a Timeline.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
-
-**Returns:** `{ count, tracks: [{ name, type, muted, clipCount }] }`
-
-### `timeline_add_clip`
-Add a clip to a track by track name.
+### timeline_list_tracks
+List the tracks in a Timeline.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
+
+**Returns**: `{count, tracks: [{name, type, muted, clipCount}]}`
+
+### timeline_add_clip
+Add a clip to a track.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | Yes | - | Name of the target track |
 | start | double | No | 0 | Clip start time in seconds |
 | duration | double | No | 1 | Clip duration in seconds |
 
-**Returns:** `{ success, trackName, clipStart, clipDuration }`
+**Returns**: `{success, trackName, clipStart, clipDuration}`
 
-### `timeline_set_duration`
-Set Timeline duration and wrap mode.
+### timeline_set_duration
+Set the Timeline duration and wrap mode.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | duration | double | No | 0 | Fixed duration in seconds |
-| wrapMode | string | No | - | Wrap mode: Hold/Loop/None |
+| wrapMode | string | No | - | `Hold`, `Loop` or `None` |
 
-**Returns:** `{ success, duration, wrapMode }`
+**Returns**: `{success, duration, wrapMode}`
 
-### `timeline_play`
-Play, pause, or stop a Timeline (Editor preview).
+### timeline_play
+Play, pause or stop the Timeline in the editor preview.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
-| action | string | No | "play" | Action: play/pause/stop |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
+| action | string | No | "play" | `play`, `pause` or `stop` |
 
-**Returns:** `{ success, action, time }`
+**Returns**: `{success, action, time}`
 
-### `timeline_set_binding`
+### timeline_set_binding
 Set the binding object for a track.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| name | string | No | - | GameObject name with PlayableDirector |
-| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
-| instanceId | int | No | 0 | GameObject instance ID |
-| path | string | No | - | GameObject hierarchy path |
+| name, entityId, instanceId, path | - | No | - | Target GameObject with a PlayableDirector |
 | trackName | string | Yes | - | Name of the track |
 | bindingObjectName | string | No* | - | Name of the object to bind |
-| bindingEntityId | string | No* | - | Entity ID of the GameObject to bind; outranks bindingObjectName |
+| bindingEntityId | string | No* | - | Entity ID of the object to bind; outranks `bindingObjectName` |
 
-*One of `bindingObjectName` / `bindingEntityId` is required.
+\* One of `bindingObjectName` or `bindingEntityId` is required.
 
-**Returns:** `{ success, trackName, boundTo }`
-
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+**Returns**: `{success, trackName, boundTo}`

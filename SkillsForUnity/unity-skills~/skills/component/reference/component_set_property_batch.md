@@ -9,9 +9,6 @@ Set properties on several components in one call.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, property, valueSet, valueRequested?, readBack?, valueType, component}]}`, read back per item. All-or-nothing: one rejected item reverts every write.
 
-```python
-unity_skills.call_skill("component_set_property_batch", items=[
-    {"name": "Enemy1", "componentType": "Rigidbody", "propertyName": "mass", "value": 2.0},
-    {"name": "Enemy2", "componentType": "Rigidbody", "propertyName": "mass", "value": 2.0}
-])
+```bash
+curl -s "http://localhost:<port>/skill/component_set_property_batch?expectProject=<project>" -d '{"items":"[{\"name\":\"Enemy1\",\"componentType\":\"Rigidbody\",\"propertyName\":\"mass\",\"value\":2.0},{\"name\":\"Enemy2\",\"componentType\":\"Rigidbody\",\"propertyName\":\"mass\",\"value\":2.0}]"}'
 ```

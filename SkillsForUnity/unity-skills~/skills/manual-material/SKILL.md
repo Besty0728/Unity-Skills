@@ -3,12 +3,13 @@ name: unity-manual-material
 description: Manually create and edit Materials and assign them to objects using Unity Editor UI. For one-off material tweaks that do not need REST automation.
 ---
 
-## Triggers
+# Manual Material Tasks
+
+## When to use
 - Creating a new Material asset
 - Changing a material color or shader
 - Dragging a material onto a MeshRenderer or Mesh
 
-# Manual Material Tasks
 
 Step-by-step instructions for Material operations inside the Unity Editor. Paths assume the default English Unity UI; translate the labels into the user's Unity language when replying.
 

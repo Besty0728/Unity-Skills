@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset-filesystem
-description: "YooAsset FileSystem parameters and services (v2.3.18) — FileSystemParameters, decryption and remote services. YooAsset 文件系统参数与服务(v2.3.18:FileSystemParameters、解密与远端服务)。"
+description: "YooAsset FileSystem parameters and services (v2.3.18) — FileSystemParameters, decryption and remote services."
 type: reference
 ---
 
@@ -208,7 +208,7 @@ All five methods are required. If your project ships unencrypted bundles, pass `
 
 Documented at `IDecryptionServices.cs:55-59`:
 
-> 当正常解密方法失败后，会触发后备加载！建议通过 `AssetBundle.LoadFromMemory()` 方法加载资源包作为保底机制。
+> When the normal decryption method fails, fallback loading is triggered. Load the bundle with `AssetBundle.LoadFromMemory()` as a safety net.
 > Issue: <https://github.com/tuyoogame/YooAsset/issues/562>
 
 Intended as a safety net: for example, if the async decrypt path's streaming variant hits a transient error, fall back to a synchronous `LoadFromMemory`.

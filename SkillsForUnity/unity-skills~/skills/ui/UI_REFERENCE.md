@@ -1,28 +1,15 @@
----
-name: unity-ui-reference
-description: "Extended UGUI reference — fuller UGUI examples, element/property details, and a longer menu-building workflow beyond the ui SKILL.md. UGUI 扩展参考(更完整的 UGUI 示例、元素/属性细节、超出 ui SKILL.md 的菜单搭建流程)。"
-type: reference
----
-
 # UGUI Reference
 
-Load this file when you need fuller UGUI examples, extended element/property details, or a longer menu-building workflow. The main `SKILL.md` keeps only routing and core summaries.
+Extended UGUI examples and element and property details. The entry [SKILL.md](SKILL.md) keeps routing and core rules; per-skill parameters are in `reference/<skill_name>.md`.
 
 ## Efficient Menu Example
 
-```python
-import unity_skills
-import json
-
-unity_skills.call_skill("ui_create_canvas", name="MainMenu")
-unity_skills.call_skill("ui_create_panel", name="MenuPanel", parent="MainMenu", a=0.65)
-unity_skills.call_skill("ui_set_rect", name="MenuPanel", width=300, height=200)
-unity_skills.call_skill("ui_create_batch", items=json.dumps([
-    {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "Start", "width": 220, "height": 44},
-    {"type": "Button", "name": "OptionsBtn", "parent": "MenuPanel", "text": "Options", "width": 220, "height": 44},
-    {"type": "Button", "name": "QuitBtn", "parent": "MenuPanel", "text": "Quit", "width": 220, "height": 44}
-]))
-unity_skills.call_skill("ui_layout_children", name="MenuPanel", layoutType="Vertical", spacing=12)
+```
+curl -s "http://localhost:<port>/skill/ui_create_canvas?expectProject=<project>" -d '{"name":"MainMenu"}'
+curl -s "http://localhost:<port>/skill/ui_create_panel?expectProject=<project>" -d '{"name":"MenuPanel","parent":"MainMenu","a":0.65}'
+curl -s "http://localhost:<port>/skill/ui_set_rect?expectProject=<project>" -d '{"name":"MenuPanel","width":300,"height":200}'
+curl -s "http://localhost:<port>/skill/ui_create_batch?expectProject=<project>" -d '{"items":"[{\"type\":\"Button\",\"name\":\"StartBtn\",\"parent\":\"MenuPanel\",\"text\":\"Start\",\"width\":220,\"height\":44},{\"type\":\"Button\",\"name\":\"QuitBtn\",\"parent\":\"MenuPanel\",\"text\":\"Quit\",\"width\":220,\"height\":44}]"}'
+curl -s "http://localhost:<port>/skill/ui_layout_children?expectProject=<project>" -d '{"name":"MenuPanel","layoutType":"Vertical","spacing":12}'
 ```
 
 ## TextMeshPro Support
@@ -75,7 +62,7 @@ UI creation auto-detects TextMeshPro:
 
 ## Property Skills
 
-### `ui_set_image`
+**ui_set_image**
 
 Useful fields:
 - `type`: `Simple`, `Sliced`, `Tiled`, `Filled`
@@ -85,7 +72,7 @@ Useful fields:
 - `preserveAspect`
 - `spritePath`
 
-### `ui_add_layout_element`
+**ui_add_layout_element**
 
 Useful fields:
 - `minWidth`, `minHeight`
@@ -94,7 +81,7 @@ Useful fields:
 - `ignoreLayout`
 - `layoutPriority`
 
-### `ui_add_canvas_group`
+**ui_add_canvas_group**
 
 Useful fields:
 - `alpha`
@@ -102,13 +89,13 @@ Useful fields:
 - `blocksRaycasts`
 - `ignoreParentGroups`
 
-### `ui_add_mask`
+**ui_add_mask**
 
 Useful fields:
 - `maskType`: `Mask` or `RectMask2D`
 - `showMaskGraphic`
 
-### `ui_add_outline`
+**ui_add_outline**
 
 Useful fields:
 - `effectType`: `Shadow` or `Outline` (case-insensitive); any other value is rejected
@@ -116,7 +103,7 @@ Useful fields:
 - `distanceX`, `distanceY`
 - `useGraphicAlpha`
 
-### `ui_configure_selectable`
+**ui_configure_selectable**
 
 Useful fields:
 - `transition`

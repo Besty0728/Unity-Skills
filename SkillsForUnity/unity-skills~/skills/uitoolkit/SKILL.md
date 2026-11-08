@@ -3,274 +3,64 @@ name: unity-uitoolkit
 description: Build Unity UI Toolkit (UITK) UIs
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Authoring runtime or editor UI with UI Toolkit
-- Writing USS/UXML
-- Wiring a UIDocument
-- Binding UI to data
-- Building world-space UI
-- 用 UI Toolkit 编写运行时或编辑器 UI、编写 USS/UXML、接入 UIDocument、把 UI 绑定到数据源、做世界空间 UI
-
 # Unity UI Toolkit Skills
 
-Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styling, `UIDocument` for scene attachment, and `PanelSettings` for runtime rendering.
+UI Toolkit only: UXML for structure, USS for styling, `UIDocument` for scene attachment, and `PanelSettings` for runtime rendering. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-> **Requires Unity 2022.3+**. Do not mix this module with `ui_*` UGUI/Canvas skills.
-> **Localization**: Match visible UI text to the user's language. Chinese conversation -> Chinese labels/placeholders/button text. USS class names and CSS variables stay English.
+## When to use
+- Authoring runtime or editor UI with UI Toolkit
+- Writing USS or UXML
+- Attaching a UIDocument, or binding UI to data
+- Building world-space UI
 
-## Operating Mode
+## Rules
+- Requires Unity 2022.3+. Do not mix these skills with the `ui_*` UGUI skills; see the [ui](../ui/SKILL.md) module.
+- Visible text (labels, placeholders, buttons) follows the user's language. USS class names and CSS variables stay English.
+- USS is not full CSS. `display:grid`, `box-shadow`, `calc()`, `@media`, `::before`, `z-index` and gradients are unsupported. See [authoring-notes](reference/authoring-notes.md) and the [USS reference](reference/uss-reference.md).
+- `uitk_write_file` is not a general file writer. `filePath` must end in `.uss` or `.uxml` (case-insensitive); any other extension, including none, is rejected with `SEMANTIC_INVALID`, before any folder is created. To write a `.cs` file, use `script_create`.
+- `uitk_create_editor_window` and `uitk_create_runtime_ui` write a `.cs` file and trigger a domain reload. They are refused under Approval and Auto, and a `?mode=transactional` batch that contains either is rejected with `400` before it runs. Call them outside a transactional batch.
+- Version-gated skills and parameters are listed in [version-gates](reference/version-gates.md). Read the minimum Unity version first.
+- `binding-path` on `uitk_add_element` and `uitk_modify_element` is the old SerializedObject editor binding, not runtime data binding. Use `uitk_runtime_binding_add` for runtime binding.
+- For a world-space panel use `uitk_worldspace_panel_create`. Do not add a `PanelRenderer` with `component_add`.
+- Unity 6 world-space panels: create the `PanelSettings` first, then `uitk_worldspace_panel_create` (not `uitk_create_document`).
+- Attach an existing UXML to a scene object with `uitk_create_document` or `uitk_set_document`. For a starter layout, use `uitk_create_from_template`.
 
-- **Approval**：查询类 skill（`uitk_read_file` / `uitk_find_files` / `uitk_get_panel_settings` / `uitk_list_documents` / `uitk_inspect_uxml` / `uitk_list_uss_variables` / `uitk_inspect_document` / `uitk_runtime_binding_list` / `uitk_worldspace_panel_get` / `uitk_element_reference_get`，源码标 `SkillMode.SemiAuto`）直接执行；其余文件/场景写入类（`uitk_create_*` / `uitk_write_file` / `uitk_add_*` / `uitk_modify_element` / `uitk_runtime_binding_add` / `uitk_uxml_upgrade` / `uitk_worldspace_panel_create` 等，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**：未被禁列表拦截的 skill 直接执行。
-- 本模块**含 Delete 类 skill**：`uitk_delete_file`、`uitk_remove_element`、`uitk_remove_uss_rule` 标记为 `SkillOperation.Delete`，被 `IsForbiddenInSemi` 静态拦截 —— 仅 **Bypass** 模式或加入 **Allowlist** 才能调用。
-- 本模块**另含 2 个域重载类 skill**：`uitk_create_editor_window` 与 `uitk_create_runtime_ui` 会生成 `.cs` 文件、必然触发域重载，因此标 `MayTriggerReload = true`。`IsForbiddenInSemi` 直读这个 flag，所以它们和上面的 Delete 类同样被静态拦截 —— **Approval 与 Auto 下都返 `MODE_FORBIDDEN`，且这不是"需 grant"、grant 也给不了**，仅 **Bypass** 或命中 **Allowlist** 才能调用。这两个是上面第一条"其余写入类需用户 grant"的例外。
-- 同一个 flag 还有第二个后果：**`?mode=transactional` 的批量链里含这两步，会在执行前被 400 拒绝**，错误点名违规的 `steps[i]`。原因是域重载会清空编辑器 undo 栈，事务批量的回滚承诺无法兑现，所以服务端选择前置拒绝而不是事后失败。要在事务批量的流程里生成脚本，把这两步拆出去单独调用。
-- **Asset 重导行为**：所有写文件/删文件 skill 通过 `AssetDatabase.ImportAsset(path)` 对单个 USS/UXML 资产单独触发导入，**不会**调 `AssetDatabase.Refresh()` 触发全项目扫描；批量创建依次单独 Import。但 USS/UXML 是 ScriptedImporter 类型，Import 仍会重建依赖此资产的 PanelSettings/UIDocument 引用，触发 IMGUI 检查器刷新与场景视图重绘。
+## Pitfalls
+- `uitoolkit_create_button`, `uitoolkit_create_label` and `uitoolkit_create_canvas` do not exist. Use `uitk_add_element`, and `uitk_create_document` (UI Toolkit has no Canvas).
+- `uitoolkit_set_style` does not exist. Use `uitk_add_uss_rule`, `uitk_remove_uss_rule` or `uitk_modify_element`.
+- `uitk_*` and `ui_*` are different systems. Do not carry UI Toolkit structure or styling assumptions into UGUI, or the reverse.
 
-**DO NOT** (common hallucinations):
-- `uitoolkit_create_button` / `uitoolkit_create_label` do not exist -> use `uitk_add_element`
-- `uitoolkit_set_style` does not exist -> use `uitk_add_uss_rule`, `uitk_remove_uss_rule`, or `uitk_modify_element`
-- `uitoolkit_create_canvas` does not exist -> UI Toolkit uses `UIDocument`, not Canvas
-- `uitk_*` and `ui_*` are different systems. Do not mix UI Toolkit structure/styling assumptions into UGUI workflows
-- USS is **not full CSS**. `display:grid`, `box-shadow`, `calc()`, `@media`, `::before`, `z-index`, and gradients are unsupported
-- `binding-path` (on `uitk_add_element` / `uitk_modify_element`) is the **old SerializedObject** editor binding. It is not runtime data binding -> use `uitk_runtime_binding_add` for that
-- Do not add a `PanelRenderer` through `component_add`; it needs world-space setup -> use `uitk_worldspace_panel_create`
+## Skill Groups
 
-**Routing**:
-- For UGUI Canvas/Button/Text/Image -> use the `ui` module
-- For XR world-space Canvas conversion -> use `xr_setup_ui_canvas`
-- For generated starter layouts -> use `uitk_create_from_template`
-- For attaching an existing UXML to a scene object -> use `uitk_create_document` or `uitk_set_document`
+| Group | Skills |
+|-------|--------|
+| Files | `uitk_create_uss`, `uitk_create_uxml`, `uitk_read_file`, `uitk_write_file`, `uitk_delete_file`, `uitk_find_files`, `uitk_create_batch` |
+| Scene | `uitk_create_document`, `uitk_set_document`, `uitk_create_panel_settings`, `uitk_get_panel_settings`, `uitk_set_panel_settings`, `uitk_list_documents`, `uitk_inspect_document` |
+| UXML structure | `uitk_add_element`, `uitk_remove_element`, `uitk_modify_element`, `uitk_clone_element`, `uitk_inspect_uxml` |
+| USS styling | `uitk_add_uss_rule`, `uitk_remove_uss_rule`, `uitk_list_uss_variables` |
+| Templates and code | `uitk_create_from_template`, `uitk_create_editor_window`, `uitk_create_runtime_ui` |
+| Unity 6 (version-gated) | `uitk_runtime_binding_add`, `uitk_runtime_binding_list`, `uitk_uxml_upgrade`, `uitk_worldspace_panel_create`, `uitk_worldspace_panel_get`, `uitk_element_reference_get` |
 
-## Skills
+Starter templates for `uitk_create_from_template`: `menu`, `hud`, `dialog`, `settings`, `inventory`, `list`, `tab-view`, `toolbar`, `card` and `notification`.
 
-### File Skills
+Delete skills (`uitk_delete_file`, `uitk_remove_element`, `uitk_remove_uss_rule`) are refused under Approval and Auto; the schema's `approvalBehavior` shows how each is gated.
 
-| Skill | Use | Key parameters |
-|-------|-----|----------------|
-| `uitk_create_uss` | Create USS file | `savePath`, `content?` |
-| `uitk_create_uxml` | Create UXML file | `savePath`, `content?`, `ussPath?` |
-| `uitk_read_file` | Read USS/UXML content | `filePath` |
-| `uitk_write_file` | Overwrite USS/UXML content | `filePath` (**must end `.uss` or `.uxml`**), `content` |
-| `uitk_delete_file` | Delete USS/UXML file | `filePath` |
-| `uitk_find_files` | Search files by name/path | `type?`, `folder?`, `filter?`, `limit?` |
-| `uitk_create_batch` | Create 2+ files in one call | `items` |
+## Workflow
+1. Create the USS and UXML files, then attach them with `uitk_create_document`.
+2. Build design tokens first, then component rules, then layout containers.
+3. For incremental edits, read with `uitk_read_file`, edit, then write with `uitk_write_file`. For 2 or more new files, use `uitk_create_batch`.
+4. Runtime data binding: create the element first, add one `uitk_runtime_binding_add` per bound property, then check with `uitk_runtime_binding_list`.
+5. Use `uitk_create_from_template` for a fast starter screen; use `uitk_add_element` and `uitk_add_uss_rule` for targeted edits.
 
-> **`uitk_write_file` is not a general file writer.** `filePath` must end in `.uss` or `.uxml` (case-insensitive). Any other extension — including none at all — is rejected with `SEMANTIC_INVALID`, `validValues: [".uss", ".uxml"]` and a `relatedSkills` pointer to `script_create`. The check runs **before** the target directory is created, so a rejected call leaves no file and no stray folder behind. Do not reach for this to write a `.cs` file: use `script_create`, which correctly declares the domain reload that writing a script causes.
+## Example
 
-### Scene Skills
-
-| Skill | Use | Key parameters |
-|-------|-----|----------------|
-| `uitk_create_document` | Create `UIDocument` GameObject | `name`, `uxmlPath?`, `panelSettingsPath?`, `sortOrder?`, `parentName?`/`parentEntityId?`/`parentInstanceId?`/`parentPath?` |
-| `uitk_set_document` | Change UIDocument asset bindings | `name`/`entityId`/`instanceId`, `uxmlPath?`, `panelSettingsPath?` |
-| `uitk_create_panel_settings` | Create PanelSettings asset | `savePath`, `scaleMode`, `referenceResolutionX/Y`, Unity 6 world-space options |
-| `uitk_get_panel_settings` | Read PanelSettings values | `assetPath` |
-| `uitk_set_panel_settings` | Update PanelSettings selectively | `assetPath`, changed fields only |
-| `uitk_list_documents` | List scene UIDocuments | none |
-| `uitk_inspect_document` | Inspect live VisualElement tree | `name`/`entityId`/`instanceId`/`path`, `depth` |
-
-> **Version-gated `PanelSettings` parameters — rejected by name, never silently dropped.** On both `uitk_create_panel_settings` and `uitk_set_panel_settings`, `renderMode`, `forceGammaRendering`, `bindingLogLevel`, `colliderUpdateMode`, `colliderIsTrigger` and `vertexBudget` require **Unity 6.0+**, and `textureSlotCount` requires **Unity 6000.3+**. Passing one on an older editor returns `SEMANTIC_INVALID` naming the parameter rather than ignoring it, so a value you sent either took effect or came back as an error — it is never quietly discarded. Both skills also resolve every enum and asset path **before** the first write, so a rejected call leaves the asset byte-identical; there is no partial application to clean up.
-
-### UXML Structure Skills
-
-| Skill | Use | Key parameters |
-|-------|-----|----------------|
-| `uitk_add_element` | Add a child element | `filePath`, `elementType`, `parentName?`, `elementName?`, `text?`, `classes?` |
-| `uitk_remove_element` | Remove by `name` | `filePath`, `elementName` |
-| `uitk_modify_element` | Change attributes/classes/text | `filePath`, `elementName`, `text?`, `classes?`, `style?`, `newName?`, `bindingPath?`, custom attribute fields |
-| `uitk_clone_element` | Duplicate an element subtree | `filePath`, `elementName`, `newName?` |
-| `uitk_inspect_uxml` | Parse UXML hierarchy | `filePath`, `depth?` |
-
-### USS Style Skills
-
-| Skill | Use | Key parameters |
-|-------|-----|----------------|
-| `uitk_add_uss_rule` | Add or replace selector rule | `filePath`, `selector`, `properties` |
-| `uitk_remove_uss_rule` | Remove selector rule | `filePath`, `selector` |
-| `uitk_list_uss_variables` | Inspect design tokens / `var()` usage | `filePath` |
-
-### Template and CodeGen Skills
-
-| Skill | Use | Key parameters |
-|-------|-----|----------------|
-| `uitk_create_from_template` | Generate paired UXML+USS | `template`, `savePath`, `name?` |
-| `uitk_create_editor_window` | Generate EditorWindow script | `savePath`, `className`, `uxmlPath?`, `ussPath?`, `menuPath?` |
-| `uitk_create_runtime_ui` | Generate runtime MonoBehaviour query scaffold | `savePath`, `className`, `elementQueries?` |
-
-Supported starter templates include `menu`, `hud`, `dialog`, `settings`, `inventory`, `list`, `tab-view`, `toolbar`, `card`, and `notification`.
-
-### Unity 6 Skills (version-gated)
-
-These skills call APIs that do not exist on every supported editor. Each one checks the running
-editor first and returns a structured `SEMANTIC_INVALID` error carrying `requiredUnityVersion` and
-`currentUnityVersion` instead of failing in an opaque way. **Read the minimum version before calling.**
-
-| Skill | Minimum Unity | Use | Key parameters |
-|-------|---------------|-----|----------------|
-| `uitk_runtime_binding_add` | 6000.0 | Add/update a `<DataBinding>` on a UXML element | `filePath`, `elementName`, `property`, `bindingMode?`, `dataSource?`, `dataSourcePath?`, `extraAttributes?` |
-| `uitk_runtime_binding_list` | none (read-only) | List bindings + data sources declared in a UXML file | `filePath` |
-| `uitk_uxml_upgrade` | 6000.3 (not all builds — see below) | Run registered UXML upgraders over assets | `filePath?`, `folder?`, `upgraderNames?`, `listOnly?`, `limit?` |
-| `uitk_worldspace_panel_create` | 6000.2 | Create a world-space UI panel GameObject | `name`, `uxmlPath?`, `panelSettingsPath?`, `sizeMode?`, `worldSpaceSizeX/Y?`, `pivot?`, `pivotReferenceSize?`, `setPanelRenderMode?` |
-| `uitk_worldspace_panel_get` | 6000.2 | Read a world-space panel's configuration | `name`/`entityId`/`instanceId`/`path` |
-| `uitk_element_reference_get` | none (read-only) | List `authoring-id` values and nested authoring-id paths | `filePath`, `maxTemplateDepth?` |
-
-#### Runtime data binding
-
-`uitk_runtime_binding_add` writes the binding into the **UXML asset**, so it persists — it is not a
-runtime-only code call. It produces the markup Unity's UI Builder produces:
-
-```xml
-<engine:Label text="Label" data-source="ExampleObject.asset" data-source-path="simpleLabel">
-    <Bindings>
-        <engine:DataBinding property="text" binding-mode="ToTarget" />
-    </Bindings>
-</engine:Label>
+```
+curl -s "http://localhost:<port>/skill/uitk_create_panel_settings?expectProject=<project>" -d '{"savePath":"Assets/UI/GamePanel.asset","scaleMode":"ScaleWithScreenSize","referenceResolutionX":1920,"referenceResolutionY":1080}'
+curl -s "http://localhost:<port>/skill/uitk_create_uss?expectProject=<project>" -d '{"savePath":"Assets/UI/HUD.uss","content":":root { --accent: #E8632B; } .title { color: var(--accent); }"}'
+curl -s "http://localhost:<port>/skill/uitk_create_uxml?expectProject=<project>" -d '{"savePath":"Assets/UI/HUD.uxml","content":"<engine:UXML xmlns:engine=\"UnityEngine.UIElements\"><Style src=\"HUD.uss\" /><engine:Label class=\"title\" text=\"Start\" /></engine:UXML>"}'
+curl -s "http://localhost:<port>/skill/uitk_create_document?expectProject=<project>" -d '{"name":"HUD","uxmlPath":"Assets/UI/HUD.uxml","panelSettingsPath":"Assets/UI/GamePanel.asset"}'
 ```
 
-- `data-source` / `data-source-path` are written on the **element**; `property` / `binding-mode` on the `<DataBinding>`.
-- `bindingMode` is validated against `TwoWay`, `ToSource`, `ToTarget`, `ToTargetOnce`. An invalid value is rejected before writing, because a bad `binding-mode` makes the whole UXML asset fail to import.
-- Calling it twice for the same `elementName` + `property` **updates in place** (response `action` is `added` or `updated`), so it is safe to re-run.
-- `extraAttributes` takes a JSON object (e.g. `{"update-trigger":"OnSourceChanged"}`) written verbatim onto the `<DataBinding>` node. These are **not** schema-validated by the skill — a wrong attribute name breaks the asset import. Only use it for attributes you have confirmed.
-- Binding a data source to a C# object requires `[CreateProperty]` on the source property (`Unity.Properties`). The skill writes markup only; it does not create or validate the data source type.
+## Errors
 
-#### World-space panels
-
-The underlying component differs by editor version, and the response's `component` field tells you which one was used:
-
-- **Unity 6000.5+** — a `PanelRenderer` component (`UnityEngine.UIElements.PanelRenderer`, a `Renderer` subclass).
-- **Unity 6000.2–6000.4** — a `UIDocument` with its world-space properties set.
-
-Both paths accept the same parameters. `sizeMode` is `Dynamic` or `Fixed` (`Fixed` uses `worldSpaceSizeX/Y`); `pivot` accepts `Center`, `TopLeft`, `TopCenter`, `TopRight`, `LeftCenter`, `RightCenter`, `BottomLeft`, `BottomCenter`, `BottomRight`; `pivotReferenceSize` accepts `BoundingBox` or `Layout`. An unsupported value is rejected with the valid list rather than silently ignored.
-
-World-space rendering also needs the linked `PanelSettings` in world-space render mode. `setPanelRenderMode` defaults to **true**, which flips that asset for you (snapshotted and undoable); the response reports `panelRenderModeSetToWorldSpace`. Set it to `false` to leave the asset alone.
-
-#### UXML upgrade
-
-`uitk_uxml_upgrade` drives `UnityEditor.UIElements.UxmlUpgradeService`. Unity documents that service
-from 6000.3 on, but it is **not in every 6000.3 build** (6000.3.9f1 ships without it), so the skill
-binds it by reflection and returns the usual `SEMANTIC_INVALID` refusal when the editor lacks it —
-being on 6000.3+ is not a guarantee the call will run. Call it with `listOnly=true` first to see
-whether the service exists here and which upgraders are registered and enabled — the set is not
-fixed, and third-party packages can register their own. Then pass `upgraderNames` (comma-separated)
-to run a subset, or omit it to run every enabled upgrader.
-
-The response reports `changed: true/false` per asset by comparing the `.uxml` text before and after,
-so you can tell whether an upgrader actually rewrote a file rather than assuming it did.
-
-## Core Domain Knowledge
-
-### USS vs CSS
-
-| Pattern | Supported in USS | What to do |
-|---------|------------------|------------|
-| Flex layout | Yes | Use `flex-direction`, `flex-wrap`, `align-items`, `justify-content` |
-| `border-radius`, `opacity`, `overflow:hidden` | Yes | Safe to use |
-| Transforms / transitions | Yes | `translate`, `scale`, `rotate` work |
-| CSS variables | Yes | Prefer `:root` tokens |
-| `display:grid` / `display:block` / `display:inline` | No | Everything is flex; emulate grids with wrapping rows |
-| `box-shadow` | No | Fake with nested background element |
-| `linear-gradient()` / `radial-gradient()` | No | Use image textures |
-| `calc()` / `@media` | No | Use explicit values + `PanelSettings.scaleMode` |
-| `::before` / `::after` | No | Add a real child `VisualElement` |
-| `z-index` | No | Later siblings render on top |
-
-### Common USS workarounds
-
-| Need | USS-safe workaround |
-|------|---------------------|
-| Shadow | Extra child `VisualElement` behind content |
-| Responsive scaling | `PanelSettings.scaleMode = ScaleWithScreenSize` |
-| Grid cards | `flex-direction: row` + `flex-wrap: wrap` + child widths |
-| Circular avatar | Equal width/height + radius = half size + `overflow:hidden` |
-| Pseudo decoration | Add an extra absolutely positioned child |
-
-### High-Frequency Parameters
-
-| Skill | Parameters you usually need first |
-|-------|-----------------------------------|
-| `uitk_create_panel_settings` | `savePath`, `scaleMode`, `referenceResolutionX`, `referenceResolutionY` |
-| `uitk_create_document` | `name`, `uxmlPath`, `panelSettingsPath`, `sortOrder?` |
-| `uitk_add_element` | `filePath`, `elementType`, `parentName?`, `elementName?`, `text?`, `classes?` |
-| `uitk_modify_element` | `filePath`, `elementName`, changed attributes only |
-| `uitk_add_uss_rule` | `filePath`, `selector`, `properties` |
-
-### `PanelSettings` choices
-
-- `ScaleWithScreenSize`: default for runtime HUD/menu UI
-- `ConstantPixelSize`: use when strict pixel mapping matters
-- `ConstantPhysicalSize`: rare; only for physically sized UI requirements
-
-For world-space (3D) UI on Unity 6000.2+, configure the PanelSettings first, then create the scene object with `uitk_worldspace_panel_create` rather than `uitk_create_document`.
-
-### File and Structure Rules
-
-- Prefer one UXML root that references shared token/style files through `<Style src="..."/>`.
-- Keep USS next to UXML when possible so relative style references stay short.
-- Use `uitk_inspect_uxml` before complex structural edits if you did not create the file yourself.
-- `uitk_create_uxml` can auto-reference a stylesheet when `ussPath` is provided.
-
-## Workflow Notes
-
-1. Create USS/UXML first, then attach them through `uitk_create_document`.
-2. Runtime rendering needs a valid `PanelSettings` asset.
-3. When USS and UXML are in the same folder, prefer `<Style src="MyStyle.uss" />`; use a full asset path only for cross-folder references.
-4. Start with design tokens, then component rules, then layout containers.
-5. For incremental edits, prefer `uitk_read_file` -> edit -> `uitk_write_file`.
-6. When creating 2+ files, use `uitk_create_batch`.
-7. World-space (3D) UI on Unity 6000.2+: create PanelSettings -> `uitk_worldspace_panel_create` (it sets the world-space render mode for you).
-8. Use `uitk_create_from_template` when the user needs a starter screen fast; use `uitk_add_element` / `uitk_add_uss_rule` for targeted edits on existing files.
-9. Runtime data binding: create the UXML element first, then `uitk_runtime_binding_add` per bound property; verify with `uitk_runtime_binding_list`.
-
-## Minimal Example
-
-```python
-import unity_skills
-
-unity_skills.call_skill("uitk_create_panel_settings",
-    savePath="Assets/UI/GamePanel.asset",
-    scaleMode="ScaleWithScreenSize",
-    referenceResolutionX=1920,
-    referenceResolutionY=1080
-)
-
-unity_skills.call_skill("uitk_create_uss",
-    savePath="Assets/UI/HUD.uss",
-    content=":root { --accent: #E8632B; } .title { color: var(--accent); }"
-)
-
-unity_skills.call_skill("uitk_create_uxml",
-    savePath="Assets/UI/HUD.uxml",
-    content="<?xml version=\"1.0\" encoding=\"utf-8\"?><engine:UXML xmlns:engine=\"UnityEngine.UIElements\"><Style src=\"HUD.uss\" /><engine:Label class=\"title\" text=\"Start\" /></engine:UXML>"
-)
-
-unity_skills.call_skill("uitk_create_document",
-    name="HUD",
-    uxmlPath="Assets/UI/HUD.uxml",
-    panelSettingsPath="Assets/UI/GamePanel.asset"
-)
-```
-
-## Limitations
-
-Things this module deliberately does **not** do, so you do not waste calls looking for them:
-
-| Not available | Why | Do this instead |
-|---------------|-----|-----------------|
-| Binding converters / `update-trigger` as first-class parameters | The UXML attribute names for type converters and update triggers are not documented in Unity's Scripting API or manual, and guessing one breaks the whole asset import | Pass confirmed attributes through `extraAttributes` on `uitk_runtime_binding_add` |
-| Removing a single runtime binding | No dedicated skill | Roll back via the workflow history, or rewrite the element with `uitk_write_file` |
-| Constructing a `VisualElementReference` / `AuthoringIdPath` on an asset | These are runtime types set through the Inspector on a MonoBehaviour field; there is no editor-side API to author one into a scene or prefab from outside | Use `uitk_element_reference_get` to discover the `authoring-id` path, then assign the reference in the Inspector or in your own C# |
-| `authoring-id` authoring | The skill reads existing `authoring-id` attributes; it does not assign new ones | Author them in UI Builder (Unity 6000.5+) |
-| World-space UI below Unity 6000.2 | `UIDocument` gained world-space properties in 6000.2 and `PanelRenderer` only exists in 6000.5+ | Use a UGUI world-space Canvas (`ui` module) or `xr_setup_ui_canvas` |
-| Runtime data binding below Unity 6000.0 | `DataBinding` / `BindingMode` do not exist in 2022.3 | Use `binding-path` SerializedObject binding for editor UI |
-
-`uitk_element_reference_get` resolves nested paths by following `<Template src="...">` declarations
-into other `.uxml` files (bounded by `maxTemplateDepth`, default 3, with cycle protection).
-Templates it cannot resolve are reported in `unresolvedTemplates` rather than silently dropped.
-
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
-Load `USS_REFERENCE.md` before generating non-trivial USS systems, layout patterns, component styles, or complete examples.
+Transport-level codes (COMPILING, RATE_LIMIT and others): [error codes](../../references/protocol-error-codes.md). Version and extension rejections come back as `SEMANTIC_INVALID` with the valid values or the required version.

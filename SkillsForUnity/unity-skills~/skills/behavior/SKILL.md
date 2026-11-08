@@ -3,162 +3,43 @@ name: unity-behavior
 description: Drive Unity Behavior behavior graphs and blackboard variables
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Behavior Skills
 
-## Triggers
-- Wiring NPC/AI decision logic
-- Working with behavior trees/graphs
-- Reading/writing blackboard variables
-- 搭建 NPC/AI 决策逻辑、使用行为树/行为图、读写黑板变量
+Unity Behavior (`com.unity.behavior`, validated against 1.0.16): graph asset discovery, agent wiring and blackboard variable access. The package is optional and not a UnitySkills dependency; every skill reaches it through reflection. Parameters come from the schema (`GET /skills/schema?category=Behavior&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-# Behavior Skills
+## When to use
+- Wiring NPC or AI decision logic
+- Binding behavior graphs to agents
+- Reading or writing blackboard variables
 
-Unity Behavior (`com.unity.behavior`, validated against 1.0.16) graph asset discovery, agent wiring, and blackboard variable access.
+## Rules
+- If `behavior_status` reports `installed: false`, install with `package_install` (`{"packageName":"com.unity.behavior"}`), wait for the Domain Reload, then call `behavior_status` again. Without the package, every skill returns `MISSING_PACKAGE`.
+- Always call `behavior_graph_list` for a `graphAssetPath`; never guess one.
+- Always call `behavior_blackboard_list` before `behavior_blackboard_set`: variable names are case-sensitive and the declared CLR type decides the accepted value shapes.
+- `API_MISMATCH` means the installed package has a different member layout. Do not retry with other arguments; report the version and fall back to the Behavior editor window.
+- The asset file holds two objects: `BehaviorAuthoringGraph` (the editing representation, the main asset) and `BehaviorGraph` (the baked runtime graph, a sub-asset). Skills take the file path and resolve the right object. `behavior_agent_set_graph` returns `RUNTIME_GRAPH_MISSING` for a graph that was never compiled.
+- `behavior_graph_create` returns an empty graph apart from the auto-inserted `Start` root. Node editing is not scriptable: use the Behavior editor window (`Window > AI > Behavior`).
+- Edit mode vs Play mode: `BehaviorGraphAgent` copies its graph only on `Init()`, which runs in Play mode. In Edit mode `behavior_blackboard_set` with a GameObject writes an agent-level override, reads return the shared asset defaults, and the per-agent values are in `overrides`. In Play mode writes affect only that running agent.
+- `graphAssetPath` on `behavior_blackboard_set` changes the shared default for every agent without an override for that variable.
+- Out of scope: adding or editing nodes, creating, renaming, retyping or deleting blackboard variables, event channels, subgraph linking, runtime serialization, and agent lifecycle (`Init` / `Start` / `End` / `Restart`). For node-level changes, duplicate a known-good graph with `asset_duplicate`, or edit the `.asset` YAML with the [yaml-editing](../yaml-editing/SKILL.md) rules.
+- Public types (`BehaviorGraphAgent`, `BehaviorGraph`, `BlackboardReference`, `Blackboard`) are stable; authoring types (`BehaviorAuthoringGraph`, `GraphAsset`) are internal to the package and can move in a package upgrade. `behavior_status` lists which types resolved.
+- Animator state machines belong to `animator_*`. `component_add` attaches the component only; `behavior_agent_add` also binds and validates the graph.
 
-The package is **optional** and is not a declared dependency of UnitySkills. Every skill in this module reaches it through reflection; when it is absent each skill returns the same structured `PACKAGE_NOT_INSTALLED` response pointing at `package_install`.
+## Pitfalls
+- Do not invent a `graphAssetPath`: list the graphs first.
+- A bad `graphAssetPath` in `behavior_agent_add` is refused before the component is added, so no half-configured agent is left behind.
 
-## Operating Mode
+## Skills Overview
 
-- Query skills (`behavior_status`, `behavior_graph_list`, `behavior_graph_info`, `behavior_agent_get`, `behavior_agent_list`, `behavior_blackboard_list`) are `SkillMode.SemiAuto` — they run in all three modes without a grant.
-- Mutators (`behavior_graph_create`, `behavior_agent_add`, `behavior_agent_set_graph`, `behavior_blackboard_set`) are `SkillMode.FullAuto` — under **Approval** they need a user grant; under **Auto** / **Bypass** they execute directly.
-- No skill in this module carries `SkillOperation.Delete`, so none is auto-forbidden in Approval / Auto mode.
-
-## Prerequisites
-
-Install the package first if `behavior_status` reports `installed: false`:
-
-```
-package_install  packageName="com.unity.behavior"
-```
-
-Installation triggers a Domain Reload; wait for it to finish, then call `behavior_status` again before using any other skill in this module.
-
-## The two asset types (read this before binding graphs)
-
-A "Behavior Graph" `.asset` file contains **two** objects, and mixing them up is the most common failure:
-
-| Object | Role | Where it lives |
-|--------|------|----------------|
-| `BehaviorAuthoringGraph` | Editing representation — nodes, blackboard, story. Main asset. | The `.asset` file itself |
-| `BehaviorGraph` | Baked runtime graph. What `BehaviorGraphAgent.Graph` actually requires. | Sub-asset nested inside the same file |
-
-Skills in this module always take the **file path** (`graphAssetPath` / `assetPath`) and resolve the correct object internally — you never address the sub-asset directly. `behavior_agent_set_graph` finds the nested `BehaviorGraph` for you and refuses the bind with `RUNTIME_GRAPH_MISSING` when the graph has never been compiled.
-
-## Guardrails
-
-**Routing**:
-- Behavior graphs / blackboards / `BehaviorGraphAgent`: this module
-- Animator state machines: use `animator_*`
-- Generic component attach on a GameObject: `component_add` works, but `behavior_agent_add` additionally binds the graph and validates it
-
-**Runtime-first rules**:
-- Always call `behavior_blackboard_list` before `behavior_blackboard_set` — the variable name is case-sensitive and the declared CLR type decides which value shapes are accepted.
-- Never invent a `graphAssetPath` from memory; get it from `behavior_graph_list`.
-- If a skill returns `errorCode: "API_MISMATCH"`, the installed package version has a different member layout than this integration expects. Do **not** retry with different arguments — report the version mismatch and fall back to the Behavior editor window or direct `.asset` text editing.
-- A graph created by `behavior_graph_create` is empty apart from the auto-inserted `Start` root. Adding actual behavior nodes requires the Behavior editor window (see Limitations).
-
-## Skills
-
-### `behavior_status`
-Report package availability: `installed`, `version`, which core types resolved, project graph asset count, and scene agent count. Safe to call when the package is missing — this is the one skill that answers instead of erroring.
-
-### `behavior_graph_list`
-List behavior graph assets with `path`, `guid`, `nodeCount`, `variableCount`, and `hasRuntimeGraph`. Optional `filter` (substring on path), `folder`, `limit`.
-
-### `behavior_graph_info`
-Structure summary for one graph asset: node count with a per-type breakdown, individual nodes (id / type / position, capped by `maxNodes`), root count, the full blackboard variable list with types and default values, subgraph dependencies, and runtime graph state.
-
-### `behavior_graph_create`
-Create an empty `BehaviorAuthoringGraph` at `savePath` and force a reimport so Unity bakes the blackboard, the runtime `BehaviorGraph` sub-asset, the debug info sub-asset, and the mandatory `Start` root. Returns `hasRuntimeGraph`; a `warning` is returned when baking did not happen and the graph must be opened once in the editor window.
-
-### `behavior_agent_add`
-Add a `BehaviorGraphAgent` to a GameObject (`name` / `entityId` / `instanceId` / `path`), optionally binding `graphAssetPath` in the same call. The graph is resolved and validated **before** the component is added, so a bad path never leaves a half-configured agent. Idempotent — an existing agent is reused and reported via `componentAdded: false`.
-
-### `behavior_agent_get`
-Read one agent: bound graph name and asset path, `isInitialised` / `isStarted` / `isRunning`, the graph's blackboard variables, and the agent-level overrides.
-
-### `behavior_agent_set_graph`
-Bind `graphAssetPath` to an existing agent. Resolves the nested runtime graph and rejects uncompiled graphs.
-
-### `behavior_agent_list`
-Every `BehaviorGraphAgent` in the loaded scenes with hierarchy path, bound graph, active/enabled flags, and run state. Optional `graphFilter`, `includeInactive`, `limit`.
-
-### `behavior_blackboard_list`
-List blackboard variables. Pass `graphAssetPath` to read the **asset's** authoring defaults (`source: "asset"`), or a GameObject locator to read an **agent's** graph variables plus its overrides (`source: "agent"`). One of the two is required.
-
-### `behavior_blackboard_set`
-Set one variable value.
-
-| Parameter | Meaning |
-|-----------|---------|
-| `variable` | Variable name, case-sensitive. Required. |
-| `value` | New value. Accepted shapes depend on the declared type (see below). |
-| `name` / `entityId` / `instanceId` / `path` | GameObject locator — writes the **agent-level override**. |
-| `graphAssetPath` | Writes the **graph asset default** and rebakes the runtime blackboard; if a rebake step fails the response carries `warning`. |
-
-Provide either the GameObject locator or `graphAssetPath`; the GameObject wins if both are given.
-
-**Returns**: `target` (`"agent"` or `"asset"`), `variable`, `type`, the normalized `value`, and a `note` explaining where the write landed.
-
-Supported value types and accepted input shapes:
-
-| Declared type | Accepted `value` |
-|---------------|------------------|
-| `int` / `float` / `double` / `bool` / `string` | JSON scalar, or a parseable string |
-| enum | Member name (case-insensitive) |
-| `Vector2` / `Vector3` / `Vector4` / `Quaternion` | `[1,2,3]`, `{"x":1,"y":2,"z":3}`, or `"1,2,3"` |
-| `Color` | `{"r":1,"g":0,"b":0,"a":1}`, `[1,0,0,1]`, or `"#FF0000"` |
-| `Vector2Int` / `Vector3Int` | Same as the float vectors, truncated |
-| `GameObject` / `Component` | `Assets/...` prefab path, scene hierarchy path, or scene object name |
-| Other `UnityEngine.Object` | `Assets/...` or `Packages/...` asset path |
-
-Setting an unknown variable returns the available names in `availableVariables`.
-
-## Edit mode vs Play mode
-
-`BehaviorGraphAgent` instantiates a private copy of its graph on `Init()`, which only happens in Play mode. This changes what reads and writes mean:
-
-- **Edit mode** — `behavior_blackboard_set` with a GameObject writes an *agent-level override* (exactly what the Inspector shows). Reads of the graph variables return the **shared asset defaults**, not per-agent values; the per-agent values are in the `overrides` array.
-- **Play mode** — writes go to the running graph instance, so they take effect immediately on that agent only.
-
-This is why `behavior_blackboard_list` reports both `variables` and `overrides` for an agent.
-
-## Workflow
-
-1. `behavior_status` — confirm the package is installed.
-2. `behavior_graph_list` — locate the graph, or `behavior_graph_create` to make a new one.
-3. Author the node graph in the Behavior editor window (node editing is not scriptable — see Limitations).
-4. `behavior_graph_info` — confirm the node topology and read the blackboard contract.
-5. `behavior_agent_add` with `graphAssetPath` — attach and bind in one call.
-6. `behavior_blackboard_list` — read the exact variable names and declared types.
-7. `behavior_blackboard_set` — per-agent overrides, or graph-wide defaults via `graphAssetPath`.
-8. `behavior_agent_list` — verify the whole scene's agent wiring.
-
-## Limitations
-
-**Node-level graph editing is not supported.** There is no skill to add, remove, connect, or reconfigure nodes inside a behavior graph. This is a deliberate exclusion, not an oversight:
-
-- The authoring node graph is stored as a `[SerializeReference]` polymorphic `List<NodeModel>` with `PortModel` cross-references, an embedded `SerializableCommandBuffer`, and a version-stamped `NodeModelInfo` cache. Writing it correctly means reproducing the package's command/dispatcher pipeline, not just setting fields.
-- Every edit must be followed by a consistent rebake of three sub-assets (runtime graph, runtime blackboard, debug info) plus `VersionTimestamp` synchronization, or the asset silently desyncs from its baked runtime graph.
-- The serialization schema is explicitly versioned (`kLatestSerializationVersion`, currently 3) and has changed within the 1.0.x line. Reflection-driven topology writes would break on a patch release.
-
-**Alternatives when you need node-level changes**:
-1. **Preferred** — author the graph in the Behavior editor window (`Window > AI > Behavior`, or double-click the asset), then use this module to inspect and wire it up.
-2. Duplicate a known-good graph with `asset_duplicate` and rebind it, instead of building topology from nothing.
-3. For mechanical, repetitive edits to an existing graph, edit the `.asset` YAML directly — load the [yaml-editing](../yaml-editing/SKILL.md) advisory first for the managed-reference and `fileID` rules, and re-verify with `behavior_graph_info` afterwards.
-
-**Other limitations**:
-- `behavior_graph_create` produces an empty graph. Node authoring still requires the editor window.
-- Blackboard variables cannot be created, renamed, retyped, or deleted — only existing variables can be assigned. Add variables in the Behavior editor's Blackboard panel.
-- Event channels, subgraph dynamic linking, and runtime serialization (`Serialize` / `Deserialize`) are not exposed.
-- `behavior_blackboard_set` against `graphAssetPath` changes the shared default for every agent that has no override for that variable.
-- Agent lifecycle control (`Init` / `Start` / `End` / `Restart`) is not exposed; those are Play-mode runtime concerns better handled from game code.
-
-## Version Sensitivity
-
-Type and member names were taken from `com.unity.behavior` **1.0.16** sources and cross-checked against the published Scripting API. Public surface (`BehaviorGraphAgent`, `BehaviorGraph`, `BlackboardReference`, `Blackboard`, `BlackboardVariable`, `VariableModel`) is documented and stable. Authoring surface (`BehaviorAuthoringGraph`, `GraphAsset`, `BlackboardAsset`, `BehaviorBlackboardAuthoringAsset`) is **internal** to the package and reached by name — a package upgrade can move it. Every such lookup is null-checked and reports `API_MISMATCH` rather than throwing; `behavior_status` shows exactly which types resolved.
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+| Skill | Purpose |
+|---|---|
+| [`behavior_status`](reference/behavior_status.md) | Package availability and resolved types; answers even when the package is missing |
+| [`behavior_graph_list`](reference/behavior_graph_list.md) | List graph assets with node and variable counts |
+| [`behavior_graph_info`](reference/behavior_graph_info.md) | Node topology and blackboard contract of one graph |
+| [`behavior_graph_create`](reference/behavior_graph_create.md) | Create an empty graph and bake its runtime data |
+| [`behavior_agent_add`](reference/behavior_agent_add.md) | Add a `BehaviorGraphAgent`, optionally bound to a graph |
+| [`behavior_agent_get`](reference/behavior_agent_get.md) | Read one agent's bound graph, run state and overrides |
+| [`behavior_agent_set_graph`](reference/behavior_agent_set_graph.md) | Bind a graph to an existing agent |
+| [`behavior_agent_list`](reference/behavior_agent_list.md) | List every agent in the loaded scenes |
+| [`behavior_blackboard_list`](reference/behavior_blackboard_list.md) | List variables of an asset or an agent |
+| [`behavior_blackboard_set`](reference/behavior_blackboard_set.md) | Set a variable on an agent or a graph asset |

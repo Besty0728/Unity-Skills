@@ -1,145 +1,145 @@
-# PICO Unity SDK — 输入与追踪（v3.4.0）
+# PICO Unity SDK — Input and Tracking (v3.4.0)
 
-> 锚定：PICO 官方文档 v3.4.0（2026-08-13 抓取）。规则均可通过来源 URL 复核。
+> Anchor: PICO official documentation v3.4.0 (fetched 2026-08-13). Every rule can be verified against the source URLs.
 
-## 何时加载本文档
+## When to Load This Document
 
-- 要在 PICO 上读手柄按键、摇杆、扳机，或搞清楚 PICO 键值与 Unity XR / XRI 的对应关系。
-- 要接入手势追踪（Hand Tracking）：手模预制体、26 关节、射线捏合、与 XR Hands / XRI 的绑定。
-- 要接入眼动追踪（Eye Tracking）、面部追踪（Face Tracking / Lipsync）、全身动捕（Body Tracking）。
-- 要用 PICO 体感追踪器（PICO Motion Tracker）做独立追踪（Object Tracking）或连外设透传数据。
-- 要做手柄振动 / 触觉反馈（含 PHF、PCM、AudioClip 缓冲类触觉）。
-- 要唤起系统键盘做文本输入，或配置手柄射线与 World Space Canvas 的交互。
+- Reading controller buttons, thumbsticks and triggers on PICO, or working out how PICO key values map to Unity XR / XRI.
+- Integrating hand tracking (Hand Tracking): hand model prefabs, 26 joints, pinch raycasts, binding to XR Hands / XRI.
+- Integrating eye tracking (Eye Tracking), face tracking (Face Tracking / Lipsync), or full-body motion capture (Body Tracking).
+- Using the PICO motion tracker (PICO Motion Tracker) for independent tracking (Object Tracking) or passing through peripheral data.
+- Implementing controller vibration / haptic feedback (including PHF, PCM, and AudioClip buffered haptics).
+- Summoning the system keyboard for text input, or configuring controller-ray interaction with World Space Canvas.
 
-> 通用 XRI 交互（XR Ray Interactor、XR Grab Interactable、Interaction Manager、Locomotion 等）不在本文档，路由到本仓库 `xr` 模块。本文档只写 PICO 特有部分。
+> General XRI interaction (XR Ray Interactor, XR Grab Interactable, Interaction Manager, Locomotion, etc.) is not covered in this document; it routes to the `xr` module of this repository. This document covers only the PICO-specific parts.
 
-## 关键规则
+## Key Rules
 
-| # | 规则 | 来源 |
+| # | Rule | Source |
 |---|---|---|
-| 1 | 手柄按键**不走 PICO 私有 API**：PICO Unity Integration SDK 使用 Unity 官方键值做输入映射。取设备用 `InputDevices.GetDeviceAtXRNode(XRNode.LeftHand)`，取键值用 `InputDevice.TryGetFeatureValue(CommonUsages.triggerButton, out v)`。 | [input-mapping](https://developer-cn.picoxr.com/document/unity/input-mapping/) |
-| 2 | 截屏/录屏键**无开放键值**；音量增减键是 Android 标准键值（`VOLUME_UP` / `VOLUME_DOWN`）且**系统占用、默认不开放**，Neo3 的 `Home` 键同理。Neo3 头戴确认键 `KeyCode.JoystickButton0` **在新输入系统下取它会报错且识别不到**，必须把 **Edit > Project Settings > Player > Other Settings > Configuration > Active Input Handling** 设为 **Both** 或 **Input Manager (Old)**。 | [input-mapping](https://developer-cn.picoxr.com/document/unity/input-mapping/) |
-| 3 | 设备**只支持追踪手柄或手，无法同时追踪**。`Hand Tracking Support` 选 `Controller And Hands` 是自动切换，不是并存。 | [hand-tracking-overview](https://developer-cn.picoxr.com/document/unity/hand-tracking-overview/) · [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
-| 4 | 用 `HandLeft` / `HandRight` 手模时，**必须先删掉 XR Origin 下的 `LeftHand Controller` 和 `RightHand Controller`**，否则设备上运行会出现手模与手柄模型共存。 | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
-| 5 | `PXR_Manager (Script)` 上的 **High Frequency Tracking (60Hz)** 一旦启用，**运行时无法关闭**，且性能开销更大；启用前先验证普通模式是否够用。 | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
-| 6 | 手势追踪对齐 OpenXR，固定 **26 个关节**（0 = `Palm`，1 = `Wrist`，…，25 = `Little_tip`），`HandJointLocations.jointCount` 当前返回 26。自适应手模只支持 PICO 4 Ultra；自定义手模需自行调 `PXR_HandTracking.GetHandScale(handType, ref scale)` 缩放。 | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) · [PXR_HandTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_HandTracking/) |
-| 7 | 手势要驱动 XRI，必须在 **XRI Default Input Actions** 里**手动加 Binding**，路径固定为 `<PicoAimHand>{LeftHand}/devicePosition`、`/deviceRotation`、`/aimFlags`、`/indexPressed`、`/pinchStrengthIndex`（右手同理）。SDK 不会自动绑。 | [enable-interactions-…-xr-interaction-toolkit](https://developer-cn.picoxr.com/document/unity/enable-interactions-between-hands-and-3d-objects-using-xr-interaction-toolkit/) |
-| 8 | 非缓冲类触觉：`PXR_Input.SendHapticImpulse(VibrateType, amplitude, duration, frequency)`。**停止方式是再次调用该接口并把振幅和振动时长都设为 0**，没有单独的 Stop 接口。振幅 0~1、时长 0~65535 ms、频率 50~500Hz，且**频率越高手柄振感越小**（反直觉）。 | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) · [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) |
-| 9 | 缓冲类触觉仅支持 **MP3 / WAV / OGG**，**振动时长由音频流决定、不可配置**，且**仅 PICO 4 系列支持**（非缓冲类支持 PICO Neo3 与 PICO 4 系列）。 | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) |
-| 10 | 缓冲类触觉必须自己定义并保存 `sourceId`，后续 Update / Stop / Pause / Resume 全靠它。`StopHapticBuffer(sourceId)` 传 `0`（或不传）会**停掉全部**缓冲触觉。用 `CacheType.CacheNoVibrate` 时缓存完还得调 `StartHapticBuffer(sourceId)` 才会振。 | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) · [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) |
-| 11 | 原点追踪：**Camera Y Offset 仅对 Device 模式生效**；**Stage Mode 选框只有 Tracking Origin Mode = Floor 时才可勾**，勾上后不允许长按 Home 键校准。 | [tracking-origin](https://developer-cn.picoxr.com/document/unity/tracking-origin/) |
-| 12 | 眼动追踪：**必须先 `StartEyeTracking` 才能 `GetEyeTrackingData`**；权限弹窗是在**调用 `GetEyeTrackingData` 时**才向用户申请的；目前**仅支持 `EyeTrackingMode.PXR_ETM_BOTH`**。`GetEyeOpenness` / `GetEyePupilInfo` / `GetPerEyePose` / `GetEyeBlink` **仅支持 PICO 4 Enterprise**。 | [eye-tracking](https://developer-cn.picoxr.com/document/unity/eye-tracking/) |
-| 13 | 面部追踪必须勾 **Edit > Project Settings > Player > Other Settings > Allow 'unsafe' Code**（`GetFaceTrackingSupported` 签名带 `unsafe`）；`PXR_Manager (Script)` 面板**只提供 Hybrid 选项**，选中后默认是 Hybrid (Viseme)。 | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
-| 14 | 切换面部追踪模式时，`FaceTrackingStopInfo.pause = 0` 的语义是「**暂停**」而非停止——这是官方推荐的快速切模式手法（Stop(pause=0) → Start(新 mode)），语义反直觉。 | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) |
-| 15 | `GetFaceTrackingData` 返回**定长 72 的数组** = 0~51 维 BlendShapes + 52~71 维 Viseme。Face Only 模式下 52~71 恒为 0；Lipsync Only 模式下眼部相关维度恒为 0。 | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) |
-| 16 | 全身动捕和独立追踪**共用 `PXR_Manager (Script)` 上的同一个 `Body Tracking` 勾选框**，但**两种模式互斥**：开启独立追踪后无法输出全身动捕数据。 | [body-tracking](https://developer-cn.picoxr.com/document/unity/body-tracking/) · [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) |
-| 17 | 独立追踪必须**先 `CheckMotionTrackerNumber(MotionTrackerNum.X)` 请求数量**，再在 `RequestMotionTrackerCompleteAction` 回调里拿 `trackerIds`，才能 `GetMotionTrackerLocation`。数量不符或模式不对时 Runtime 会自动拉起「PICO 体感追踪器」应用。 | [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
-| 18 | 独立追踪下追踪器**距一体机超过 1 米或进入盲区，数据会不准或不更新**；且 `localLocation` 是**右手坐标系**，赋值给 Unity Transform 必须用 `.ToVector3()` / `.ToQuat()` 转换。 | [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) |
-| 19 | 全身动捕取数据前必须先看 `GetBodyTrackingState` 返回的 `stateCode`，只有 `BodyTrackingStatusCode.BT_VALID` 才可用；未校准时调 `StartMotionTrackerCalibApp()` 引导用户校准（正式版是「一眼校准」）。建议全程监听校准状态变化。 | [body-tracking](https://developer-cn.picoxr.com/document/unity/body-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
-| 20 | v3.4.0 已标 **(Deprecated)** 的大类：`PXR_Input` 全部旧振动接口与 `GetBodyTrackingPose`/`SetBodyTrackingMode` 等；`PXR_MotionTracking` 的**全部面部追踪 6 接口**、`ExtDev*` 家族、`GetMotionTrackerLocations`/`GetMotionTrackerMode`/`CheckMotionTrackerModeAndNumber`/`GetMotionTrackerConnectStateWithSN`/`GetMotionTrackerDeviceType`。**例外**：`SetExtDevTrackerPassDataState` 与 `ExtDevPassDataAction` 未标废弃，仍是现行透传开关。另：应用显示系统键盘时**会失去输入焦点（Input Focus）**。 | [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) · [system-keyboard](https://developer-cn.picoxr.com/document/unity/system-keyboard/) |
+| 1 | Controller buttons **do not go through a PICO-private API**: the PICO Unity Integration SDK uses Unity's official key values for input mapping. Get the device with `InputDevices.GetDeviceAtXRNode(XRNode.LeftHand)` and the key value with `InputDevice.TryGetFeatureValue(CommonUsages.triggerButton, out v)`. | [input-mapping](https://developer-cn.picoxr.com/document/unity/input-mapping/) |
+| 2 | The screenshot/recording key **has no exposed key value**; the volume up/down keys are standard Android key values (`VOLUME_UP` / `VOLUME_DOWN`), but they are **reserved by the system and not exposed by default**; the Neo3 `Home` key is the same. On the Neo3 headset, the confirm key `KeyCode.JoystickButton0` **raises an error and is not recognized under the new input system**; you must set **Edit > Project Settings > Player > Other Settings > Configuration > Active Input Handling** to **Both** or **Input Manager (Old)**. | [input-mapping](https://developer-cn.picoxr.com/document/unity/input-mapping/) |
+| 3 | The device **supports tracking either controllers or hands, not both at the same time**. Selecting `Controller And Hands` for `Hand Tracking Support` is an automatic switch, not coexistence. | [hand-tracking-overview](https://developer-cn.picoxr.com/document/unity/hand-tracking-overview/) · [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
+| 4 | When using the `HandLeft` / `HandRight` hand models, you **must first delete `LeftHand Controller` and `RightHand Controller` under XR Origin**; otherwise the hand model and controller model will both appear when running on the device. | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
+| 5 | Once **High Frequency Tracking (60Hz)** on `PXR_Manager (Script)` is enabled, it **cannot be turned off at runtime**, and it has higher performance overhead; before enabling it, verify whether normal mode is sufficient. | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) |
+| 6 | Hand tracking is aligned with OpenXR and has a fixed **26 joints** (0 = `Palm`, 1 = `Wrist`, …, 25 = `Little_tip`); `HandJointLocations.jointCount` currently returns 26. Adaptive hand models are supported only on PICO 4 Ultra; custom hand models must scale themselves by calling `PXR_HandTracking.GetHandScale(handType, ref scale)`. | [hand-tracking](https://developer-cn.picoxr.com/document/unity/hand-tracking/) · [PXR_HandTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_HandTracking/) |
+| 7 | For hand gestures to drive XRI, you must **manually add Bindings** in **XRI Default Input Actions**, with fixed paths `<PicoAimHand>{LeftHand}/devicePosition`, `/deviceRotation`, `/aimFlags`, `/indexPressed`, `/pinchStrengthIndex` (the right hand is the same). The SDK does not bind them automatically. | [enable-interactions-…-xr-interaction-toolkit](https://developer-cn.picoxr.com/document/unity/enable-interactions-between-hands-and-3d-objects-using-xr-interaction-toolkit/) |
+| 8 | Non-buffered haptics: `PXR_Input.SendHapticImpulse(VibrateType, amplitude, duration, frequency)`. **To stop, call the interface again with both amplitude and duration set to 0**; there is no separate Stop interface. Amplitude 0~1, duration 0~65535 ms, frequency 50~500 Hz, and **the higher the frequency, the weaker the controller vibration feels** (counterintuitive). | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) · [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) |
+| 9 | Buffered haptics support only **MP3 / WAV / OGG**; **vibration duration is determined by the audio stream and cannot be configured**; and it is **supported only on the PICO 4 series** (non-buffered haptics support PICO Neo3 and the PICO 4 series). | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) |
+| 10 | For buffered haptics you must define and store the `sourceId` yourself; all later Update / Stop / Pause / Resume calls depend on it. Passing `0` (or nothing) to `StopHapticBuffer(sourceId)` **stops all** buffered haptics. With `CacheType.CacheNoVibrate`, after caching you must still call `StartHapticBuffer(sourceId)` before it vibrates. | [haptic-feedback](https://developer-cn.picoxr.com/document/unity/haptic-feedback/) · [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) |
+| 11 | Origin tracking: **Camera Y Offset takes effect only in Device mode**; the **Stage Mode checkbox can be ticked only when Tracking Origin Mode = Floor**, and once ticked, long-pressing the Home key to calibrate is not allowed. | [tracking-origin](https://developer-cn.picoxr.com/document/unity/tracking-origin/) |
+| 12 | Eye tracking: **you must call `StartEyeTracking` before `GetEyeTrackingData`**; the permission prompt is requested from the user **when `GetEyeTrackingData` is called**; currently **only `EyeTrackingMode.PXR_ETM_BOTH` is supported**. `GetEyeOpenness` / `GetEyePupilInfo` / `GetPerEyePose` / `GetEyeBlink` **are supported only on PICO 4 Enterprise**. | [eye-tracking](https://developer-cn.picoxr.com/document/unity/eye-tracking/) |
+| 13 | Face tracking requires ticking **Edit > Project Settings > Player > Other Settings > Allow 'unsafe' Code** (the `GetFaceTrackingSupported` signature carries `unsafe`); the `PXR_Manager (Script)` panel **offers only the Hybrid option**, which defaults to Hybrid (Viseme) once selected. | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
+| 14 | When switching face-tracking modes, `FaceTrackingStopInfo.pause = 0` means "**pause**" rather than stop. This is the officially recommended fast mode-switching technique (Stop(pause=0) → Start(new mode)), and its semantics are counterintuitive. | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) |
+| 15 | `GetFaceTrackingData` returns a **fixed-length array of 72** = dimensions 0~51 BlendShapes + dimensions 52~71 Viseme. In Face Only mode, 52~71 are always 0; in Lipsync Only mode, the eye-related dimensions are always 0. | [face-tracking](https://developer-cn.picoxr.com/document/unity/face-tracking/) |
+| 16 | Full-body motion capture and independent tracking **share the same `Body Tracking` checkbox on `PXR_Manager (Script)`**, but **the two modes are mutually exclusive**: once independent tracking is enabled, full-body motion capture data cannot be output. | [body-tracking](https://developer-cn.picoxr.com/document/unity/body-tracking/) · [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) |
+| 17 | Independent tracking must **first request the count with `CheckMotionTrackerNumber(MotionTrackerNum.X)`**, then get `trackerIds` in the `RequestMotionTrackerCompleteAction` callback, before `GetMotionTrackerLocation` can be used. If the count does not match or the mode is wrong, the Runtime automatically launches the "PICO motion tracker" app. | [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
+| 18 | In independent tracking, when a tracker is **more than 1 meter from the headset or enters a blind zone, its data becomes inaccurate or stops updating**; also, `localLocation` is in a **right-handed coordinate system**, so assigning it to a Unity Transform requires `.ToVector3()` / `.ToQuat()` conversion. | [object-tracking](https://developer-cn.picoxr.com/document/unity/object-tracking/) |
+| 19 | Before reading full-body motion capture data, check the `stateCode` returned by `GetBodyTrackingState`; only `BodyTrackingStatusCode.BT_VALID` is usable. If not calibrated, call `StartMotionTrackerCalibApp()` to guide the user through calibration (the official release uses "one-glance calibration"). It is recommended to listen for calibration state changes throughout. | [body-tracking](https://developer-cn.picoxr.com/document/unity/body-tracking/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) |
+| 20 | Major categories marked **(Deprecated)** in v3.4.0: all legacy vibration interfaces in `PXR_Input` and `GetBodyTrackingPose` / `SetBodyTrackingMode`, etc.; **all 6 face-tracking interfaces** in `PXR_MotionTracking`, the `ExtDev*` family, and `GetMotionTrackerLocations` / `GetMotionTrackerMode` / `CheckMotionTrackerModeAndNumber` / `GetMotionTrackerConnectStateWithSN` / `GetMotionTrackerDeviceType`. **Exception**: `SetExtDevTrackerPassDataState` and `ExtDevPassDataAction` are not marked deprecated and remain the current pass-through switches. Also: when the app shows the system keyboard, it **loses Input Focus**. | [PXR_Input](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_Input/) · [PXR_MotionTracking](https://developer-cn.picoxr.com/reference/unity/client-api/PXR_MotionTracking/) · [system-keyboard](https://developer-cn.picoxr.com/document/unity/system-keyboard/) |
 
-## 工作流程
+## Workflow
 
-### 1. 读手柄输入（PICO 侧只做设备型号/状态，键值全走 Unity XR）
+### 1. Reading Controller Input (PICO Side Handles Only Device Model/State; All Key Values Go Through Unity XR)
 
-1. 键值：`InputDevices.GetDeviceAtXRNode(XRNode.LeftHand)` → `device.TryGetFeatureValue(CommonUsages.triggerButton, out bool v)`。
-   对应表：菜单键 `menuButton`；扳机 `triggerButton`(布尔) + `trigger`(0~1 力度)；抓握 `gripButton` + `grip`；摇杆 `primary2DAxisClick` + `primary2DAxis`；X/A `primaryButton`；Y/B `secondaryButton`。PICO 4 Ultra / PICO 4 / Neo3 三代映射一致。
-2. 设备信息走 PICO：`PXR_Input.GetControllerDeviceType()`（`ControllerDevice`：G2/Neo2/Neo3/PICO_4/G3/PICO_4U/NewController）、`IsControllerConnected(Controller)`、`GetControllerStatus(Controller)`（`ControllerStatus`：Static/SixDof/ThreeDof/Sleep/CollidedIn3Dof/CollidedIn6Dof）。
-3. 需要预测位姿（如挥拍/射击补偿）：`GetControllerPredictPosition(controller, predictTime)`、`GetControllerPredictRotation(controller, predictTime)`，`predictTime` 单位毫秒。显示位置与真实位置的偏移用 `SetControllerOriginOffset(controller, offset)`（米）。
-4. 手柄模型：SDK 标准模型在 `Packages/PICO Integration/Assets/Resources/Prefabs`，正式运行时会按设备型号自动展示对应模型。
-5. 推荐把 XR Interaction Toolkit 升到 **2.1.1 及以上**。XRI 本身的用法路由到 `xr` 模块。
+1. Key values: `InputDevices.GetDeviceAtXRNode(XRNode.LeftHand)` → `device.TryGetFeatureValue(CommonUsages.triggerButton, out bool v)`.
+   Mapping table: menu key `menuButton`; trigger `triggerButton` (boolean) + `trigger` (0~1 force); grip `gripButton` + `grip`; thumbstick `primary2DAxisClick` + `primary2DAxis`; X/A `primaryButton`; Y/B `secondaryButton`. The mapping is identical across PICO 4 Ultra / PICO 4 / Neo3.
+2. Device information comes from PICO: `PXR_Input.GetControllerDeviceType()` (`ControllerDevice`: G2/Neo2/Neo3/PICO_4/G3/PICO_4U/NewController), `IsControllerConnected(Controller)`, `GetControllerStatus(Controller)` (`ControllerStatus`: Static/SixDof/ThreeDof/Sleep/CollidedIn3Dof/CollidedIn6Dof).
+3. When predicted poses are needed (such as swing/shot compensation): `GetControllerPredictPosition(controller, predictTime)` and `GetControllerPredictRotation(controller, predictTime)`, where `predictTime` is in milliseconds. To offset the displayed position from the real position, use `SetControllerOriginOffset(controller, offset)` (meters).
+4. Controller models: the SDK's standard models are at `Packages/PICO Integration/Assets/Resources/Prefabs`; at runtime the model matching the device type is shown automatically.
+5. It is recommended to upgrade XR Interaction Toolkit to **2.1.1 or later**. For how to use XRI itself, see the `xr` module.
 
-### 2. 接入手势追踪 + 与 XRI 3D 物体交互
+### 2. Integrating Hand Tracking + 3D Object Interaction With XRI
 
-环境：PICO Neo3 / PICO 4 / PICO 4 Ultra 系列，系统 **5.11.0 及以上**；SDK 需 **2.3.0 及以上**（v2.3.0 手势算法对标 OpenXR，与旧版不兼容）。XRI 手势交互另需系统 **5.12.0 及以上**、XRI **2.3.0–2.6.2 或 3.x**。
+Environment: PICO Neo3 / PICO 4 / PICO 4 Ultra series, system **5.11.0 or later**; SDK requires **2.3.0 or later** (the v2.3.0 hand algorithm aligns with OpenXR and is incompatible with older versions). XRI hand gesture interaction additionally requires system **5.12.0 or later** and XRI **2.3.0–2.6.2 or 3.x**.
 
-1. 删除 `XR Origin` 下的 `LeftHand Controller` / `RightHand Controller`。
-2. 把 `Packages > PICO Integration > Assets > Resources > Prefabs` 下的 `HandLeft`、`HandRight` 拖到 `XR Origin` 下，与 `Main Camera` 同级。手模已按 OpenXR 规范绑好关节，并绑定了 `RayPose (Transform)` 与 `DefaultRay`；`PXR_Hand` 是手模配置脚本。
-3. `XR Origin` 上挂 `PXR_Manager`，勾 **Hand Tracking**，在 **Hand Tracking Support** 选 `Controller And Hands`（自动切换）或 `Hands Only`。
-4. 可选：勾 **Adaptive Hand Model (PICO)**（写入 `<meta-data android:name="Enable_AdaptiveHandModel" android:value="1" />`，仅 PICO 4 Ultra）、勾 **High Frequency Tracking (60Hz)**（写入 `Hand_Tracking_HighFrequency`，运行时不可关）。
-5. 设备端：Neo3/PICO 4 走 **设置 > 实验室 > 手势识别**；PICO 4 Ultra 走 **控制中心 > 设置 > 交互 > 交互方式 = 手势与手柄自动切换**。
-6. 要用 XRI 的 Hands Interaction Demo：装 Unity **XR Hands** 包 + 导入 **Hand Visualizer** 示例；导入 XRI 的 **Starter Assets** 与 **Hands Interaction Demo**；打开 `XRI Default Input Actions`，给 `XRI LeftHand` 的 `Aim Position`/`Aim Rotation`/`Aim Flags` 与 `XRI LeftHand Interaction` 的 `Select`/`Select Value`/`UI Press`/`UI Press Value` 加 Binding，路径见规则 8；右手同理。然后打开 `HandsDemoScene`。
-7. 运行时读数据：`PXR_HandTracking.GetJointLocations(HandType, ref HandJointLocations)` 拿 26 关节；`PXR_HandTracking.GetAimState(HandType, ref HandAimState)` 拿射线位姿与捏合强度；`PXR_HandTracking.GetActiveInputDevice()` 拿当前输入源。
-8. 输入源切换事件：指南写作 `PXR_Plugin.System.InputDeviceChanged`（返回 `0` 头戴 / `1` 手柄 / `2` 手），API 参考写作 `PXR_Input.InputDeviceChanged`（`Action<ActiveInputDevice>`，`HeadActive`/`ControllerActive`/`HandTrackingActive`）。两处并存，接入前用 SDK 源码确认实际可用的那个。
-9. 手势设计受识别范围限制（PICO 4）：深度 152mm~500mm，上 57.5°、下 72.5°、左 61.5°、右 60.5°；避免双手/单手关节遮挡。
+1. Delete `LeftHand Controller` / `RightHand Controller` under `XR Origin`.
+2. Drag `HandLeft` and `HandRight` under `Packages > PICO Integration > Assets > Resources > Prefabs` under `XR Origin`, at the same level as `Main Camera`. The hand models are already bound to joints per the OpenXR specification, and are bound to `RayPose (Transform)` and `DefaultRay`; `PXR_Hand` is the hand model configuration script.
+3. Attach `PXR_Manager` to `XR Origin`, tick **Hand Tracking**, and set **Hand Tracking Support** to `Controller And Hands` (automatic switching) or `Hands Only`.
+4. Optional: tick **Adaptive Hand Model (PICO)** (writes `<meta-data android:name="Enable_AdaptiveHandModel" android:value="1" />`, PICO 4 Ultra only), and tick **High Frequency Tracking (60Hz)** (writes `Hand_Tracking_HighFrequency`; cannot be turned off at runtime).
+5. On the device: Neo3 / PICO 4 go to **"设置 > 实验室 > 手势识别"** (Settings > Lab > Gesture recognition); PICO 4 Ultra goes to **"控制中心 > 设置 > 交互 > 交互方式 = 手势与手柄自动切换"** (Control Center > Settings > Interaction > Interaction mode = Automatic switch between gestures and controllers). The quoted Chinese strings are the device's on-screen menu labels.
+6. To use XRI's Hands Interaction Demo: install the Unity **XR Hands** package + import the **Hand Visualizer** sample; import XRI's **Starter Assets** and **Hands Interaction Demo**; open `XRI Default Input Actions`, and add Bindings for `Aim Position` / `Aim Rotation` / `Aim Flags` of `XRI LeftHand` and `Select` / `Select Value` / `UI Press` / `UI Press Value` of `XRI LeftHand Interaction`, with paths per rule 7; the right hand is the same. Then open `HandsDemoScene`.
+7. Reading data at runtime: `PXR_HandTracking.GetJointLocations(HandType, ref HandJointLocations)` gets the 26 joints; `PXR_HandTracking.GetAimState(HandType, ref HandAimState)` gets the ray pose and pinch strength; `PXR_HandTracking.GetActiveInputDevice()` gets the current input source.
+8. Input source change event: the guide writes it as `PXR_Plugin.System.InputDeviceChanged` (returns `0` headset / `1` controller / `2` hands), while the API reference writes it as `PXR_Input.InputDeviceChanged` (`Action<ActiveInputDevice>`, `HeadActive` / `ControllerActive` / `HandTrackingActive`). Both coexist; before integrating, use the SDK source to confirm which one is actually usable.
+9. Gesture design is limited by the recognition range (PICO 4): depth 152 mm~500 mm, up 57.5°, down 72.5°, left 61.5°, right 60.5°; avoid occlusion between joints of both hands or of a single hand.
 
-### 3. 触觉反馈（非缓冲 + 缓冲）
+### 3. Haptic Feedback (Non-Buffered + Buffered)
 
 ```csharp
-// 非缓冲：右手柄，振幅 0.5，时长 500ms，频率 100Hz
+// Non-buffered: right controller, amplitude 0.5, duration 500 ms, frequency 100 Hz
 PXR_Input.SendHapticImpulse(VibrateType.RightController, 0.5f, 500, 100);
-// 停止 = 再调一次，振幅与时长归零
+// To stop = call again, with amplitude and duration zeroed
 PXR_Input.SendHapticImpulse(VibrateType.RightController, 0f, 0, 100);
 
-// 缓冲（AudioClip）：缓存但不振动，之后手动开
+// Buffered (AudioClip): cache without vibrating, then start manually
 int sourceId = 0;
 PXR_Input.SendHapticBuffer(PXR_Input.VibrateType.RightController, audioClip,
     PXR_Input.ChannelFlip.No, ref sourceId, PXR_Input.CacheType.CacheNoVibrate);
 PXR_Input.StartHapticBuffer(sourceId);
 
-// 缓冲（PHF 文件）：双手柄，标准振幅
+// Buffered (PHF file): both controllers, standard amplitude
 PXR_Input.SendHapticBuffer(PXR_Input.VibrateType.BothController, phf_text,
     PXR_Input.ChannelFlip.No, 1, ref sourceId);
 
 PXR_Input.UpdateHapticBuffer(sourceId, PXR_Input.VibrateType.LeftController, PXR_Input.ChannelFlip.No, 2);
 PXR_Input.PauseHapticBuffer(sourceId);
 PXR_Input.ResumeHapticBuffer(sourceId);
-PXR_Input.StopHapticBuffer(sourceId);   // 传 0 或不传 = 停止全部
+PXR_Input.StopHapticBuffer(sourceId);   // Pass 0 or nothing = stop all
 ```
 
-- `channelFlip = Yes` 时左声道数据驱动右手柄，右声道驱动左手柄。
-- `amplitudeScale` 有效值 0~2：0 不振动、1 标准振幅、2 两倍标准振幅。
-- 频率建议：打鼓/篮球 50~100Hz；射击/乒乓球 约 170Hz；石头碰撞 约 300Hz。
-- 连续调用 `StartHapticBuffer` 时，前一次的振动数据会被后一次覆盖。
+- When `channelFlip = Yes`, the left audio channel drives the right controller and the right audio channel drives the left controller.
+- Valid `amplitudeScale` values are 0~2: 0 no vibration, 1 standard amplitude, 2 twice the standard amplitude.
+- Frequency suggestions: drums / basketball 50~100 Hz; shooting / ping-pong about 170 Hz; stone collision about 300 Hz.
+- When `StartHapticBuffer` is called consecutively, the vibration data of the earlier call is overwritten by the later one.
 
-### 4. 眼动 / 面部追踪接入
+### 4. Integrating Eye / Face Tracking
 
-眼动：设备限 PICO Neo3 Pro Eye / PICO 4 Pro / PICO 4 Enterprise，系统 5.4.0+（校准 5.5.0+），推荐 SDK 2.3.0+ 与系统 5.7.0+。
+Eye tracking: device limited to PICO Neo3 Pro Eye / PICO 4 Pro / PICO 4 Enterprise, system 5.4.0+ (calibration 5.5.0+); SDK 2.3.0+ and system 5.7.0+ are recommended.
 
-1. `XR Origin` 挂 `PXR_Manager`，勾 **Eye Tracking**（SDK 自动写入 `picovr.software.eye_tracking` 与 `com.picovr.permission.EYE_TRACKING`），可选勾 **Eye Tracking Calibration**。
-2. `GetEyeTrackingSupported(ref supported, ref count, ref modes)` → `StartEyeTracking(ref EyeTrackingStartInfo)`（`mode = EyeTrackingMode.PXR_ETM_BOTH`）→ 每帧 `GetEyeTrackingState(ref isTracking, ref state)` + `GetEyeTrackingData(ref EyeTrackingDataGetInfo, ref EyeTrackingData)` → `OnDisable` 里 `StopEyeTracking(ref EyeTrackingStopInfo)`。
-3. `EyeTrackingDataGetInfo.displayTime` 保留字段传 0；`flags` 用 `EyeTrackingDataGetFlags.PXR_EYE_DEFAULT | PXR_EYE_POSITION | PXR_EYE_ORIENTATION` 组合。注意 `PXR_EYE_DEFAULT = 0` 的含义是「不返回任何数据」。
+1. Attach `PXR_Manager` to `XR Origin`, tick **Eye Tracking** (the SDK automatically writes `picovr.software.eye_tracking` and `com.picovr.permission.EYE_TRACKING`), and optionally tick **Eye Tracking Calibration**.
+2. `GetEyeTrackingSupported(ref supported, ref count, ref modes)` → `StartEyeTracking(ref EyeTrackingStartInfo)` (`mode = EyeTrackingMode.PXR_ETM_BOTH`) → each frame `GetEyeTrackingState(ref isTracking, ref state)` + `GetEyeTrackingData(ref EyeTrackingDataGetInfo, ref EyeTrackingData)` → call `StopEyeTracking(ref EyeTrackingStopInfo)` in `OnDisable`.
+3. Pass `0` for the reserved `EyeTrackingDataGetInfo.displayTime` field; combine `flags` using `EyeTrackingDataGetFlags.PXR_EYE_DEFAULT | PXR_EYE_POSITION | PXR_EYE_ORIENTATION`. Note that `PXR_EYE_DEFAULT = 0` means "return no data at all".
 
-面部：Lipsync Only 支持 Neo3 与 PICO 4 系列；Face Only / Hybrid 仅 PICO 4 Pro 与 PICO 4 Enterprise；系统 5.7.0+。
+Face tracking: Lipsync Only supports Neo3 and the PICO 4 series; Face Only / Hybrid is only on PICO 4 Pro and PICO 4 Enterprise; system 5.7.0+.
 
-1. `PXR_Manager` 的 **Face Tracking Mode** 选模式（面板只有 Hybrid），Player 设置勾 **Allow 'unsafe' Code**，设备端 **设置 > 实验室 > 表情模拟** 打开。
-2. 调用顺序：`WantFaceTrackingService()` → `GetFaceTrackingSupported(...)` → `StartFaceTracking(ref FaceTrackingStartInfo)` → `GetFaceTrackingState` / `GetFaceTrackingData` → `StopFaceTracking(ref FaceTrackingStopInfo)`。
-3. 权限按模式自动写入：Hybrid 三条（`picovr.software.face_tracking` + `com.picovr.permission.FACE_TRACKING` + `android.permission.RECORD_AUDIO`）；Face Only 去掉录音；Lipsync Only 去掉 FACE_TRACKING 权限。
-4. Hybrid 效果最好但 CPU 占用最高，可按场景降级到 Face Only / Lipsync Only。
+1. Choose a mode in **Face Tracking Mode** on `PXR_Manager` (the panel only offers Hybrid); tick **Allow 'unsafe' Code** in Player settings, and on the device turn on **"设置 > 实验室 > 表情模拟"** (Settings > Lab > Expression simulation). The quoted Chinese strings are the device's on-screen menu labels.
+2. Call order: `WantFaceTrackingService()` → `GetFaceTrackingSupported(...)` → `StartFaceTracking(ref FaceTrackingStartInfo)` → `GetFaceTrackingState` / `GetFaceTrackingData` → `StopFaceTracking(ref FaceTrackingStopInfo)`.
+3. Permissions are written automatically per mode: Hybrid writes three entries (`picovr.software.face_tracking` + `com.picovr.permission.FACE_TRACKING` + `android.permission.RECORD_AUDIO`); Face Only drops the audio recording permission; Lipsync Only drops the FACE_TRACKING permission.
+4. Hybrid gives the best results but the highest CPU usage; you can downgrade to Face Only / Lipsync Only depending on the scene.
 
-### 5. 体感追踪器：全身动捕 vs 独立追踪（二选一）
+### 5. Motion Trackers: Full-Body Motion Capture vs Independent Tracking (Choose One)
 
-环境：PICO 4 系列 / PICO 4 Ultra 系列，系统 **5.13.0 及以上**，**PICO 体感追踪器（正式版）**；前提是场景已有 `XR Origin` + `PXR_Manager (Script)`，并勾选 **Body Tracking**。
+Environment: PICO 4 series / PICO 4 Ultra series, system **5.13.0 or later**, **PICO motion tracker (official release)**; prerequisites are that the scene already has `XR Origin` + `PXR_Manager (Script)`, with **Body Tracking** ticked.
 
-全身动捕：
+Full-body motion capture:
 
-1. `GetBodyTrackingSupported(ref supported)` 查支持。
-2. `StartBodyTracking(mode, boneLength)` 开始；`BodyTrackingBoneLength` 单位厘米，未设的部位用默认值，且仅 `BTM_FULL_BODY_HIGH` 模式生效。
-3. 每帧 `GetBodyTrackingState(ref isTracking, ref state)` 判 `state.stateCode == BodyTrackingStatusCode.BT_VALID`，否则 `StartMotionTrackerCalibApp()`。
-4. `GetBodyTrackingData(ref BodyTrackingGetDataInfo, ref BodyTrackingData)` 取 `roleDatas[i].localPose` 的 `PosX/PosY/PosZ`、`RotQx/RotQy/RotQz/RotQw` 赋值骨骼。坐标系与头戴数据相同的世界坐标系，根关节是 `0 (Pelvis)`。
-5. 退出场景 `StopBodyTracking()`。
-6. 骨骼姿态**存在靠近根节点一侧的父节点**里：例如 `LEFT_KNEE(4)` 存左膝关节位置 + 左小腿骨骼姿态，`LEFT_ANKLE(7)` 存左脚踝位置 + 左脚面姿态。
+1. `GetBodyTrackingSupported(ref supported)` to check support.
+2. `StartBodyTracking(mode, boneLength)` to start; `BodyTrackingBoneLength` is in centimeters, parts not set use default values, and it takes effect only in `BTM_FULL_BODY_HIGH` mode.
+3. Each frame, `GetBodyTrackingState(ref isTracking, ref state)` and check `state.stateCode == BodyTrackingStatusCode.BT_VALID`; otherwise call `StartMotionTrackerCalibApp()`.
+4. `GetBodyTrackingData(ref BodyTrackingGetDataInfo, ref BodyTrackingData)` reads `PosX/PosY/PosZ` and `RotQx/RotQy/RotQz/RotQw` of `roleDatas[i].localPose` to assign bones. The coordinate system is the same world coordinate system as headset data, and the root joint is `0 (Pelvis)`.
+5. Call `StopBodyTracking()` when leaving the scene.
+6. Bone poses are **stored in the parent node on the side closer to the root**: for example, `LEFT_KNEE(4)` stores the left knee joint position + the left shin bone pose, and `LEFT_ANKLE(7)` stores the left ankle position + the left foot pose.
 
-独立追踪：
+Independent tracking:
 
-1. `PXR_MotionTracking.RequestMotionTrackerCompleteAction += cb;` 然后 `CheckMotionTrackerNumber(MotionTrackerNum.TWO)`（数量范围 [0,3]）。
-2. 回调里从 `RequestMotionTrackerCompleteEventData` 取 `trackerCount` 与 `trackerIds`。
-3. 每帧 `GetMotionTrackerLocation(trackerId, ref MotionTrackerLocation, ref isValidPose)`，用 `location.pose.Position.ToVector3()` / `location.pose.Orientation.ToQuat()` 赋值。
-4. 外设透传：`SetExtDevTrackerPassDataState(true)` + 订阅 `ExtDevPassDataAction`（值 `1` 开始取、`0` 停止），再 `GetExpandDeviceCustomData(out list)` / `SetExpandDeviceCustomData(ref array)`；设备列表 `GetExpandDevice(out devices)`、电量 `GetExpandDeviceBattery`、振动 `SetExpandDeviceVibrate`。自定义数据 16 字节中**仅前 15 个有效**。
+1. `PXR_MotionTracking.RequestMotionTrackerCompleteAction += cb;` then `CheckMotionTrackerNumber(MotionTrackerNum.TWO)` (count range [0,3]).
+2. In the callback, read `trackerCount` and `trackerIds` from `RequestMotionTrackerCompleteEventData`.
+3. Each frame, `GetMotionTrackerLocation(trackerId, ref MotionTrackerLocation, ref isValidPose)`, then assign using `location.pose.Position.ToVector3()` / `location.pose.Orientation.ToQuat()`.
+4. Peripheral pass-through: `SetExtDevTrackerPassDataState(true)` + subscribe to `ExtDevPassDataAction` (value `1` starts reading, `0` stops), then `GetExpandDeviceCustomData(out list)` / `SetExpandDeviceCustomData(ref array)`; device list `GetExpandDevice(out devices)`, battery `GetExpandDeviceBattery`, vibration `SetExpandDeviceVibrate`. Of the 16-byte custom data, **only the first 15 bytes are valid**.
 
-### 6. 系统键盘与手柄射线 UI
+### 6. System Keyboard and Controller-Ray UI
 
-1. 前置：XRI **2.1.0 及以上** + 导入 **Starter Assets**；场景已有 `XR Origin` 并配好左右手柄。
-2. Hierarchy 加 **UI > Event System** 与 **UI > Canvas**（或直接 **XR > UI Canvas**）。
-3. Canvas：**Render Mode = World Space**，**Event Camera = 场景主相机**，加 **Tracked Device Graphic Raycaster** 组件（system-keyboard 页写作 “Tracked Device Graphic Raycast”）。
-4. 右键 Canvas > **UI > Input Field - TextMeshPro** 添加输入域；射线点击输入框即唤起系统键盘。
-5. 选中 `Left Controller` / `Right Controller`，在 **XR Ray Interactor** 上把 **Max Raycast Distance** 调到**大于相机到 UI 的实际距离**，射线接触输入域时变白表示可交互。
+1. Prerequisites: XRI **2.1.0 or later** + import **Starter Assets**; the scene already has `XR Origin` with left and right controllers configured.
+2. Add **UI > Event System** and **UI > Canvas** in the Hierarchy (or directly **XR > UI Canvas**).
+3. Canvas: **Render Mode = World Space**, **Event Camera = scene main camera**, add the **Tracked Device Graphic Raycaster** component (the system-keyboard page writes it as "Tracked Device Graphic Raycast").
+4. Right-click the Canvas > **UI > Input Field - TextMeshPro** to add an input field; clicking the input field with the ray summons the system keyboard.
+5. Select `Left Controller` / `Right Controller`, and on the **XR Ray Interactor** set **Max Raycast Distance** to **greater than the actual distance from the camera to the UI**; when the ray touches the input field, it turns white to indicate it is interactive.
 
-## 核心 API 锚点
+## Core API Anchors
 
-命名空间：`Unity.XR.PXR`。
+Namespace: `Unity.XR.PXR`.
 
-### PXR_Input（现行）
+### PXR_Input (Current)
 
 ```csharp
 ControllerStatus GetControllerStatus(Controller controller)
@@ -148,9 +148,9 @@ bool  IsControllerConnected(Controller controller)
 void  SetControllerOriginOffset(Controller controller, Vector3 offset)
 Quaternion GetControllerPredictRotation(Controller controller, double predictTime)
 Vector3    GetControllerPredictPosition(Controller controller, double predictTime)
-Action<ActiveInputDevice> InputDeviceChanged;              // 输入源变化回调
-GetControllerHandness()                                    // 取系统惯用手，仅 PICO G3
-
+Action<ActiveInputDevice> InputDeviceChanged;              // Input source change callback
+GetControllerHandness()                                    // Gets the system dominant hand; PICO G3 only
+ 
 void SendHapticImpulse(VibrateType vibrateType, float amplitude, int duration, int frequency)
 int  SendHapticBuffer(VibrateType, AudioClip audioClip, ChannelFlip, ref int sourceId, CacheType)
 int  SendHapticBuffer(VibrateType, float[] pcmData, int buffersize, int frequency, int channelMask,
@@ -163,9 +163,9 @@ int  StartHapticBuffer(int sourceId)
 int  UpdateHapticBuffer(int sourceId, VibrateType, ChannelFlip, float amplitudeScale)
 ```
 
-枚举：`Controller`（LeftController/RightController）、`ControllerDevice`（G2=3, Neo2, Neo3, PICO_4, G3, PICO_4U, NewController=10）、`ControllerStatus`（Static=0/SixDof/ThreeDof/Sleep/CollidedIn3Dof/CollidedIn6Dof）、`VibrateType`（None=0, LeftController=1, RightController=2, BothController=3, **LeftPICO4U=4, RightPICO4U=8, BothPICO4U=12**）、`VibrateController`（No=0/Left=1/Right=2/LeftAndRight=3）、`CacheType`（DontCache=0/CacheAndVibrate=1/CacheNoVibrate=2）、`ChannelFlip`（No/Yes）、`CacheConfig`（CacheAndVibrate=1/CacheNoVibrate=2）。
+Enums: `Controller` (LeftController/RightController), `ControllerDevice` (G2=3, Neo2, Neo3, PICO_4, G3, PICO_4U, NewController=10), `ControllerStatus` (Static=0/SixDof/ThreeDof/Sleep/CollidedIn3Dof/CollidedIn6Dof), `VibrateType` (None=0, LeftController=1, RightController=2, BothController=3, **LeftPICO4U=4, RightPICO4U=8, BothPICO4U=12**), `VibrateController` (No=0/Left=1/Right=2/LeftAndRight=3), `CacheType` (DontCache=0/CacheAndVibrate=1/CacheNoVibrate=2), `ChannelFlip` (No/Yes), `CacheConfig` (CacheAndVibrate=1/CacheNoVibrate=2).
 
-**已废弃（勿新写）**：`SetControllerVibration`、`SetControllerVibrationEvent`、`StartControllerVCMotor`、`StopControllerVCMotor`、`SetControllerAmp`、`StartVibrateBySharem`、`SaveVibrateByCache`、`StartVibrateByCache`、`ClearVibrateByCache`、`StartVibrateByPHF`、`PauseVibrate`、`ResumeVibrate`、`UpdateVibrateParams`、`CreateHapticStream`/`WriteHapticStream`/`SetHapticStreamSpeed`/`GetHapticStreamSpeed`/`GetHapticStreamCurrentFrameSequence`/`StartHapticStream`/`StopHapticStream`/`RemoveHapticStream`/`AnalysisHapticStreamPHF`、`GetDominantHand`/`SetDominantHand`、`GetBodyTrackingPose`、`GetMotionTrackerConnectStateWithID`、`GetMotionTrackerBattery`、`GetMotionTrackerCalibState`、`SetBodyTrackingMode`、`SetBodyTrackingBoneLength`、`ResetController`、`SetArmModelParameters`。
+**Deprecated (do not write new code with these)**: `SetControllerVibration`, `SetControllerVibrationEvent`, `StartControllerVCMotor`, `StopControllerVCMotor`, `SetControllerAmp`, `StartVibrateBySharem`, `SaveVibrateByCache`, `StartVibrateByCache`, `ClearVibrateByCache`, `StartVibrateByPHF`, `PauseVibrate`, `ResumeVibrate`, `UpdateVibrateParams`, `CreateHapticStream`/`WriteHapticStream`/`SetHapticStreamSpeed`/`GetHapticStreamSpeed`/`GetHapticStreamCurrentFrameSequence`/`StartHapticStream`/`StopHapticStream`/`RemoveHapticStream`/`AnalysisHapticStreamPHF`, `GetDominantHand`/`SetDominantHand`, `GetBodyTrackingPose`, `GetMotionTrackerConnectStateWithID`, `GetMotionTrackerBattery`, `GetMotionTrackerCalibState`, `SetBodyTrackingMode`, `SetBodyTrackingBoneLength`, `ResetController`, `SetArmModelParameters`.
 
 ### PXR_HandTracking
 
@@ -177,25 +177,25 @@ static bool GetHandScale(HandType hand, ref float scale)
 bool GetSettingState()                                     // (Deprecated)
 ```
 
-枚举：`HandType`（HandLeft=0/HandRight=1）、`ActiveInputDevice`（HeadActive=0/ControllerActive=1/HandTrackingActive=2）、`HandAimStatus`（AimComputed/AimRayValid/AimIndexPinching/AimMiddlePinching/AimRingPinching/AimLittlePinching/AimRayTouched，位标志）、`HandLocationStatus`（OrientationValid/PositionValid/OrientationTracked/PositionTracked）、`HandFinger`（Thumb/Index/Middle/Ring/**Pinky**）。
-结构体：`Vector3f`、`Quatf`、`Posef`、`HandAimState`（aimStatus/aimRayPose/pinchStrengthIndex/Middle/Ring/Little/touchStrengthRay）、`HandJointLocation`（locationStatus/pose/radius）、`HandJointLocations`（isActive/jointCount/handScale/jointLocations）。
-组件与预制体：`PXR_Hand`（手模配置脚本，含 `Computed`/`RayPose`/`RayValid`/`Pinch`/`PinchStrength`）、`PXR_Hand Pose Generator` + `PXR_Hand Pose`（手势编辑器，v2.1.5 起）、`HandLeft`/`HandRight` 预制体、`RayPose (Transform)`、`DefaultRay`。
+Enums: `HandType` (HandLeft=0/HandRight=1), `ActiveInputDevice` (HeadActive=0/ControllerActive=1/HandTrackingActive=2), `HandAimStatus` (AimComputed/AimRayValid/AimIndexPinching/AimMiddlePinching/AimRingPinching/AimLittlePinching/AimRayTouched, bit flags), `HandLocationStatus` (OrientationValid/PositionValid/OrientationTracked/PositionTracked), `HandFinger` (Thumb/Index/Middle/Ring/**Pinky**).
+Structs: `Vector3f`, `Quatf`, `Posef`, `HandAimState` (aimStatus/aimRayPose/pinchStrengthIndex/Middle/Ring/Little/touchStrengthRay), `HandJointLocation` (locationStatus/pose/radius), `HandJointLocations` (isActive/jointCount/handScale/jointLocations).
+Components and prefabs: `PXR_Hand` (hand model configuration script, including `Computed` / `RayPose` / `RayValid` / `Pinch` / `PinchStrength`), `PXR_Hand Pose Generator` + `PXR_Hand Pose` (gesture editor, since v2.1.5), `HandLeft` / `HandRight` prefabs, `RayPose (Transform)`, `DefaultRay`.
 
 ### PXR_MotionTracking
 
 ```csharp
-// 眼动（现行）
+// Eye tracking (current)
 int GetEyeTrackingSupported(ref bool supported, ref int supportedModesCount, ref EyeTrackingMode[] supportedModes)
 int StartEyeTracking(ref EyeTrackingStartInfo startInfo)
 int StopEyeTracking(ref EyeTrackingStopInfo stopInfo)
 int GetEyeTrackingState(ref bool isTracking, ref EyeTrackingState state)
 int GetEyeTrackingData(ref EyeTrackingDataGetInfo getInfo, ref EyeTrackingData data)
-int GetEyeOpenness(ref float leftEyeOpenness, ref float rightEyeOpenness)      // 仅 PICO 4 Enterprise
-int GetEyePupilInfo(ref EyePupilInfo eyePupilPosition)                          // 仅 PICO 4 Enterprise
-int GetPerEyePose(ref long timestamp, ref Posef leftEyePose, ref Posef rightPose)   // 仅 PICO 4 Enterprise
-int GetEyeBlink(ref long timestamp, ref bool isLeftBlink, ref bool isRightBlink)    // 仅 PICO 4 Enterprise
+int GetEyeOpenness(ref float leftEyeOpenness, ref float rightEyeOpenness)      // PICO 4 Enterprise only
+int GetEyePupilInfo(ref EyePupilInfo eyePupilPosition)                          // PICO 4 Enterprise only
+int GetPerEyePose(ref long timestamp, ref Posef leftEyePose, ref Posef rightPose)   // PICO 4 Enterprise only
+int GetEyeBlink(ref long timestamp, ref bool isLeftBlink, ref bool isRightBlink)    // PICO 4 Enterprise only
 
-// 面部（v3.4.0 API 参考中全部标 Deprecated，但指南仍以此为主线）
+// Face (in the v3.4.0 API reference all are marked Deprecated, but the guide still treats them as the main line)
 int WantFaceTrackingService()
 unsafe int GetFaceTrackingSupported(ref bool supported, ref int supportedModesCount, ref FaceTrackingMode[] supportedModes)
 int StartFaceTracking(ref FaceTrackingStartInfo startInfo)
@@ -203,7 +203,7 @@ int StopFaceTracking(ref FaceTrackingStopInfo stopInfo)
 int GetFaceTrackingState(ref bool isTracking, ref FaceTrackingState state)
 int GetFaceTrackingData(ref FaceTrackingDataGetInfo getInfo, ref FaceTrackingData data)
 
-// 全身动捕（现行）
+// Full-body motion capture (current)
 int StartMotionTrackerCalibApp()
 int GetBodyTrackingSupported(ref bool supported)
 int StartBodyTracking(BodyTrackingMode mode, BodyTrackingBoneLength boneLength)
@@ -211,7 +211,7 @@ int StopBodyTracking()
 int GetBodyTrackingState(ref bool isTracking, ref BodyTrackingState state)
 int GetBodyTrackingData(ref BodyTrackingGetDataInfo getInfo, ref BodyTrackingData data)
 
-// 独立追踪与外设（现行）
+// Independent tracking and peripherals (current)
 CheckMotionTrackerNumber(MotionTrackerNum number)
 GetMotionTrackerLocation(long trackerId, ref MotionTrackerLocation location, ref bool isValidPose)
 GetMotionTrackerBattery(long trackerId, ref int battery, ref int charger)
@@ -223,69 +223,69 @@ RequestMotionTrackerCompleteAction / MotionTrackerConnectionAction / MotionTrack
 ExpandDeviceConnectionAction / ExpandDeviceBatteryAction
 ```
 
-枚举：`TrackingStateCode`（PXR_MT_SUCCESS=0、PXR_MT_FAILURE=-1、PXR_MT_MODE_NONE=-2、PXR_MT_DEVICE_NOT_SUPPORT=-3、PXR_MT_SERVICE_NEED_START=-4、PXR_MT_ET_PERMISSION_DENIED=-5、PXR_MT_FT_PERMISSION_DENIED=-6、PXR_MT_MIC_PERMISSION_DENIED=-7、PXR_MT_SYSTEM_DENIED=-8、PXR_MT_UNKNOW_ERROR=-9）、`EyeTrackingMode`（PXR_ETM_NONE=-1/PXR_ETM_BOTH=0/PXR_ETM_COUNT=1）、`PerEyeUsage`（LeftEye/RightEye/Combined/EyeCount）、`EyeTrackingDataGetFlags`、`FaceTrackingMode`（PXR_FTM_NONE=-1/PXR_FTM_FACE=0/PXR_FTM_LIPS=1/**PXR_FTM_FACE_LIPS_VIS=2**/**PXR_FTM_FACE_LIPS_BS=3**）、`FaceTrackingDataGetFlags`（PXR_FACE_DEFAULT=0）、`BlendShapeIndex`（0~51 BlendShapes + 52~71 Viseme）、`BodyTrackingMode`（BTM_FULL_BODY_LOW=0/BTM_FULL_BODY_HIGH=1）、`BodyTrackingStatusCode`（BT_INVALID=0/BT_VALID=1/BT_LIMITED=2）、`BodyTrackingErrorCode`（BT_ERROR_INNER_EXCEPTION=0 … BT_ERROR_TRACKING_POSE_ERROR=7）、`BodyTrackingGetDataFlags`（PXR_BODY_NONE/PXR_BODY_POSE/PXR_BODY_ACTION/PXR_BODY_VELO_ACC）、`BodyTrackerRole`（Pelvis=0 … RIGHT_HAND=23）、`MotionTrackerType`（MT_1=Beta/MT_2=正式版）、`MotionTrackerMode`（BodyTracking/MotionTracking）、`MotionTrackerNum`（NONE/ONE/TWO/THREE）、`MotionTrackerConfidence`。
-结构体：`EyeTrackingStartInfo`（needCalibration/mode）、`EyeTrackingState`、`EyeTrackingDataGetInfo`、`EyeTrackingData`（`eyeDatas`，长度 `(int)PerEyeUsage.EyeCount`）、`PerEyeData`、`EyePupilInfo`、`FaceTrackingStartInfo`/`FaceTrackingStopInfo`/`FaceTrackingState`/`FaceTrackingDataGetInfo`/`FaceTrackingData`、`BodyTrackingStartInfo`、`BodyTrackingBoneLength`（headLen/neckLen/torsoLen/hipLen/upperLegLen/lowerLegLen/footLen/shoulderLen/upperArmLen/lowerArmLen/handLen，单位 cm）、`BodyTrackingState`、`BodyTrackingGetDataInfo`、`BodyTrackingRoleData`、`BodyTrackingData`、`MotionTrackerLocation`/`MotionTrackerLocations`（localLocation / globalLocation，后者除特殊需求不建议用）、`TrackerSN`（最长 24）、`RequestMotionTrackerCompleteEventData`、`ExpandDevicesCustomData`。
+Enums: `TrackingStateCode` (PXR_MT_SUCCESS=0, PXR_MT_FAILURE=-1, PXR_MT_MODE_NONE=-2, PXR_MT_DEVICE_NOT_SUPPORT=-3, PXR_MT_SERVICE_NEED_START=-4, PXR_MT_ET_PERMISSION_DENIED=-5, PXR_MT_FT_PERMISSION_DENIED=-6, PXR_MT_MIC_PERMISSION_DENIED=-7, PXR_MT_SYSTEM_DENIED=-8, PXR_MT_UNKNOW_ERROR=-9), `EyeTrackingMode` (PXR_ETM_NONE=-1/PXR_ETM_BOTH=0/PXR_ETM_COUNT=1), `PerEyeUsage` (LeftEye/RightEye/Combined/EyeCount), `EyeTrackingDataGetFlags`, `FaceTrackingMode` (PXR_FTM_NONE=-1/PXR_FTM_FACE=0/PXR_FTM_LIPS=1/**PXR_FTM_FACE_LIPS_VIS=2**/**PXR_FTM_FACE_LIPS_BS=3**), `FaceTrackingDataGetFlags` (PXR_FACE_DEFAULT=0), `BlendShapeIndex` (0~51 BlendShapes + 52~71 Viseme), `BodyTrackingMode` (BTM_FULL_BODY_LOW=0/BTM_FULL_BODY_HIGH=1), `BodyTrackingStatusCode` (BT_INVALID=0/BT_VALID=1/BT_LIMITED=2), `BodyTrackingErrorCode` (BT_ERROR_INNER_EXCEPTION=0 … BT_ERROR_TRACKING_POSE_ERROR=7), `BodyTrackingGetDataFlags` (PXR_BODY_NONE/PXR_BODY_POSE/PXR_BODY_ACTION/PXR_BODY_VELO_ACC), `BodyTrackerRole` (Pelvis=0 … RIGHT_HAND=23), `MotionTrackerType` (MT_1=Beta / MT_2=official release), `MotionTrackerMode` (BodyTracking/MotionTracking), `MotionTrackerNum` (NONE/ONE/TWO/THREE), `MotionTrackerConfidence`.
+Structs: `EyeTrackingStartInfo` (needCalibration/mode), `EyeTrackingState`, `EyeTrackingDataGetInfo`, `EyeTrackingData` (`eyeDatas`, length `(int)PerEyeUsage.EyeCount`), `PerEyeData`, `EyePupilInfo`, `FaceTrackingStartInfo` / `FaceTrackingStopInfo` / `FaceTrackingState` / `FaceTrackingDataGetInfo` / `FaceTrackingData`, `BodyTrackingStartInfo`, `BodyTrackingBoneLength` (headLen/neckLen/torsoLen/hipLen/upperLegLen/lowerLegLen/footLen/shoulderLen/upperArmLen/lowerArmLen/handLen, in cm), `BodyTrackingState`, `BodyTrackingGetDataInfo`, `BodyTrackingRoleData`, `BodyTrackingData`, `MotionTrackerLocation` / `MotionTrackerLocations` (localLocation / globalLocation; the latter is not recommended unless there is a special need), `TrackerSN` (up to 24), `RequestMotionTrackerCompleteEventData`, `ExpandDevicesCustomData`.
 
-### 其它 PICO 侧锚点
+### Other PICO-Side Anchors
 
-- `PXR_Manager (Script)` 面板开关：`Eye Tracking`、`Eye Tracking Calibration`、`Hand Tracking`（含 `Hand Tracking Support`）、`Adaptive Hand Model (PICO)`、`High Frequency Tracking (60Hz)`、`Face Tracking Mode`、`Body Tracking`、`Tracking Origin Mode`、`Camera Y Offset`、`Stage Mode`。
-- `PXR_System.SetTrackingOrigin` / `GetTrackingOrigin`；面部旧接口 `PXR_System.EnableFaceTracking` / `EnableLipSync` / `GetFaceTrackingData` / `SetFaceTrackingStatus`（2.1.4+）。
-- 眼动重构前的接口在 `PXR_EyeTracking`；运动追踪新旧接口对照见 [motion-tracker-api-compatibility](https://developer-cn.picoxr.com/document/unity/motion-tracker-api-compatibility/)。
-- Unity 侧：`InputDevices.GetDeviceAtXRNode`、`InputDevice.TryGetFeatureValue`、`CommonUsages.*`、`XRNode.LeftHand`、`KeyCode.Escape`/`KeyCode.JoystickButton0`/`KeyCode.Home`、`XR Origin`、`XR Ray Interactor`、`Tracked Device Graphic Raycaster`、`XRI Default Input Actions`、`PicoAimHand`、Unity **XR Hands** 套件。
-- 左右眼分屏：主相机 `Target Eye = None (Main Display)`，子相机分别设 `Left`/`Right` 并用 `Culling Mask` 绑 Layer（[how-to-set-up-a-camera-for-each-eye](https://developer-cn.picoxr.com/document/unity/how-to-set-up-a-camera-for-each-eye/)）。
+- `PXR_Manager (Script)` panel toggles: `Eye Tracking`, `Eye Tracking Calibration`, `Hand Tracking` (including `Hand Tracking Support`), `Adaptive Hand Model (PICO)`, `High Frequency Tracking (60Hz)`, `Face Tracking Mode`, `Body Tracking`, `Tracking Origin Mode`, `Camera Y Offset`, `Stage Mode`.
+- `PXR_System.SetTrackingOrigin` / `GetTrackingOrigin`; legacy face interfaces `PXR_System.EnableFaceTracking` / `EnableLipSync` / `GetFaceTrackingData` / `SetFaceTrackingStatus` (2.1.4+).
+- Eye tracking interfaces from before the refactor are in `PXR_EyeTracking`; for the old-vs-new motion tracking interface comparison, see [motion-tracker-api-compatibility](https://developer-cn.picoxr.com/document/unity/motion-tracker-api-compatibility/).
+- Unity side: `InputDevices.GetDeviceAtXRNode`, `InputDevice.TryGetFeatureValue`, `CommonUsages.*`, `XRNode.LeftHand`, `KeyCode.Escape` / `KeyCode.JoystickButton0` / `KeyCode.Home`, `XR Origin`, `XR Ray Interactor`, `Tracked Device Graphic Raycaster`, `XRI Default Input Actions`, `PicoAimHand`, the Unity **XR Hands** package.
+- Per-eye split screen: the main camera uses `Target Eye = None (Main Display)`; child cameras are set to `Left` / `Right` respectively and bind layers via `Culling Mask` ([how-to-set-up-a-camera-for-each-eye](https://developer-cn.picoxr.com/document/unity/how-to-set-up-a-camera-for-each-eye/)).
 
-### ⚠ 官方文档自相矛盾处（落地前必须用 SDK 源码复核）
+### ⚠ Contradictions in the Official Docs (Verify Against SDK Source Before Shipping)
 
-| 指南写法 | API 参考写法 | 处理建议 |
+| Guide form | API reference form | Recommended handling |
 |---|---|---|
-| `PXR_MotionTracking.StartBodyTracking(BodyJointSet.BODY_JOINT_SET_BODY_FULL_START, boneLength)` | `StartBodyTracking(BodyTrackingMode mode, BodyTrackingBoneLength boneLength)`，`BTM_FULL_BODY_LOW`/`BTM_FULL_BODY_HIGH` | 以 API 参考签名为准，用 IDE 补全确认枚举实际名 |
-| `BodyTrackingStatus bs` / `BodyTrackingMessage.BT_MESSAGE_TRACKER_NOT_CALIBRATED` | `BodyTrackingState state` / `BodyTrackingErrorCode.BT_ERROR_TRACKER_NOT_CALIBRATED` | 同上 |
-| `BodyTrackerRole.ROLE_NUM` 作为数组长度 | `(int)BodyTrackerRole.NONE_ROLE` 作为数组长度 | 同上 |
-| “要用 Hybrid (Blendshape) 就把 mode 设为 `PXR_FTM_FACE_LIPS_VIS`” | `PXR_FTM_FACE_LIPS_VIS` = Viseme 输出，`PXR_FTM_FACE_LIPS_BS` = Blendshape 输出 | 按枚举语义选，指南这句自相矛盾 |
-| `FaceTrackingSupportedMode.PXR_FTM_FACE_LIPS_VIS` | 枚举名是 `FaceTrackingMode` | 用 `FaceTrackingMode` |
-| `EyeTrackingStartInfo.needCalibration = 1`（示例） | 结构体说明：`0` = 需要校准，`1` = 不需要 | 按结构体语义显式赋值，别照抄示例 |
+| `PXR_MotionTracking.StartBodyTracking(BodyJointSet.BODY_JOINT_SET_BODY_FULL_START, boneLength)` | `StartBodyTracking(BodyTrackingMode mode, BodyTrackingBoneLength boneLength)`, `BTM_FULL_BODY_LOW` / `BTM_FULL_BODY_HIGH` | Follow the API reference signature; confirm the actual enum names with IDE completion |
+| `BodyTrackingStatus bs` / `BodyTrackingMessage.BT_MESSAGE_TRACKER_NOT_CALIBRATED` | `BodyTrackingState state` / `BodyTrackingErrorCode.BT_ERROR_TRACKER_NOT_CALIBRATED` | Same as above |
+| `BodyTrackerRole.ROLE_NUM` used as the array length | `(int)BodyTrackerRole.NONE_ROLE` used as the array length | Same as above |
+| "To use Hybrid (Blendshape), set mode to `PXR_FTM_FACE_LIPS_VIS`" | `PXR_FTM_FACE_LIPS_VIS` = Viseme output, `PXR_FTM_FACE_LIPS_BS` = Blendshape output | Choose by enum semantics; this sentence of the guide is self-contradictory |
+| `FaceTrackingSupportedMode.PXR_FTM_FACE_LIPS_VIS` | The enum name is `FaceTrackingMode` | Use `FaceTrackingMode` |
+| `EyeTrackingStartInfo.needCalibration = 1` (example) | Struct description: `0` = calibration required, `1` = not required | Assign explicitly per the struct semantics; do not copy the example verbatim |
 
 ## DO NOT
 
 ```csharp
-// ❌ 用已废弃的振动接口
+// ❌ Using deprecated vibration interfaces
 PXR_Input.SetControllerVibration(0.5f, 500, Controller.RightController);
 PXR_Input.SetControllerVibrationEvent(1, 100, 0.5f, 500);
-// ✅ v3.x 统一走 SendHapticImpulse
+// ✅ v3.x uniformly uses SendHapticImpulse
 PXR_Input.SendHapticImpulse(VibrateType.RightController, 0.5f, 500, 100);
 ```
 
 ```csharp
-// ❌ 找一个不存在的 "StopHapticImpulse" 来停非缓冲振动
+// ❌ Looking for a nonexistent "StopHapticImpulse" to stop non-buffered vibration
 PXR_Input.StopHapticImpulse(VibrateType.RightController);
-// ✅ 再调一次 SendHapticImpulse，振幅与时长归零
+// ✅ Call SendHapticImpulse again, with amplitude and duration zeroed
 PXR_Input.SendHapticImpulse(VibrateType.RightController, 0f, 0, 100);
 ```
 
 ```csharp
-// ❌ 用旧的音频/PHF 振动接口（全部 Deprecated）
+// ❌ Using old audio/PHF vibration interfaces (all Deprecated)
 PXR_Input.StartControllerVCMotor(path, slot);
 PXR_Input.StartVibrateByPHF(phfText, ref sourceId);
-// ✅ 统一走 SendHapticBuffer 的三个重载（AudioClip / PCM / PHF TextAsset）
+// ✅ Uniformly use the three SendHapticBuffer overloads (AudioClip / PCM / PHF TextAsset)
 PXR_Input.SendHapticBuffer(PXR_Input.VibrateType.BothController, phfText,
     PXR_Input.ChannelFlip.No, 1, ref sourceId);
 ```
 
 ```csharp
-// ❌ 没开始就取眼动数据（也别指望勾了面板就自动开）
+// ❌ Reading eye data without starting (and do not expect ticking the panel to start it automatically)
 PXR_MotionTracking.GetEyeTrackingData(ref info, ref data);
-// ✅ 先 Start，权限弹窗在首次 GetEyeTrackingData 时才出现
+// ✅ Start first; the permission prompt appears only on the first GetEyeTrackingData call
 var startInfo = new EyeTrackingStartInfo { mode = EyeTrackingMode.PXR_ETM_BOTH };
 PXR_MotionTracking.StartEyeTracking(ref startInfo);
 PXR_MotionTracking.GetEyeTrackingData(ref info, ref data);
 ```
 
 ```csharp
-// ❌ 猜方法名（这些在 PXR_HandTracking 里都不存在）
+// ❌ Guessing method names (none of these exist on PXR_HandTracking)
 PXR_HandTracking.GetHandJoints(...);
 PXR_HandTracking.GetHandJointLocations(...);
 PXR_HandTracking.IsHandTracking();
-// ✅ 只有这几个
+// ✅ Only these exist
 PXR_HandTracking.GetJointLocations(HandType.HandLeft, ref jointLocations);
 PXR_HandTracking.GetAimState(HandType.HandLeft, ref aimState);
 PXR_HandTracking.GetActiveInputDevice();
@@ -293,32 +293,32 @@ PXR_HandTracking.GetHandScale(HandType.HandLeft, ref scale);
 ```
 
 ```csharp
-// ❌ 把右手坐标系的位姿直接塞进 Unity Transform
+// ❌ Pushing a right-handed coordinate system pose directly into a Unity Transform
 child.localPosition = new Vector3(location.pose.Position.x, location.pose.Position.y, location.pose.Position.z);
-// ✅ 用 SDK 自带的转换扩展
+// ✅ Use the SDK's built-in conversion extensions
 child.localPosition = location.pose.Position.ToVector3();
 child.localRotation = location.pose.Orientation.ToQuat();
 ```
 
 ```csharp
-// ❌ 拿到 trackerId 之前就查位置
+// ❌ Querying position before obtaining a trackerId
 PXR_MotionTracking.GetMotionTrackerLocation(0, ref location, ref isValid);
-// ✅ 先请求数量，回调里拿 trackerIds
+// ✅ Request the count first; get trackerIds in the callback
 PXR_MotionTracking.RequestMotionTrackerCompleteAction += OnComplete;
 PXR_MotionTracking.CheckMotionTrackerNumber(MotionTrackerNum.TWO);
 ```
 
 ```csharp
-// ❌ 用已废弃的运动追踪查询接口
+// ❌ Using deprecated motion tracking query interfaces
 PXR_MotionTracking.CheckMotionTrackerModeAndNumber(MotionTrackerMode.MotionTracking, MotionTrackerNum.TWO);
 PXR_MotionTracking.GetMotionTrackerLocations(sn, ref locations, ref confidence, 0);
-// ✅ v3.4.0 现行版本
+// ✅ The current version in v3.4.0
 PXR_MotionTracking.CheckMotionTrackerNumber(MotionTrackerNum.TWO);
 PXR_MotionTracking.GetMotionTrackerLocation(trackerId, ref location, ref isValidPose);
 ```
 
-- ❌ 期待手势与手柄同时可用（做「一只手拿手柄、一只手裸手」的交互）→ ✅ 设备只能二选一，`Controller And Hands` 是自动切换。
-- ❌ 用手模时保留 `LeftHand Controller` / `RightHand Controller` → ✅ 先删掉，否则手模与手柄模型同时出现。
-- ❌ 运行时想关掉 60Hz 高频手势追踪 → ✅ 只能在编辑期决定，启用后无法运行时关闭。
-- ❌ 同时期望全身动捕数据和独立追踪数据 → ✅ 两模式互斥，按场景切换。
-- ❌ 给截屏键、音量键、Home 键写输入绑定 → ✅ 这些无开放键值或被系统占用。
+- ❌ Expecting hand gestures and controllers to be usable at the same time (an interaction where one hand holds a controller and the other is bare-handed) → ✅ The device supports only one of the two; `Controller And Hands` is an automatic switch.
+- ❌ Keeping `LeftHand Controller` / `RightHand Controller` while using hand models → ✅ Delete them first; otherwise the hand model and controller model appear together.
+- ❌ Trying to turn off 60Hz high-frequency hand tracking at runtime → ✅ It can only be decided at edit time; once enabled, it cannot be turned off at runtime.
+- ❌ Expecting full-body motion capture data and independent tracking data at the same time → ✅ The two modes are mutually exclusive; switch according to the scene.
+- ❌ Writing input bindings for the screenshot key, volume keys, or Home key → ✅ These have no exposed key values or are reserved by the system.

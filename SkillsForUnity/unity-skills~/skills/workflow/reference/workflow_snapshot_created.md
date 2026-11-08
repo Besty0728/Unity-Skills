@@ -6,6 +6,7 @@ Record a newly created object for undo tracking. Requires an active task (call w
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | Name of the Game Object |
 | instanceId | int | No | 0 | Instance ID of the object (preferred) |
+| entityId | string | No | null | Entity ID of the object (the only id on Unity 6000.4+) |
 
 **Returns:** `{ success, objectName, type }`
 

@@ -1,6 +1,12 @@
 ### particle_analyze
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `name` | string | No | null | GameObject name (`entityId` preferred) |
+| `path` | string | No | null | Hierarchy path |
+| `instanceId` | int | No | 0 | Instance ID (older Unity only) |
+| `rootName` | string | No | null | Root GameObject name |
+| `rootPath` | string | No | null | Root hierarchy path |
+| `rootInstanceId` | int | No | 0 | Root instance ID (older Unity only) |
 | `entityId` | string | No | null | One system (or `name` / `path` / `instanceId`) |
 | `rootEntityId` | string | No | null | Every system under this object (also `rootName` / `rootPath` / `rootInstanceId`); not with a single system |
 | `includeInactive` | bool | No | true | Include inactive objects |

@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-rpc
-description: "Netcode for GameObjects RPC rules — the universal [Rpc(SendTo.X)] model plus legacy ServerRpc/ClientRpc, RpcTarget, and RpcParams. Netcode for GameObjects 的 RPC 规则(通用 [Rpc(SendTo.X)] 模型,以及旧版 ServerRpc/ClientRpc、RpcTarget、RpcParams)。"
+description: "Netcode for GameObjects RPC rules — the universal [Rpc(SendTo.X)] model plus legacy ServerRpc/ClientRpc, RpcTarget, and RpcParams."
 type: reference
 ---
 

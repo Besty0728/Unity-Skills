@@ -3,68 +3,52 @@ name: unity-architecture
 description: Advise on Unity gameplay and system architecture
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Architecture Advisor
 
-## Triggers
+Documentation only: no REST skills. Use before generating many gameplay scripts or when the user asks for a cleaner architecture.
+
+## When to use
 - Planning code organization
 - Splitting responsibilities
 - Reducing coupling
-- Choosing refactor direction
-- 规划代码结构、划分职责、降低耦合、确定重构方向
-
-# Unity Architecture Advisor
-
-Use this before generating lots of gameplay scripts or when the user asks for a cleaner architecture.
+- Choosing a refactor direction
 
 ## Workflow
-
 1. Identify scope: prototype, small game, or long-lived project.
 2. Define the core loop and the minimum runtime systems needed.
 3. Recommend the smallest architecture that fits the scope.
-4. Separate:
-   - scene/bootstrap layer
-   - gameplay/domain logic
-   - data/config assets
-   - view/presentation layer
-5. Call out what should stay simple now vs what is worth abstracting.
+4. Separate: scene/bootstrap layer, gameplay/domain logic, data/config assets, view/presentation layer.
+5. Call out what should stay simple now and what is worth abstracting.
 
-## Output Format
-
-When using this skill, structure the advice as:
-
+## Output format
 - Project tier: prototype / small-game / long-lived
-- Recommended modules: 3-7 modules with one-line responsibilities
+- Recommended modules: 3-7, each with a one-line responsibility
 - Scene/bootstrap plan: where composition and initialization happen
 - Data ownership: what belongs in scene objects, ScriptableObjects, or pure C# classes
 - Communication rules: direct refs, interfaces, events, or commands
 - Performance risks: only the hot paths that matter
-- Do now / skip now: avoid over-engineering
+- Do now / skip now
 
-## Default Guidance
-
+## Default guidance
 - Prefer thin `MonoBehaviour` scripts as composition bridges.
 - Put reusable gameplay rules in plain C# classes when possible.
 - Use `ScriptableObject` for authored config and shared static data, not as a default dump for runtime state.
-- Keep dependencies explicit. Avoid hidden global state unless the project size clearly justifies a small service layer.
+- Keep dependencies explicit. Avoid hidden global state unless project size justifies a small service layer.
 - Favor simple module boundaries over framework-heavy architecture.
 
-## Explicit Execution Order and Entry Guards
-
-Most "random" gameplay bugs trace back to two silent assumptions: that scripts run in a predictable order, and that `Update` runs only when its data is ready. Neither is true unless you make them so.
+## Explicit execution order and entry guards
+Most "random" gameplay bugs trace back to two silent assumptions: that scripts run in a predictable order, and that `Update` runs only when its data is ready. Neither holds unless you make it so.
 
 ### Make startup order explicit
-
-Do not rely on Script Execution Order panels or accidental `Awake` ordering. Prefer these patterns in order of preference:
-
-- **One Bootstrap script** as the single entry point. It owns the initialization sequence and calls `sub.Init()` on the managers it creates. Only this one script has `[DefaultExecutionOrder(-10000)]`.
+Do not rely on Script Execution Order panels or accidental `Awake` ordering. In order of preference:
+- **One Bootstrap script** as the single entry point. It owns the initialization sequence and calls `sub.Init()` on the managers it creates. Only this script has `[DefaultExecutionOrder(-10000)]`.
 - **Pull, don't push**: a subscriber that needs data calls `source.GetValue()` on demand or subscribes to an event. A publisher that pushes into others during its own `Awake` creates hidden order dependencies.
 - **Reserve `[DefaultExecutionOrder(n)]`** for load-bearing singletons only (Bootstrap, InputRouter, SceneController). If more than 3-4 scripts need it, the architecture is wrong, not the ordering.
 
-The analogous ECS pattern — `[UpdateBefore(typeof(BarSystem))]` / `[UpdateAfter]` — works because the framework validates contradictions at sort time. In MonoBehaviour code the compiler won't catch them; be conservative. *Source: `EntitiesSamples/Docs/systems.md:32` — "if the ordering attributes of a group's children create a contradiction, an exception is thrown".*
+The ECS analogue, `[UpdateBefore(typeof(BarSystem))]` / `[UpdateAfter]`, works because the framework validates contradictions at sort time. MonoBehaviour code gets no such check, so be conservative. *Source: `EntitiesSamples/Docs/systems.md:32`: "if the ordering attributes of a group's children create a contradiction, an exception is thrown".*
 
 ### Make update preconditions explicit
-
-Every `Update` / `LateUpdate` / `FixedUpdate` should open with guard clauses that early-return when the system is not ready. Prefer the cheapest check first:
+Every `Update` / `LateUpdate` / `FixedUpdate` should open with guard clauses that return early when the system is not ready. Cheapest check first:
 ```csharp
 void Update() {
     if (!_isInitialized) return;       // construction-time
@@ -73,19 +57,15 @@ void Update() {
     // real work here
 }
 ```
-A missing guard is the difference between "doesn't run yet" (safe) and "runs with stale/null data and silently corrupts state" (debug nightmare). The ECS equivalent is `state.RequireForUpdate<Config>()` in `OnCreate`, which turns the precondition into a system-level invariant. *Source: `Dots101/Entities101/Assets/HelloCube/3. Prefabs/SpawnSystem.cs:17-19` — the system does not update unless a `Spawner` entity exists.*
+A missing guard separates "doesn't run yet" (safe) from "runs with stale or null data and silently corrupts state" (a debugging nightmare). The ECS equivalent is `state.RequireForUpdate<Config>()` in `OnCreate`, which turns the precondition into a system-level invariant. *Source: `Dots101/Entities101/Assets/HelloCube/3. Prefabs/SpawnSystem.cs:17-19`.*
 
-## Guardrails
-
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
+## Pitfalls
 - Do not start from a giant reusable framework unless the project truly needs it.
 - Do not add layers just to satisfy textbook SOLID wording.
-- Prefer a small architecture that can grow, not an impressive one that slows iteration.
+- Prefer a small architecture that can grow over an impressive one that slows iteration.
 
-## Load Related Advisory Modules When Needed
-
-- Pattern choice: see [`../patterns/SKILL.md`](../patterns/SKILL.md)
-- Async / Update / UniTask decisions: see [`../async/SKILL.md`](../async/SKILL.md)
-- Inspector-facing field design: see [`../inspector/SKILL.md`](../inspector/SKILL.md)
-- Script quality review: see [`../scriptdesign/SKILL.md`](../scriptdesign/SKILL.md)
+## Related advisory modules
+- Pattern choice: [patterns](../patterns/SKILL.md)
+- Async / Update / UniTask decisions: [async](../async/SKILL.md)
+- Inspector-facing field design: [inspector](../inspector/SKILL.md)
+- Script quality review: [scriptdesign](../scriptdesign/SKILL.md)

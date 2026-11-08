@@ -3,21 +3,16 @@ name: unity-yaml-editing
 description: Last-resort guidance for safely hand-editing Unity YAML
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# YAML Editing - Safe Hand-Edit Rules
 
-## Triggers
+## When to use
 - Hand-editing YAML when REST cannot reach
 - Fixing m_Script GUIDs or broken fileID references
 - Fixing .meta files or merge conflicts
-- REST 无法触达时手编 YAML、修复 m_Script GUID 或断裂 fileID 引用、修复 .meta 文件或合并冲突
-
-# YAML Editing - Safe Hand-Edit Rules
 
 Advisory module. This is operational guidance for directly editing Unity serialized YAML text when the REST skills (and the Editor itself) cannot do the job. Hand-editing YAML is the **last resort**, not a shortcut.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
-## When To Load / When NOT
+## When to use / When not to use
 
 **Prefer REST first.** For normal object/asset work, use the REST skills — they keep serialization valid for you:
 

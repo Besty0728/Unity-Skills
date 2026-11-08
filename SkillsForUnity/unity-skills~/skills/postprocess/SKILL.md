@@ -3,73 +3,65 @@ name: unity-postprocess
 description: Configure modern SRP post-processing on URP/HDRP
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity PostProcess Skills
 
-## Triggers
-- Setting up post-processing
-- Adding effects to a VolumeProfile
-- Tuning URP/HDRP scene look
-- 搭建后处理、向 VolumeProfile 添加效果、调整 URP/HDRP 场景观感
+Modern URP and HDRP post-processing on SRP Volume profiles. Parameters come from the schema (`GET /skills/schema?category=PostProcess&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md). Volume container and profile management (`volume_profile_create`, `volume_create`, ...) belongs to the [volume](../volume/SKILL.md) module.
 
-# PostProcess Skills
+## When to use
+- Setting up post-processing or tuning the look of a URP or HDRP scene
+- Adding or adjusting an effect override on a VolumeProfile
 
-Modern URP / HDRP post-processing skills built on top of the SRP Volume framework. For Volume container / profile CRUD (`volume_profile_create`, `volume_create`, etc.), use the `volume` module.
+## Rules
+- Call `postprocess_list_effects` before assuming an effect exists on the active pipeline.
+- Inspect real parameter names with `postprocess_get_effect` (or `volume_get_component`) before using the generic `postprocess_set_parameter`; prefer the dedicated `postprocess_set_*` skills.
+- URP and HDRP parameter surfaces are similar but not identical; do not reuse names across pipelines.
+- Query skills are `SemiAuto`. The `postprocess_add_effect`, `postprocess_set_*` and `postprocess_set_parameter` writers are `FullAuto`: under Approval they need a grant.
+- `postprocess_remove_effect` is a Delete operation: refused under Approval and Auto; only Bypass or an allowlist runs it.
+- Without SRP Core installed, every skill returns `{ error: "Scriptable Render Pipeline Core package (com.unity.render-pipelines.core) is not installed..." }`. That is a diagnostic answer, not a permission denial, and needs no grant.
 
-## Operating Mode
-
-- Query skills (`postprocess_list_effects`, `postprocess_get_effect`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
-- Mutating skills (`postprocess_add_effect`, `postprocess_set_parameter`, `postprocess_set_bloom`, `postprocess_set_depth_of_field`, `postprocess_set_tonemapping`, `postprocess_set_vignette`, `postprocess_set_color_adjustments`) are `SkillMode.FullAuto` — under **Approval** they need user grant (grant triggers one server-side execute returning the result); under **Auto** / **Bypass** they execute directly.
-- `postprocess_remove_effect` carries `SkillOperation.Delete` and is **auto-forbidden** in Approval / Auto modes (NeverInSemi). Only **Bypass** or the user-managed **Allowlist** can run it.
-
-## SRP Package Stub
-
-This module is compiled against `com.unity.render-pipelines.core` (`SRP_CORE`). When neither URP nor HDRP is installed (no SRP Core), **every** skill returns a stub `{ error: "Scriptable Render Pipeline Core package … is not installed." }` (`RenderPipelineSkillsCommon.NoSRP()`). The stub is a diagnostic payload, not a permission denial — it does **not** require grant and is **not** treated as NeverInSemi.
-
-## Guardrails
-
-**DO NOT**:
-- Use this module for PPv2 / `com.unity.postprocessing`
-- Use this module for general Volume container/profile management; use `volume`
-
-**Runtime-first rules**:
-- Always call `postprocess_list_effects` before assuming an effect exists on the active pipeline
-- Use `postprocess_get_effect` or `volume_get_component` to inspect real parameter names before setting generic parameters
-- Prefer the dedicated high-frequency skills (`postprocess_set_bloom`, `postprocess_set_depth_of_field`, etc.) over guessing generic parameter names
-- Treat URP and HDRP parameter surfaces as similar-but-not-identical; do not reuse names blindly across pipelines
+## Pitfalls
+- This module is not for PPv2 (`com.unity.postprocessing`).
+- Volume container and profile CRUD belong to the `volume` module, not here.
 
 ## Skills
 
 ### `postprocess_list_effects`
-List modern SRP post-processing effects supported by the active pipeline.
+List the post-processing effects the active pipeline supports.
+**Parameters:** None.
 
 ### `postprocess_add_effect`
-Add a post-processing effect override to a VolumeProfile.
+Add an effect override to a VolumeProfile.
+**Parameters:** `profilePath`, `effectType`, `overrides` (bool, default true).
 
 ### `postprocess_remove_effect`
-Remove a post-processing effect override from a VolumeProfile.
+Remove an effect override from a VolumeProfile.
+**Parameters:** `profilePath`, `effectType`.
 
 ### `postprocess_get_effect`
-Inspect a post-processing effect override.
+Inspect an effect override on a VolumeProfile.
+**Parameters:** `profilePath`, `effectType`.
 
 ### `postprocess_set_parameter`
-Set one parameter on a post-processing effect override.
+Set one parameter on an effect override.
+**Parameters:** `profilePath`, `effectType`, `parameterName`, `value`, `overrideState` (bool, default true).
 
 ### `postprocess_set_bloom`
 Configure Bloom.
+**Parameters:** `profilePath`, `intensity?`, `threshold?`, `scatter?`, `tint?`.
 
 ### `postprocess_set_depth_of_field`
-Configure Depth Of Field.
+Configure Depth of Field.
+**Parameters:** `profilePath`, `mode?`, `focusDistance?`, `gaussianStart?`, `gaussianEnd?`.
 
 ### `postprocess_set_tonemapping`
 Configure Tonemapping.
+**Parameters:** `profilePath`, `mode?`.
 
 ### `postprocess_set_vignette`
 Configure Vignette.
+**Parameters:** `profilePath`, `intensity?`, `smoothness?`, `color?`, `center?`, `rounded?`.
 
 ### `postprocess_set_color_adjustments`
 Configure Color Adjustments.
+**Parameters:** `profilePath`, `postExposure?`, `contrast?`, `colorFilter?`, `hueShift?`, `saturation?`.
 
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

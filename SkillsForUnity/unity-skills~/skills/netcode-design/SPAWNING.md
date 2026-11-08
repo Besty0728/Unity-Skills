@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-spawning
-description: "Netcode for GameObjects spawning and prefab registration — NetworkPrefabsList, NetworkObject.Spawn, and the prefab-registration happy path. Netcode for GameObjects 的生成与预制体注册(NetworkPrefabsList、NetworkObject.Spawn,以及预制体注册的正确流程)。"
+description: "Netcode for GameObjects spawning and prefab registration — NetworkPrefabsList, NetworkObject.Spawn, and the prefab-registration happy path."
 type: reference
 ---
 

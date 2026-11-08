@@ -1,6 +1,6 @@
 ---
 name: unity-addressables-scene
-description: "Addressables scene loading and SceneReleaseMode rules (1.22.3 & 2.9.1) — LoadSceneAsync, UnloadSceneAsync, and the biggest cross-version scene-API difference. Addressables 场景加载与 SceneReleaseMode 规则(1.22.3 与 2.9.1:LoadSceneAsync、UnloadSceneAsync,以及最大的跨版本场景 API 差异)。"
+description: "Addressables scene loading and SceneReleaseMode rules (1.22.3 & 2.9.1) — LoadSceneAsync, UnloadSceneAsync, and the biggest cross-version scene-API difference."
 type: reference
 ---
 

@@ -5,11 +5,7 @@ Get current editor state.
 
 **Example**:
 
-```python
-import unity_skills
-
-# Check editor state before operations
-state = unity_skills.call_skill("editor_get_state")
-if state['isCompiling']:
-    print("Wait for compilation to finish")
+```bash
+# Check editor state before operations; wait while isCompiling is true
+curl -s "http://localhost:<port>/skill/editor_get_state?expectProject=<project>" -d '{}'
 ```

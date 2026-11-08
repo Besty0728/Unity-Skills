@@ -3,37 +3,30 @@ name: unity-history
 description: Manage undo/redo history over the native undo stack
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Reviewing or navigating undo history
-- Stepping undo/redo
-- Auditing what changed
-- 查看或浏览撤销历史、逐步撤销/重做、审查改动
-
 # History Skills
 
-Manage Unity Editor undo/redo history.
+Undo, redo and inspect the current undo group of the Unity Editor's native undo stack. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-## Operating Mode
+The skills are defined in `WorkflowSkills.cs` (category Workflow) and documented here as well as in the [workflow](../workflow/SKILL.md) module.
 
-本模块 `history_get_current`（纯读）标 `SkillMode.SemiAuto`，三档下均可直接执行；`history_undo` / `history_redo` 会改变场景状态，为默认 `SkillMode.FullAuto`（Operation=Execute），Approval 模式下需 grant。**不含 NeverInSemi 高危 skill**。
+## When to use
+- Reviewing or navigating undo history
+- Stepping undo and redo
+- Auditing what changed
 
-`history_undo` / `history_redo` replay Unity's own native Undo/Redo stack, whose contents cannot be classified by write category the way `workflow` module's task snapshots can, so unlike `workflow_undo_task` / `workflow_session_undo` they carry no payload-level `SURFACE_EXCLUDED` check.
+## Rules
+- `history_get_current` is read-only and runs under Approval. `history_undo` and `history_redo` change scene state and need a grant under Approval.
+- `history_undo` and `history_redo` replay Unity's own native undo stack. Its entries cannot be classified by write category the way workflow task snapshots can, so they carry no payload-level `SURFACE_EXCLUDED` check. [workflow](../workflow/SKILL.md) undo (`workflow_undo_task`, `workflow_session_undo`) does carry that check.
+- For persistent task-level or conversation-level undo, use the [workflow](../workflow/SKILL.md) module. For simple undo and redo, the [editor](../editor/SKILL.md) skills `editor_undo` and `editor_redo` are the alternative.
 
-**DO NOT** (common hallucinations):
-- `history_list` / `history_get` do not exist → use `history_get_current` for current undo group
-- `history_clear` does not exist → Unity has no API to clear the whole undo history (only the per-object `Undo.ClearUndo(Object)`, which no skill wraps)
-- `history_save` does not exist → undo history is managed by Unity automatically
-
-**Routing**:
-- For simple undo/redo → `history_undo` / `history_redo` (this module) or `editor_undo` / `editor_redo`
-- For persistent task-level undo → use `workflow` module
-- For conversation-level undo → use `workflow` module's `workflow_session_undo`
+## Pitfalls
+- `history_list` and `history_get` do not exist: use `history_get_current` for the current undo group.
+- `history_clear` does not exist, and no skill clears the undo history. Unity exposes `Undo.ClearAll()` (this repository's prefab tests call it, `Tests/Editor/Core/PrefabAssetEditingTests.cs:32`), but no skill wraps it.
+- `history_save` does not exist: Unity manages the undo history automatically.
 
 ## Skills
 
-### `history_undo`
+### history_undo
 Undo the last operation (or multiple steps).
 
 | Parameter | Type | Required | Default | Description |
@@ -42,7 +35,7 @@ Undo the last operation (or multiple steps).
 
 **Returns:** `{ success, undoneSteps }`
 
-### `history_redo`
+### history_redo
 Redo the last undone operation (or multiple steps).
 
 | Parameter | Type | Required | Default | Description |
@@ -51,13 +44,9 @@ Redo the last undone operation (or multiple steps).
 
 **Returns:** `{ success, redoneSteps }`
 
-### `history_get_current`
+### history_get_current
 Get the name of the current undo group.
 
 No parameters.
 
 **Returns:** `{ success, currentGroup, groupIndex }`
-
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

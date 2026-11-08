@@ -3,133 +3,106 @@ name: unity-shadergraph
 description: Create and inspect Shader Graph assets
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity ShaderGraph Skills
 
-## Triggers
+Shader Graph asset workflows for Unity 2022.3+: template handling, MultiJson inspection and constrained internal-editor reflection writes. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Creating a Shader Graph
 - Inspecting graph structure
-- Making controlled blackboard/node edits
-- 创建 Shader Graph、检查其结构、对黑板/节点做受控编辑
+- Making controlled blackboard or node edits
 
-# ShaderGraph Skills
+## Rules
+- HLSL text shaders belong to the [shader](../shader/SKILL.md) module. Load [shadergraph-design](../shadergraph-design/SKILL.md) before proposing graph architecture.
+- Always call `shadergraph_get_structure` before a node-level edit. Treat its `nodeId` and `slotId` values as the only valid identifiers.
+- Never invent slot names, node ids or template names from memory. Confirm node types, settings and slot layout with `shadergraph_list_supported_nodes`.
+- `shadergraph_set_node_defaults` applies only to unconnected input slots; disconnect the slot first if it is connected.
+- `shadergraph_set_node_settings` writes only the whitelist that `shadergraph_list_supported_nodes` exposes.
+- A `PropertyNode` binds only an existing blackboard property; create the property first with `shadergraph_add_property`.
+- SubGraph editing is limited to ordinary nodes; this module does not edit `SubGraphOutputNode` structure.
+- If an error mentions a reflection or type lookup failure, report the version mismatch and stop. Do not retry with different argument shapes.
+- Internal types are pinned to `com.unity.shadergraph` 14.0.x (Unity 2022.3) with limited Unity 6 coverage. A package update that changes internal types or the `MultiJson` schema can make mutators fail or silently no-op until the registry is updated.
+- Unity 2022.3 with `com.unity.shadergraph@14.0.12` ships no `GraphTemplates/`; `shadergraph_create_graph` then falls back to a blank graph. Unity 6 may provide template directories.
+- The supported node subset is filtered at runtime. In live validation 28 nodes overlapped; `AppendVectorNode` is Unity 6 only.
 
-Shader Graph asset workflows for Unity 2022.3+ with source-backed template handling, MultiJson inspection, and constrained internal-editor reflection writes.
-
-## Operating Mode
-
-- Query skills (`shadergraph_list_templates`, `shadergraph_list_assets`, `shadergraph_get_info`, `shadergraph_get_structure`, `shadergraph_list_supported_nodes`, `shadergraph_list_properties`, `shadergraph_list_keywords`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
-- All other mutators (create graph / subgraph, add/move/connect/disconnect node, set node defaults/settings, add/update property/keyword, reimport) are `SkillMode.FullAuto` — under **Approval** they need user grant (grant triggers one server-side execute returning the result); under **Auto** / **Bypass** they execute directly.
-- `shadergraph_remove_node`, `shadergraph_remove_property`, `shadergraph_remove_keyword` carry `SkillOperation.Delete` and are **auto-forbidden** in Approval / Auto modes (NeverInSemi). Only **Bypass** or the user-managed **Allowlist** can run them.
-
-## Reflection Fragility
-
-This module reaches into `UnityEditor.ShaderGraph` and `UnityEditor.ShaderGraph.Internal` via reflection (see `ShaderGraphReflectionHelper.cs` and `ShaderGraphNodeRegistry.cs`). The supported node whitelist, slot layout, and settings keys are version-pinned to `com.unity.shadergraph` 14.0.x (Unity 2022.3) with limited Unity 6 coverage. Treat the following as a hard contract:
-
-- Never assume an internal type, field, or slot id exists from memory — always cross-check with `shadergraph_list_supported_nodes` and `shadergraph_get_structure` first.
-- If a Shader Graph package update changes internal types or `MultiJson` schema, mutators may fail or silently no-op until the registry is updated.
-- If a skill returns an error mentioning a reflection / type lookup failure, do not retry with different argument shapes — report the version mismatch and stop.
-
-## Guardrails
-
-**Routing**:
-- HLSL text shaders: use `shader_*`
-- Shader Graph / Sub Graph assets: use this module
-- Source-anchored design guidance before proposing graph architecture: load [shadergraph-design](../shadergraph-design/SKILL.md)
-
-**Runtime-first rules**:
-- Always call `shadergraph_get_structure` before any node-level edit; treat returned `nodeId` and `slotId` as the only valid identifiers
-- Never invent slot names, node ids, or template availability from memory
-- `shadergraph_set_node_defaults` only applies to unconnected input slots; if the slot is connected, disconnect first
-- `shadergraph_set_node_settings` only writes the whitelist exposed by `shadergraph_list_supported_nodes`
-- `PropertyNode` only binds existing blackboard properties; create the property first with `shadergraph_add_property`
-- SubGraph editing is limited to ordinary nodes; this module does not edit `SubGraphOutputNode` structure
-
-**Validated behavior**:
-- Unity 2022.3 + `com.unity.shadergraph@14.0.12` does not ship `GraphTemplates/`; `shadergraph_create_graph` falls back to blank graph creation
-- Unity 6 ShaderGraph packages may provide actual template directories; template listing and template-copy creation remain available there
-- The supported node subset is runtime-filtered. The shared overlap is 28 nodes in live validation, while `AppendVectorNode` is currently Unity 6 only
+## Pitfalls
+- Reading structure first and then editing by `nodeId` avoids most failures. Re-read `shadergraph_get_structure` after an edit when the next step depends on topology.
 
 ## Skills
 
-### `shadergraph_list_templates`
+### shadergraph_list_templates
 List Shader Graph templates shipped by the installed package.
 
-### `shadergraph_create_graph`
-Create a Shader Graph asset from a package template or blank fallback.
+### shadergraph_create_graph
+Create a Shader Graph asset from a package template, or a blank graph as fallback.
 
-### `shadergraph_create_subgraph`
+### shadergraph_create_subgraph
 Create a blank Shader Sub Graph asset with a configured output slot.
 
-### `shadergraph_list_assets`
+### shadergraph_list_assets
 List Shader Graph and Sub Graph assets in the project.
 
-### `shadergraph_get_info`
+### shadergraph_get_info
 Get a high-level summary of a Shader Graph or Sub Graph asset.
 
-### `shadergraph_get_structure`
-Inspect the live graph structure. Returns real `nodeId`, `position`, `slots`, `edges`, `properties`, and `keywords`.
+### shadergraph_get_structure
+Inspect the live graph structure. Returns real `nodeId`, `position`, `slots`, `edges`, `properties` and `keywords`.
 
-### `shadergraph_list_supported_nodes`
-List the constrained node whitelist, supported versions, slots, and editable settings.
+### shadergraph_list_supported_nodes
+List the constrained node whitelist, supported versions, slots and editable settings.
 
-### `shadergraph_add_node`
-Add a supported node by `nodeType` with optional initial settings and position.
+### shadergraph_add_node
+Add a supported node by `nodeType`, with optional initial settings and position.
 
-### `shadergraph_remove_node`
-Remove a node by serialized `nodeId`; related edges are removed together.
+### shadergraph_remove_node
+Remove a node by its serialized `nodeId`; related edges are removed with it.
 
-### `shadergraph_move_node`
-Move a node by serialized `nodeId`.
+### shadergraph_move_node
+Move a node by its serialized `nodeId`.
 
-### `shadergraph_connect_nodes`
-Connect a specific output slot to a specific input slot using `nodeId + slotId`.
+### shadergraph_connect_nodes
+Connect an output slot to an input slot using `nodeId` and `slotId`.
 
-### `shadergraph_disconnect_nodes`
-Disconnect one exact edge using the same four-tuple.
+### shadergraph_disconnect_nodes
+Disconnect one exact edge, using the same four-value tuple.
 
-### `shadergraph_set_node_defaults`
+### shadergraph_set_node_defaults
 Set the default value of an unconnected input slot.
 
-### `shadergraph_set_node_settings`
+### shadergraph_set_node_settings
 Write whitelisted node settings only.
 
-### `shadergraph_list_properties`
+### shadergraph_list_properties
 List graph blackboard properties.
 
-### `shadergraph_add_property`
+### shadergraph_add_property
 Add a constrained blackboard property.
 
-### `shadergraph_update_property`
+### shadergraph_update_property
 Update a constrained blackboard property.
 
-### `shadergraph_remove_property`
+### shadergraph_remove_property
 Remove a graph property.
 
-### `shadergraph_list_keywords`
+### shadergraph_list_keywords
 List graph blackboard keywords.
 
-### `shadergraph_add_keyword`
+### shadergraph_add_keyword
 Add a graph keyword.
 
-### `shadergraph_update_keyword`
+### shadergraph_update_keyword
 Update a graph keyword.
 
-### `shadergraph_remove_keyword`
+### shadergraph_remove_keyword
 Remove a graph keyword.
 
-### `shadergraph_reimport`
-Force reimport of a Shader Graph asset after external edits.
+### shadergraph_reimport
+Force a reimport of a Shader Graph asset after external edits.
 
 ## Workflow
 
 1. Create or locate the target graph.
 2. Read `shadergraph_get_structure`.
-3. If needed, create blackboard properties or keywords first.
-4. Call `shadergraph_list_supported_nodes` to confirm node type, settings whitelist, and slot layout.
-5. Add/move nodes, then connect/disconnect using the live `nodeId/slotId` values.
-6. Re-read `shadergraph_get_structure` after each significant edit if the next step depends on topology.
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+3. Create blackboard properties or keywords first when the edit needs them.
+4. Confirm node type, settings whitelist and slot layout with `shadergraph_list_supported_nodes`.
+5. Add or move nodes, then connect or disconnect them by live `nodeId` and `slotId`.

@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-scene
-description: "Netcode for GameObjects scene management — NetworkSceneManager, EnableSceneManagement, server-driven scene load/sync, and client synchronization. Netcode for GameObjects 的场景管理(NetworkSceneManager、EnableSceneManagement、服务器驱动的场景加载/同步、客户端同步)。"
+description: "Netcode for GameObjects scene management — NetworkSceneManager, EnableSceneManagement, server-driven scene load/sync, and client synchronization."
 type: reference
 ---
 

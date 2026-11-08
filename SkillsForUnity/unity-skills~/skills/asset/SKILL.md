@@ -3,279 +3,46 @@ name: unity-asset
 description: Manage Unity AssetDatabase operations
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Organizing project assets
-- Importing or relocating files
-- Querying asset metadata
-- Scripting AssetDatabase operations
-- 整理工程资源、导入或移动文件、查询资源元数据、脚本化 AssetDatabase 操作
-
 # Unity Asset Skills
 
-> **BATCH-FIRST**: Use `*_batch` skills when operating on 2+ assets.
+AssetDatabase operations: import, move, duplicate, delete, folders, find, refresh, reimport and labels. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-## Operating Mode
+## When to use
+- Organizing project assets, folders and labels
+- Importing or relocating files
+- Querying asset metadata
+- Refreshing or reimporting assets after external file changes
 
-- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_refresh` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
-- **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+## Rules
+- Use the `*_batch` skill when operating on 2 or more assets. `asset_import_batch`, `asset_delete_batch`, `asset_move_batch` and `asset_create_folder_batch` take `items` as a JSON string, not a native array.
+- Batch folder creation needs each parent to exist: list nested folders outermost first within one call.
+- Paths are project-relative under `Assets/` or `Packages/`.
+- After writing a `.cs` file yourself, call `asset_refresh` and wait on its `waitUrl`; the reply documents the wait loop.
+- Import settings belong to the [importer](../importer/SKILL.md) module, materials to [material](../material/SKILL.md), scripts to [script](../script/SKILL.md).
 
-**DO NOT** (common hallucinations):
-- `asset_create` does not exist → use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts)
-- `asset_rename` does not exist → use `asset_move` with new path
-- `asset_search` does not exist → use `asset_find` with searchFilter syntax (e.g. `t:Texture2D player`)
-- `asset_copy` does not exist → use `asset_duplicate`
-
-**Routing**:
-- For texture/model/audio import settings → use `importer` module (SkillMode.FullAuto)
-- For material creation → use `material` module (SkillMode.FullAuto)
-- For script creation → use `script` module
+## Pitfalls
+- `asset_create`, `asset_search` and `asset_copy` do not exist: use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts), `asset_find` with a search filter such as `t:Texture2D player`, and `asset_duplicate`.
+- `asset_rename` does not exist: `asset_move` to the new path.
+- `asset_find` filters: `t:Type`, `l:Label`, a name fragment, or a combination such as `t:Material player`.
+- `TARGET_NOT_FOUND`: check the path with `asset_find` or `asset_get_info`. `SEMANTIC_INVALID`: the path contains `..`, does not start with `Assets/` or `Packages/`, or the folder already exists. `SKILL_ERROR`: an AssetDatabase or filesystem operation failed (for example a locked file); fix the cause and retry.
 
 ## Skills Overview
 
-| Single Object | Batch Version | Use Batch When |
-|---------------|---------------|----------------|
-| `asset_import` | `asset_import_batch` | Importing 2+ files |
-| `asset_delete` | `asset_delete_batch` | Deleting 2+ assets |
-| `asset_move` | `asset_move_batch` | Moving 2+ assets |
-| `asset_create_folder` | `asset_create_folder_batch` | Creating 2+ folders |
-
-**No batch needed**:
-- `asset_duplicate` - Duplicate single asset
-- `asset_find` - Search assets (returns list)
-- `asset_refresh` - Refresh AssetDatabase
-- `asset_get_info` - Get asset information
-- `asset_reimport` - Force reimport asset
-- `asset_reimport_batch` - Reimport multiple assets
-
----
-
-## Skills
-
-### asset_import
-Import an external file into the project.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sourcePath` | string | Yes | External file path |
-| `destinationPath` | string | Yes | Project destination |
-
-### asset_import_batch
-Import multiple external files.
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
-
-
-`items` currently expects a JSON string, not a native array.
-
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, serverAvailability?}]}`: `target` is the item's `destinationPath`; `serverAvailability` appears only when a script-domain asset was written or Unity is compiling.
-
-```python
-import json
-
-unity_skills.call_skill("asset_import_batch", items=json.dumps([
-    {"sourcePath": "C:/Downloads/tex1.png", "destinationPath": "Assets/Textures/tex1.png"},
-    {"sourcePath": "C:/Downloads/tex2.png", "destinationPath": "Assets/Textures/tex2.png"}
-]))
-```
-
-### asset_delete
-Delete an asset from the project.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset path to delete |
-
-### asset_delete_batch
-Delete multiple assets.
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
-
-
-`items` currently expects a JSON string, not a native array.
-
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, serverAvailability?}]}`: `target` is the deleted `path`; `serverAvailability` appears only when a script-domain asset was deleted or Unity is compiling.
-
-```python
-import json
-
-unity_skills.call_skill("asset_delete_batch", items=json.dumps([
-    {"path": "Assets/Textures/old1.png"},
-    {"path": "Assets/Textures/old2.png"}
-]))
-```
-
-### asset_move
-Move or rename an asset.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sourcePath` | string | Yes | Current asset path |
-| `destinationPath` | string | Yes | New path/name |
-
-### asset_move_batch
-Move multiple assets.
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
-
-
-`items` currently expects a JSON string, not a native array.
-
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, from, to, serverAvailability?}]}`: `target` is the item's `sourcePath`; `serverAvailability` appears only when a script-domain asset was moved or Unity is compiling.
-
-```python
-import json
-
-unity_skills.call_skill("asset_move_batch", items=json.dumps([
-    {"sourcePath": "Assets/Old/mat1.mat", "destinationPath": "Assets/New/mat1.mat"},
-    {"sourcePath": "Assets/Old/mat2.mat", "destinationPath": "Assets/New/mat2.mat"}
-]))
-```
-
-### asset_duplicate
-Duplicate an asset.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset to duplicate |
-
-### asset_find
-Find assets by search filter.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `searchFilter` | string | Yes | - | Search query |
-| `limit` | int | No | 50 | Max results to return |
-
-**Search Filter Syntax**:
-| Filter | Example | Description |
-|--------|---------|-------------|
-| `t:Type` | `t:Texture2D` | By type |
-| `l:Label` | `l:Architecture` | By label |
-| `name` | `player` | By name |
-| Combined | `t:Material player` | Multiple filters |
-
-**Returns**: `{count, totalFound, assets: [{path, name, type}]}`
-
-### asset_create_folder
-Create a folder in the project.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `folderPath` | string | Yes | Full folder path |
-
-### asset_create_folder_batch
-Create multiple folders.
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
-
-
-`items` currently expects a JSON string, not a native array. The parent folder of each entry must already exist, so order nested folders outermost-first within one call.
-
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, path, guid}]}`
-
-```python
-import json
-
-unity_skills.call_skill("asset_create_folder_batch", items=json.dumps([
-    {"folderPath": "Assets/Art"},
-    {"folderPath": "Assets/Art/Textures"}
-]))
-```
-
-### asset_refresh
-Refresh the AssetDatabase after external changes, e.g. files you wrote or deleted with your own file tools.
-
-No parameters.
-
-**Returns**: `{success, message, compileTriggered}`. When the refresh starts a script compilation (a `.cs`, `.asmdef`, `.asmref`, `.rsp` or `.dll` changed), `compileTriggered` is `true` and the result adds `status:"accepted"`, `jobId`, `waitUrl` (`/jobs/<jobId>?wait=90&expectInstance=<instanceId>`, already pinned to this Editor), `serverAvailability` and, when Unity reported the files, `scriptChanges` (up to 20 paths; `scriptChangesTruncated` counts the rest). `compileTriggered:false` means there is nothing to wait for.
-
-Wrote a `.cs` yourself? Call `asset_refresh`, then GET its `waitUrl` as is, retrying the same URL through the domain reload: `curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "http://localhost:<port><waitUrl>"`. `status:"completed"` with `compilation.compiled:true`, `success:true`, and `domainLoaded:true` proves the new types are ready to use; `"failed"` lists the compile errors in `resultData.compilation.errors`. The diagnostics are project-wide (`compilation.scope:"project"`); `compilation.compiled:false` means no compilation followed the refresh.
-
-### asset_get_info
-Get information about an asset.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset path |
-
-### asset_reimport
-Force reimport of an asset.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset path to reimport |
-
-### asset_reimport_batch
-Reimport multiple assets matching a pattern.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `searchFilter` | string | No | AssetDatabase search filter (default `*`) |
-| `folder` | string | No | Folder root to search (default `Assets`) |
-| `limit` | int | No | Max assets to reimport (default `100`) |
-
-### asset_set_labels
-Set labels on an asset (overwrites existing labels).
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset path |
-| `labels` | string | Yes | Comma-separated labels (e.g. `"ui,icon,hud"`). Empty entries are dropped |
-
-**Returns**: `{success, assetPath, labels: [...]}`
-
-### asset_get_labels
-Get the labels currently attached to an asset.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Asset path |
-
-**Returns**: `{success, assetPath, labels: [...]}`
-
----
-
-## Minimal Example
-
-```python
-import unity_skills
-
-# GOOD: 1 API call instead of 4
-unity_skills.call_skill("asset_move_batch", items=[
-    {"sourcePath": "Assets/tex1.png", "destinationPath": "Assets/Textures/tex1.png"},
-    {"sourcePath": "Assets/tex2.png", "destinationPath": "Assets/Textures/tex2.png"},
-    {"sourcePath": "Assets/tex3.png", "destinationPath": "Assets/Textures/tex3.png"},
-    {"sourcePath": "Assets/tex4.png", "destinationPath": "Assets/Textures/tex4.png"}
-])
-```
-
-## Best Practices
-
-1. Organize assets in logical folders
-2. Use consistent naming conventions
-3. Refresh after external file changes
-4. Use search filters for efficiency
-5. Backup before bulk delete operations
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
-
-## Common Errors
-
-Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
-
-| Error | Trigger | Fix |
-|---|---|---|
-| `TARGET_NOT_FOUND` | The source file, asset path, or target asset could not be found. | Verify the path with `asset_find` / `asset_get_info`, ensure the file exists, and retry with the exact project-relative path. |
-| `MISSING_PARAM` | A required path parameter is empty or not provided (caught by path validation). | Provide the required `assetPath`, `sourcePath`, `destinationPath`, or `folderPath`. |
-| `SEMANTIC_INVALID` | The path is invalid (e.g., contains `..`, does not start with `Assets/`/`Packages/`, or the folder already exists). | Use a normalized project-relative path under `Assets/` or `Packages/`; choose a different folder name if it already exists. |
-| `SKILL_ERROR` | A low-level AssetDatabase or filesystem operation failed, such as `Failed to delete asset`, `AssetDatabase.MoveAsset` returned an error, or folder creation failed. | Resolve the issue described in the message (e.g., close locked files, fix parent path) and retry. |
+| Skill | Purpose |
+|---|---|
+| [`asset_import`](reference/asset_import.md) | Import one external file into the project |
+| [`asset_import_batch`](reference/asset_import_batch.md) | Import several external files |
+| [`asset_delete`](reference/asset_delete.md) | Delete one asset |
+| [`asset_delete_batch`](reference/asset_delete_batch.md) | Delete several assets |
+| [`asset_move`](reference/asset_move.md) | Move or rename one asset |
+| [`asset_move_batch`](reference/asset_move_batch.md) | Move several assets |
+| [`asset_duplicate`](reference/asset_duplicate.md) | Duplicate one asset |
+| [`asset_find`](reference/asset_find.md) | Find assets by search filter |
+| [`asset_create_folder`](reference/asset_create_folder.md) | Create one folder |
+| [`asset_create_folder_batch`](reference/asset_create_folder_batch.md) | Create several folders |
+| [`asset_refresh`](reference/asset_refresh.md) | Refresh the AssetDatabase after external changes |
+| [`asset_get_info`](reference/asset_get_info.md) | Read one asset's information |
+| [`asset_reimport`](reference/asset_reimport.md) | Force reimport of one asset |
+| [`asset_reimport_batch`](reference/asset_reimport_batch.md) | Reimport assets matching a filter |
+| [`asset_set_labels`](reference/asset_set_labels.md) | Overwrite an asset's labels |
+| [`asset_get_labels`](reference/asset_get_labels.md) | Read an asset's labels |

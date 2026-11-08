@@ -1,6 +1,6 @@
 ---
 name: unity-shadergraph-review
-description: "Shader Graph review checklist — vetting a graph proposal or AI-generated editing plan for topology, blackboard inputs, and node/slot id correctness. Shader Graph 审查清单(核查图方案或 AI 生成的编辑计划:拓扑、黑板输入、节点/槽位 id 正确性)。"
+description: "Shader Graph review checklist — vetting a graph proposal or AI-generated editing plan for topology, blackboard inputs, and node/slot id correctness."
 type: reference
 ---
 

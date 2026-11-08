@@ -12,10 +12,8 @@ Select a GameObject.
 
 **Example**:
 
-```python
-import unity_skills
-
+```bash
 # Select and operate on object
-unity_skills.call_skill("editor_select", name="Player")
-selection = unity_skills.call_skill("editor_get_selection")
+curl -s "http://localhost:<port>/skill/editor_select?expectProject=<project>" -d '{"name":"Player"}'
+curl -s "http://localhost:<port>/skill/editor_get_selection?expectProject=<project>" -d '{}'
 ```

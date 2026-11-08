@@ -3,148 +3,112 @@ name: unity-smart
 description: AI-powered scene queries, layout and auto-binding. AI
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Querying scene objects by condition or proximity
-- Auto-arranging objects
-- Auto-wiring references
-- 按条件或邻近关系查询场景对象、自动排布对象、自动连线引用
-
 # Unity Smart Skills
 
-## Operating Mode
+Condition and proximity queries, layout of selected objects, and automatic reference binding. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
 
-- **Approval**：本模块 Mixed —— 只读查询 skill `smart_scene_query` / `smart_scene_query_spatial`（标 `ReadOnly = true`, `Mode = SkillMode.SemiAuto`）可直接执行；其余布局/绑定/变换类 skill (`smart_scene_layout` / `smart_reference_bind` / `smart_align_to_ground` / `smart_distribute` / `smart_snap_to_grid` / `smart_randomize_transform` / `smart_select_by_component`) 为 `SkillMode.FullAuto`，需用户 grant 单次执行返结果。
-- **Auto / Bypass**：直接执行。
-- **含 NeverInSemi 高危 skill**：`smart_replace_objects`（Operation.Modify|Delete，会替换并删除原对象）。该 skill 在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+## When to use
+- Querying scene objects by component condition or proximity
+- Auto-arranging selected objects
+- Auto-wiring references
 
-**DO NOT** (common hallucinations):
-- `smart_create` / `smart_build` do not exist → smart skills are query/layout tools, not creation tools
-- `smart_search` / `smart_query` do not exist → use `smart_scene_query` (component property filters) or `smart_scene_query_spatial` (spatial region filters)
-- `smart_move` does not exist → use `smart_snap_to_grid` or `smart_align_to_ground`
+## Rules
+- Layout, transform and binding skills act on the objects selected in the Hierarchy. Select them first; the skills fail when nothing is selected.
+- Smart skills query, lay out and bind. They do not create objects: use the [gameobject](../gameobject/SKILL.md) module for creation.
+- For a simple name or tag search, use `gameobject_find` or `scene_find_objects`.
 
-**Routing**:
-- For creating objects → use `gameobject` module
-- For simple object search → use `gameobject_find` or `scene_find_objects`
-- For complex scene queries (SQL-like) → `smart_scene_query` (this module)
+## Pitfalls
+- `smart_create`, `smart_build`, `smart_search`, `smart_query` and `smart_move` do not exist. Use `smart_scene_query` (component property filters), `smart_scene_query_spatial` (region filters), or `smart_snap_to_grid` / `smart_align_to_ground` for moves.
+- `smart_scene_query` rejects an unknown `propertyName` (with a closest-name suggestion), an `op` outside the list, an ordering operator on a non-numeric member, and any operator other than `==` or `!=` on a bool. It does not silently match nothing.
 
 ## Skills
 
 ### smart_scene_query
-Find objects based on component property values (SQL-like).
+Find objects by a component property value (SQL-like).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `componentName` | string | Yes | - | Component type (Light, Camera, MeshRenderer) |
 | `propertyName` | string | Yes | - | Property to query (intensity, enabled, etc.) |
-| `op` | string | No | "==" | ==, !=, >, <, >=, <=, contains |
+| `op` | string | No | "==" | `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains` |
 | `value` | string | No | null | Value to compare |
 | `limit` | int | No | 50 | Max results |
-| `query` | string | No | null | Unsupported shorthand; if provided alone returns a guidance error |
+| `query` | string | No | null | Unsupported shorthand; if sent alone it returns a guidance error |
 
-Rejected with `SEMANTIC_INVALID` (and a closest-name suggestion for a misspelled member) instead of silently matching nothing: an unknown `propertyName`, an `op` outside the list, `>`/`<`/`>=`/`<=` on a non-numeric member or with a non-numeric `value`, and anything but `==`/`!=` on a bool.
-
-**Example**:
-```python
-# Find all lights with intensity > 2
-call_skill("smart_scene_query", componentName="Light", propertyName="intensity", op=">", value="2")
-```
-
----
+Example: `{"componentName":"Light","propertyName":"intensity","op":">","value":"2"}` finds lights with intensity above 2.
 
 ### smart_scene_layout
-Organize selected objects into a layout.
+Arrange the selected objects in a layout.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `layoutType` | string | No | "Linear" | Linear, Grid, Circle, Arc |
-| `axis` | string | No | "X" | X, Y, Z, -X, -Y, -Z |
-| `spacing` | float | No | 2.0 | Space between items (or radius) |
-| `columns` | int | No | 3 | For Grid layout |
-| `arcAngle` | float | No | 180 | For Arc layout (degrees) |
-| `lookAtCenter` | bool | No | false | Rotate to face center |
+| `axis` | string | No | "X" | X, Y, Z, -X, -Y, -Z; used by Linear, ignored by Circle |
+| `spacing` | float | No | 2.0 | Space between items (the radius under Circle) |
+| `columns` | int | No | 3 | Grid layout only |
+| `arcAngle` | float | No | 180 | Arc layout only, in degrees |
+| `lookAtCenter` | bool | No | false | Circle and Arc: rotate to face the center |
 
-**Example**:
-```python
-# Arrange selected objects in a circle
-call_skill("smart_scene_layout", layoutType="Circle", spacing=5)
-```
-
----
+**Returns**: `{success, layout, count, spacing}`
 
 ### smart_reference_bind
-Auto-fill a List/Array field with matching objects.
+Fill a List or Array field with matching objects.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `targetName` | string | Yes | - | Target GameObject |
-| `componentName` | string | No | - | Component on target |
+| `componentName` | string | No | - | Component on the target |
 | `fieldName` | string | Yes | - | Field to fill |
-| `sourceTag` | string | No | null | Find by tag |
-| `sourceName` | string | No | null | Find by name contains |
-| `appendMode` | bool | No | false | Append instead of replace |
+| `sourceTag` | string | No | null | Find sources by tag |
+| `sourceName` | string | No | null | Find sources whose name contains this text |
+| `appendMode` | bool | No | false | Append instead of replacing |
 
-**Example**:
-```python
-# Fill GameManager.spawns with all SpawnPoint tagged objects
-call_skill("smart_reference_bind", targetName="GameManager", componentName="GameController", fieldName="spawns", sourceTag="SpawnPoint")
-```
+**Returns**: `{success, boundCount, field, appendMode}`
 
----
-
-### `smart_scene_query_spatial`
-Find objects within a sphere/box region, optionally filtered by component.
+### smart_scene_query_spatial
+Find objects within a sphere, optionally filtered by component.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `x` | float | Yes | - | Center X coordinate |
-| `y` | float | Yes | - | Center Y coordinate |
-| `z` | float | Yes | - | Center Z coordinate |
+| `x` | float | Yes | - | Center X |
+| `y` | float | Yes | - | Center Y |
+| `z` | float | Yes | - | Center Z |
 | `radius` | float | No | 10 | Search sphere radius |
 | `componentFilter` | string | No | null | Only include objects with this component |
 | `limit` | int | No | 50 | Max results |
 
-**Returns:** `{ success, count, center, radius, results }`
+**Returns**: `{success, count, center, radius, results}`
 
----
-
-### `smart_align_to_ground`
-Raycast selected objects downward to align them to the ground. Requires objects selected in Hierarchy first.
+### smart_align_to_ground
+Raycast the selected objects downward onto the ground.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `maxDistance` | float | No | 100 | Maximum raycast distance |
-| `alignRotation` | bool | No | false | Align rotation to surface normal |
+| `alignRotation` | bool | No | false | Align rotation to the surface normal |
 
-**Returns:** `{ success, aligned, total }`
+**Returns**: `{success, aligned, total}`
 
----
-
-### `smart_distribute`
-Evenly distribute selected objects between first and last positions. Requires at least 3 objects selected in Hierarchy first.
+### smart_distribute
+Evenly distribute the selected objects between the first and last positions. Needs at least 3 selected objects.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `axis` | string | No | "X" | X, Y, Z, -X, -Y, -Z |
 
-**Returns:** `{ success, distributed, axis }`
+**Returns**: `{success, distributed, axis}`
 
----
-
-### `smart_snap_to_grid`
-Snap selected objects to a grid.
+### smart_snap_to_grid
+Snap the selected objects to a grid.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `gridSize` | float | No | 1 | Grid cell size |
 
-**Returns:** `{ success, snapped, gridSize }`
+**Returns**: `{success, snapped, gridSize}`
 
----
-
-### `smart_randomize_transform`
-Randomize position/rotation/scale of selected objects within ranges.
+### smart_randomize_transform
+Randomize the position, rotation and scale of the selected objects within ranges.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -153,31 +117,23 @@ Randomize position/rotation/scale of selected objects within ranges.
 | `scaleMin` | float | No | 1 | Minimum uniform scale |
 | `scaleMax` | float | No | 1 | Maximum uniform scale |
 
-**Returns:** `{ success, randomized }`
+**Returns**: `{success, randomized}`
 
----
-
-### `smart_replace_objects`
-Replace selected objects with a prefab (preserving transforms). Requires objects selected in Hierarchy first.
+### smart_replace_objects
+Replace the selected objects with a prefab, keeping their transforms. The originals are deleted.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `prefabPath` | string | Yes | - | Asset path to the replacement prefab |
+| `prefabPath` | string | Yes | - | Asset path of the replacement prefab |
 
-**Returns:** `{ success, replaced, prefab }`
+**Returns**: `{success, replaced, prefab}`
 
----
-
-### `smart_select_by_component`
-Select all objects that have a specific component.
+### smart_select_by_component
+Select all objects that have a given component.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `componentName` | string | No | - | Component type name to search for (`componentType` is an alias used when `componentName` is omitted) |
+| `componentName` | string | No | - | Component type name to search for |
+| `componentType` | string | No | - | Alias of `componentName`, used when `componentName` is omitted |
 
-**Returns:** `{ success, selected, component }`
-
----
-## Exact Signatures
-
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+**Returns**: `{success, selected, component}`

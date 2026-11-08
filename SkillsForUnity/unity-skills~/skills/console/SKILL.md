@@ -3,40 +3,36 @@ name: unity-console
 description: Capture and query the Unity Editor console
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
+# Unity Console Skills
 
-## Triggers
+Capture, query, write and export the Unity Console: retained timestamped logs, paged reads, statistics and console settings. Parameters come from the schema (`GET /skills/schema?category=Console&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
 - Inspecting console output
 - Filtering errors or warnings
 - Emitting log messages
 - Configuring the console
-- 查看控制台输出、过滤错误或警告、输出日志、配置控制台
 
-# Unity Console Skills
+## Rules
+- `console_get_logs` and `console_get_stats` are read-only and run under Approval. The other skills need a grant there.
+- The managed log history is always collected. `console_start_capture` only records a cursor, and `console_clear` is the only skill that deletes retained history.
+- Start with collapsed error groups. Request `collapse:false` with a `groupId` or time range only when individual occurrences matter.
+- Follow `nextCursor` until `hasMore:false`. Reject a result with `complete:false` as incomplete evidence.
+- Records with a `seq` at or below `coverage.incompleteThroughSeq` may be missing, so only a window whose `afterSeq` is at or above it can be complete. `coverage.corruptRows` counts unreadable rows and `coverage.durabilityIssue` flags a failing disk write. Retention is 50,000 records and 64 MiB.
+- Use `coverage.editorLogPath` only for manual investigation: it is not timestamp-normalized or merged into this API.
+- `console_export` and `console_get_stats` report `truncated`; check it before treating an export or a zero error count as evidence.
+- Compilation errors belong to `debug_check_compilation`, and stack traces of a log entry to `debug_get_stack_trace` ([debug](../debug/SKILL.md)).
 
-Work with the Unity console - capture logs, write messages, and debug your project.
-
-## Operating Mode
-
-- **Approval**: 只读 skill（`console_get_logs` / `console_get_stats`，标 `SkillMode.SemiAuto`）直接执行；其余 skill（`console_start_capture` / `console_stop_capture` / `console_clear` / `console_log` / `console_export` / `console_set_pause_on_error` / `console_set_collapse` / `console_set_clear_on_play`，默认 `SkillMode.FullAuto`）需用户 grant，grant 后一步执行返结果。
-- **Auto / Bypass**: 直接执行。
-- **本模块不含 Delete / PlayMode / Reload / RiskLevel=high 类 skill** —— 没有 `IsForbiddenInSemi` 拦截，不需要 Bypass 才能跑的高危操作。
-
-**DO NOT** (common hallucinations):
-- `console_filter` does not exist → use `console_get_logs` with `filter` parameter
-- `console_read` does not exist → use `console_get_logs`
-- `console_write` does not exist → use `console_log`
-- Do not confuse with `debug_get_logs` — `console_get_logs` is the durable, timestamped history API; `debug_get_logs` is the native Console compatibility reader
-
-**Routing**:
-- For compilation errors specifically → use `debug` module's `debug_check_compilation`
-- For error stack traces → use `debug` module's `debug_get_stack_trace`
-- For console settings (collapse, clear-on-play) → `console_set_collapse` / `console_set_clear_on_play` (this module)
+## Pitfalls
+- `console_filter` does not exist: use `console_get_logs` with `filter`.
+- `console_read` does not exist: use `console_get_logs`.
+- `console_write` does not exist: use `console_log`.
+- `console_get_logs` is the durable, timestamped history API; `debug_get_logs` is the native Console compatibility reader.
 
 ## Skills Overview
 
 | Skill | Description |
-|-------|-------------|
+|-|-|
 | `console_start_capture` | Start capturing logs |
 | `console_stop_capture` | Stop capturing logs |
 | `console_get_logs` | Get durable, timestamped logs with fixed-snapshot pagination |
@@ -47,8 +43,6 @@ Work with the Unity console - capture logs, write messages, and debug your proje
 | `console_get_stats` | Get log statistics (count by type) |
 | `console_set_collapse` | Set console log collapse mode |
 | `console_set_clear_on_play` | Set clear on play mode |
-
----
 
 ## Skills
 
@@ -92,7 +86,7 @@ Write a custom log message.
 | `message` | string | Yes | - | Log message |
 | `type` | string | No | "Log" | Log/Warning/Error |
 
-### `console_set_pause_on_error`
+### console_set_pause_on_error
 Enable or disable Error Pause in Play mode.
 
 | Parameter | Type | Required | Default | Description |
@@ -101,7 +95,7 @@ Enable or disable Error Pause in Play mode.
 
 **Returns:** `{ success, enabled }`
 
-### `console_export`
+### console_export
 Export retained console history to a file, including available UTC timestamps and complete stack traces.
 
 | Parameter | Type | Required | Default | Description |
@@ -110,14 +104,14 @@ Export retained console history to a file, including available UTC timestamps an
 
 **Returns:** `{ success, path, count, source, complete, dropped, truncated }`. Check `truncated` before treating an export as complete evidence.
 
-### `console_get_stats`
+### console_get_stats
 Get statistics for retained log history.
 
 No parameters.
 
 **Returns:** `{success, total, source, logs, warnings, errors, exceptions, asserts, complete, dropped, truncated}`. Check `truncated` before using a zero error count as evidence of a clean run.
 
-### `console_set_collapse`
+### console_set_collapse
 Set console log collapse mode.
 
 | Parameter | Type | Required | Default | Description |
@@ -126,7 +120,7 @@ Set console log collapse mode.
 
 **Returns:** `{ success, setting, enabled }`
 
-### `console_set_clear_on_play`
+### console_set_clear_on_play
 Set clear on play mode.
 
 | Parameter | Type | Required | Default | Description |
@@ -135,51 +129,33 @@ Set clear on play mode.
 
 **Returns:** `{ success, setting, enabled }`
 
----
+## Examples
 
-## Example Usage
+Page through errors with stack traces. The first response fixes a snapshot; later pages with its `nextCursor` do not admit new logs:
 
-```python
-import unity_skills
-
-# History starts automatically. The first response fixes a snapshot; later pages do not admit new logs.
-page = unity_skills.call_skill("console_get_logs", type="Error", includeStackTrace=True)
-while page["hasMore"]:
-    page = unity_skills.call_skill("console_get_logs", type="Error", includeStackTrace=True,
-                                  cursor=page["nextCursor"])
-
-# For occurrence-level evidence instead of duplicate groups, opt out of collapse and constrain time.
-logs = unity_skills.call_skill("console_get_logs", collapse=False,
-    fromUtc="2026-10-10T00:00:00Z", toUtc="2026-10-11T00:00:00Z")
-
-# Write custom log
-unity_skills.call_skill("console_log",
-    message="AI Agent: Task completed",
-    type="Log"
-)
-
-# Write warning
-unity_skills.call_skill("console_log",
-    message="AI Agent: Performance issue detected",
-    type="Warning"
-)
-
-# Clear invalidates every old cursor and deletes retained history. A capture session is optional
-# and limits reads/exports/stats to records created after its start without deleting background history.
-unity_skills.call_skill("console_start_capture")
-unity_skills.call_skill("console_clear")
-unity_skills.call_skill("console_stop_capture")
+```bash
+u="http://localhost:<port>/skill"; p="expectProject=<project>"
+curl -s "$u/console_get_logs?$p" -d '{"type":"Error","includeStackTrace":true}'
+curl -s "$u/console_get_logs?$p" -d '{"type":"Error","includeStackTrace":true,"cursor":"<nextCursor from the previous response>"}'
 ```
 
-## Best Practices
+Occurrence-level evidence in a time window, without collapsing duplicates:
 
-1. Start with collapsed error groups, then request `collapse:false` and a `groupId` or time range only when individual occurrences matter.
-2. Follow `nextCursor` until `hasMore:false`; preserve the first page's fixed snapshot and reject a result when `complete:false`.
-3. `complete:false` is the incompleteness signal. Records with seq at or below `coverage.incompleteThroughSeq` may be missing (unreadable rows, an editor kill), so only a window whose `afterSeq` is at or above it can be complete; `coverage.corruptRows` counts those rows and `coverage.durabilityIssue` flags a failing disk write. Retention is limited to 50,000 records and 64 MiB.
-4. Use `console_start_capture` only to bracket a compatibility session; automatic managed capture is already running and capture start never clears history.
-5. Use the `coverage.editorLogPath` fallback only for manual investigation. It is not timestamp-normalized or merged into this API.
+```bash
+curl -s "$u/console_get_logs?$p" -d '{"collapse":false,"fromUtc":"2026-10-10T00:00:00Z","toUtc":"2026-10-11T00:00:00Z"}'
+```
 
----
-## Exact Signatures
+Write messages:
 
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+```bash
+curl -s "$u/console_log?$p" -d '{"message":"AI Agent: Task completed","type":"Log"}'
+curl -s "$u/console_log?$p" -d '{"message":"AI Agent: Performance issue detected","type":"Warning"}'
+```
+
+Clear invalidates every old cursor and deletes retained history. A capture session is optional: it limits reads, exports and stats to records created after its start, without deleting background history.
+
+```bash
+curl -s "$u/console_start_capture?$p" -d '{}'
+curl -s "$u/console_clear?$p" -d '{}'
+curl -s "$u/console_stop_capture?$p" -d '{}'
+```

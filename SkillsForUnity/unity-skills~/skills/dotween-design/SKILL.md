@@ -3,25 +3,16 @@ name: unity-dotween-design
 description: Source-anchored design rules for DOTween 1.3.015
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Writing or reviewing DOTween code
-- Building sequences
-- Binding tween lifetime
-- Debugging tween pitfalls
-- 编写或审查 DOTween 代码、构建序列动画、绑定补间生命周期、排查补间陷阱
-
 # DOTween - Design Rules
+
+**Version scope:** DOTween 1.3.015 (`DOTween.Version`, `DOTween.cs:38`). Earlier 1.2.x is source-compatible for most APIs; the Modules system needs the post-1.2.0 source. Read the sub-doc named in the routing table before writing code.
 
 Advisory module. Every rule is distilled from Demigiant DOTween source at:
 - **1.3.015** — bundled in `_DOTween.Assembly/DOTween/` and `bin/Modules/` module files (Unity 2018+)
 
 Each rule cites a concrete file/line so the reasoning is auditable and the AI does not improvise against stale memory.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
-
-## When to Load This Module
+## When to use
 
 Load before writing or reviewing any of:
 

@@ -3,10 +3,8 @@ Undo the last action.
 
 **Example**:
 
-```python
-import unity_skills
-
+```bash
 # Safe experimentation with undo
-unity_skills.call_skill("gameobject_delete", name="TestObject")
-unity_skills.call_skill("editor_undo")  # Restore if needed
+curl -s "http://localhost:<port>/skill/gameobject_delete?expectProject=<project>" -d '{"name":"TestObject"}'
+curl -s "http://localhost:<port>/skill/editor_undo?expectProject=<project>" -d '{}'
 ```

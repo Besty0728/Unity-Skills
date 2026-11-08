@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-pitfalls
-description: "Netcode for GameObjects pitfalls checklist — the bugs AI agents most often introduce, each with a source anchor; scan before writing or reviewing netcode. Netcode for GameObjects 陷阱清单(AI 最易引入的 bug,逐条附源码出处;编写或审查 netcode 前先扫一遍)。"
+description: "Netcode for GameObjects pitfalls checklist — the bugs AI agents most often introduce, each with a source anchor; scan before writing or reviewing netcode."
 type: reference
 ---
 

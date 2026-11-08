@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset-init
-description: "YooAsset initialization, destroy, and package lifecycle (v2.3.18) — the only supported YooAssets.Initialize / ResourcePackage startup sequence. YooAsset 初始化、销毁与 package 生命周期(v2.3.18:唯一受支持的 YooAssets.Initialize/ResourcePackage 启动序列)。"
+description: "YooAsset initialization, destroy, and package lifecycle (v2.3.18) — the only supported YooAssets.Initialize / ResourcePackage startup sequence."
 type: reference
 ---
 

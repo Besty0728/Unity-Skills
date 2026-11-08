@@ -3,26 +3,17 @@ name: unity-shadergraph-design
 description: Source-anchored Shader Graph design rules for Unity 2022.3
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may call it directly.
-
-## Triggers
-- Building or reviewing Shader Graphs
-- Structuring node chains or SubGraphs
-- Laying out blackboard/keywords
-- Following URP/HDRP graph recipes
-- 构建或审查 Shader Graph、组织节点链或 SubGraph、布置黑板/关键字、参考 URP/HDRP 图配方
-
 # ShaderGraph - Design Rules
 
-Advisory module. Read this before giving Shader Graph guidance. The goal is to keep recommendations anchored to actual package/source behavior, not stale model memory.
+**Version scope:** ShaderGraph 14.0.12 (Unity 2022.3 package) and the Unity 6 Graphics `com.unity.shadergraph` package. Read the sub-docs below before writing graph advice.
 
-> **Mode**: Documentation only — no REST skills to gate; load freely under any operating mode (Approval / Auto / Bypass).
+Advisory module. Read this before giving Shader Graph guidance. The goal is to keep recommendations anchored to actual package/source behavior, not stale model memory.
 
 ## Source Scope
 
 Validated against:
-- Unity 2022.3 package source: `E:/CodeSpace/temp/shadergraph/com.unity.shadergraph@14.0.12`
-- Unity 6 Graphics source: `E:/CodeSpace/temp/Graphics/Packages/com.unity.shadergraph`
+- `com.unity.shadergraph@14.0.12` package source (Unity 2022.3)
+- `com.unity.shadergraph` package source from the Unity 6 Graphics repository
 - Runtime/editor behavior in this repo's ShaderGraph skills and dual-version test environments
 
 Core anchors:
@@ -31,7 +22,7 @@ Core anchors:
 - `Editor/Data/Interfaces/Graph/SlotReference.cs`
 - Specific node files under `Editor/Data/Nodes/...`
 
-## When To Load
+## When to use
 
 Load before:
 - Designing a new Graph or SubGraph architecture

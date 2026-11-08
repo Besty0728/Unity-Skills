@@ -17,9 +17,7 @@ Execute a menu command.
 
 **Example**:
 
-```python
-import unity_skills
-
+```bash
 # Execute menu command
-unity_skills.call_skill("editor_execute_menu", menuPath="File/Save")
+curl -s "http://localhost:<port>/skill/editor_execute_menu?expectProject=<project>" -d '{"menuPath":"File/Save"}'
 ```
