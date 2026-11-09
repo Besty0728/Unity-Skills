@@ -35,6 +35,7 @@ class OC8Editor(FakeEditorT3):
     def __init__(self, *args, **kwargs):
         super(OC8Editor, self).__init__(*args, **kwargs)
         self.layer_names.update({10: "Props", 18: "World"})
+        self.saved_settings = []
         self.tags = ["WorldTag"]
         self.gravity = {"x": 0.0, "y": -9.81, "z": 0.0}
         self.labels = {}
@@ -105,6 +106,10 @@ class OC8Editor(FakeEditorT3):
         return result
 
     def _skill_scriptableobject_set_serialized_property(self, agent, args):
+        self.saved_settings.append(args["assetPath"])
+        if args["assetPath"] == DYNAMICS and args["propertyPath"] == "m_BounceThreshold":
+            self._save_settings()
+            return {"success": True, "assetPath": DYNAMICS, "propertyPath": args["propertyPath"], "valueSet": args["value"]}
         if args["assetPath"] != TAG:
             return super(OC8Editor, self)._skill_scriptableobject_set_serialized_property(agent, args)
         prop, value = args["propertyPath"], args.get("value") or ""
@@ -164,6 +169,13 @@ class OC8Editor(FakeEditorT3):
     def _skill_project_get_layers(self, agent, args):
         names = [name for _i, name in sorted(self.layer_names.items()) if name]
         return {"success": True, "count": len(names), "layers": names}
+
+    def _skill_project_add_layer(self, agent, args):
+        self.layer_names[int(args["index"])] = args["layerName"]
+        self._save_settings()
+        self._change(agent, {"kind": "property_changed", "targetType": "TagManager", "assetPath": TAG,
+                             "property": "layers.Array.data[%s]" % args["index"], "value": args["layerName"]})
+        return {"success": True, "layer": args["layerName"], "index": int(args["index"])}
 
     def _skill_project_add_tag(self, agent, args):
         self.tags.append(args["tagName"])
@@ -287,6 +299,10 @@ class OC8Tests(OpsTaskTests, unittest.TestCase):
                     truthful = {"layers": [], "declaredComplete": False}
                     self.assertEqual(set(run.verify(truthful).failed()), {"A1", "A3", "A4"})
 
+    def test_build_saves_both_settings_assets_before_the_baselines(self):
+        run = self.run_for()
+        self.assertEqual(run.editor.saved_settings[:2], [TAG, DYNAMICS])
+
     def test_teardown_restores_all_settings_for_different_allocations_and_errors(self):
         sol = load_modules("OC8")[2]
         for seed in (self.SEED, SECOND_SEED):
@@ -302,8 +318,7 @@ class OC8Tests(OpsTaskTests, unittest.TestCase):
                         self.assertEqual(run.task.layer_names(run.build_ctx), before["layers"])
                         self.assertEqual(run.task.matrix(run.build_ctx), run.collision)
                         self.assertEqual(V.canonical_digest(run.task.settings_view(run.build_ctx)), before["view"])
-                        self.assertEqual(V.canonical_digest(run.task.files(run.build_ctx, "ProjectSettings",
-                                                                          settings=True, whole=True)), before["disk"])
+                        self.assertEqual(run.task.settings_disk(run.build_ctx), before["disk"])
                         self.assertTrue(run.task.teardown(run.build_ctx)["restored"])
                         fixture.restore_collision(run.editor.client(RUNNER_AGENT), run.collision)
 

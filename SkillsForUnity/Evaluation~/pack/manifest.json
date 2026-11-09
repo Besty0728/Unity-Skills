@@ -603,7 +603,7 @@
     "packages": []
    },
    "public": {
-    "task.py": "921e2564842e97417633f9e77a10f1162633cd85dd4dd449e648a6de33800a24",
+    "task.py": "9d9e98c21453f38a45a6b96b0d41bda75e4557e435c6fe9dfe047a8151c97236",
     "prompt.zh-CN.md": "8d30d803d7514a3940dafedf16b35d8d2820d76591a60e6b7e22fd196bd14124",
     "prompt.en.md": "0ceb31c8134142ae77fc5aa51490f59e8d711b9e0a911ae110056c66d6885413"
    },
@@ -850,14 +850,14 @@
     "packages": []
    },
    "public": {
-    "task.py": "1bc5e09124694e146489f69268c96d292796338d3eef5c8a2f52b38d7a20a786",
+    "task.py": "32ab63624839420d1572252e475d68449e2cc6efaa54fb6e12b0c476c76017e8",
     "prompt.zh-CN.md": "5965acc81387c6efb63f04694eb91d418bd38d51cc1038d0372572bdc2dba8ce",
     "prompt.en.md": "e92fc8649e7967838d724781a44480059d8f3290ff894693fab529a8ac9ddd95"
    },
    "private": {
     "file": "T9.py",
-    "sha256": "84abfcb30f60355ac49e9e8043e0cc25d8cbffecceedcc2bfe3939931e128eab",
-    "bytes": 15970
+    "sha256": "0718e08203b0dfb70152d1d6a77c49a3442ae215cdffbfb753bbb200bc266422",
+    "bytes": 17391
    }
   },
   "DS1": {
@@ -1102,7 +1102,7 @@
     "packages": []
    },
    "public": {
-    "task.py": "390c252dcea40a566a69c619fbd992d190d78dc36409ce8df2e7311df0c5462e",
+    "task.py": "39a87abd9d6c6d4ab284077e2b2fab56d1136822f4d8ea35e1c2a4b73856a4a4",
     "prompt.zh-CN.md": "455f7b3215ded23df196cf052d448520536a35fffb4d22d36f7820b3cb3b61bf",
     "prompt.en.md": "73c432ef6aaccd6d722de3033923b2175fd91ecc05aea00a26aa37406b34c52f"
    },

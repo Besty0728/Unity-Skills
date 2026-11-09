@@ -12,6 +12,7 @@ from usk_eval.task_api import PublicTask
 
 TAG = "ProjectSettings/TagManager.asset"
 DYNAMICS = "ProjectSettings/DynamicsManager.asset"
+CREATED_BY_UNITY = ("ProjectSettings/SceneTemplateSettings.json",)  # appears the first time a scene is made in the project
 PAUSE = 0.02
 LIMIT = 10000
 PAIRS = tuple((a, b) for a in range(32) for b in range(a, 32))
@@ -89,7 +90,7 @@ class OC8(PublicTask):
         return {"info": info, "components": components, "values": values}
 
     @staticmethod
-    def files(ctx, root, scene=False, settings=False, whole=False):
+    def files(ctx, root, scene=False, settings=False):
         base = os.path.join(ctx.project_path, *root.split("/"))
         if not os.path.isdir(base):
             raise ValueError("missing folder: " + root)
@@ -105,6 +106,8 @@ class OC8(PublicTask):
                 path = os.path.relpath(full, ctx.project_path).replace(os.sep, "/")
                 if scene and path == ctx.scene:
                     continue
+                if settings and path in CREATED_BY_UNITY:
+                    continue
                 key = os.path.relpath(full, base).replace(os.sep, "/")
                 if settings and path in (TAG, DYNAMICS):
                     docs = V.uyaml.load(full)
@@ -113,13 +116,32 @@ class OC8(PublicTask):
                     content = []
                     for doc in docs:
                         body = dict(doc.body)
-                        if not whole:
-                            body.pop("layers" if path == TAG else "m_LayerCollisionMatrix", None)
+                        body.pop("layers" if path == TAG else "m_LayerCollisionMatrix", None)
                         content.append([doc.class_id, doc.file_id, doc.type_name, body])
                     out[key] = V.canonical_digest(content)
                 else:
                     out[key] = _hash_file(full)
         return out
+
+    @staticmethod
+    def settings_disk(ctx):
+        """Digest of the saved Tag and Physics settings."""
+        content = []
+        for path in (TAG, DYNAMICS):
+            docs = V.uyaml.load(os.path.join(ctx.project_path, *path.split("/")))
+            if not docs:
+                raise ValueError("unreadable settings YAML: " + path)
+            content.append([[doc.class_id, doc.file_id, doc.type_name, doc.body] for doc in docs])
+        return V.canonical_digest(content)
+
+    @classmethod
+    def settle_settings(cls, ctx, names):
+        """Saves both settings assets unchanged before any baseline: a fresh project's template is in an older format
+        that Unity rewrites the first time they are saved."""
+        ctx.c.write("scriptableobject_set_serialized_property", assetPath=TAG, propertyPath="layers.Array.data[31]",
+                    value=names[31] or "")
+        ctx.c.write("scriptableobject_set_serialized_property", assetPath=DYNAMICS, propertyPath="m_BounceThreshold",
+                    value=str(next(row[1] for row in cls.properties(ctx, DYNAMICS) if row[0] == "m_BounceThreshold")))
 
     @classmethod
     def settings_view(cls, ctx):
@@ -135,6 +157,7 @@ class OC8(PublicTask):
     def build(self, ctx):
         c, rng = ctx.c, ctx.rng
         names0 = self.layer_names(ctx)
+        self.settle_settings(ctx, names0)
         free = [i for i in range(8, 32) if not names0[i]]
         if len(free) < 10 or len(set(n for n in names0 if n)) != len([n for n in names0 if n]):
             raise ValueError("OC8 requires ten empty user layer slots and unique nonempty layer names")
@@ -157,7 +180,7 @@ class OC8(PublicTask):
         initial = {"format": FORMAT, "layers": names0, "matrix": self.matrix(ctx),
                    "tag": self.properties(ctx, TAG), "gravity": ctx.read("physics_get_gravity"),
                    "view": V.canonical_digest(self.settings_view(ctx)),
-                   "disk": V.canonical_digest(self.files(ctx, "ProjectSettings", settings=True, whole=True))}
+                   "disk": self.settings_disk(ctx)}
         with open(os.path.join(ctx.project_path, *checkpoint.split("/")), "w", encoding="utf-8") as stream:
             json.dump(initial, stream, sort_keys=True, ensure_ascii=False)
             stream.write("\n")
@@ -322,7 +345,7 @@ class OC8(PublicTask):
                     put("scriptableobject_set_serialized_property", assetPath=TAG, propertyPath=prop, value=str(value or ""))
         clean = (self.layer_names(ctx) == data["layers"] and self.matrix(ctx) == data["matrix"] and
                  V.canonical_digest(self.settings_view(ctx)) == data["view"] and
-                 V.canonical_digest(self.files(ctx, "ProjectSettings", settings=True, whole=True)) == data["disk"])
+                 self.settings_disk(ctx) == data["disk"])
         if not clean:
             raise RuntimeError("project settings still differ from the checkpoint: %s" % errors)
         return {"restored": True, "errors": errors}

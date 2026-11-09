@@ -25,6 +25,7 @@ from usk_eval import verifylib as V
 from usk_eval.task_api import PublicTask, address
 
 TAG_MANAGER = "ProjectSettings/TagManager.asset"
+DYNAMICS_MANAGER = "ProjectSettings/DynamicsManager.asset"
 LAYER_SLOTS = (28, 29)
 COLLIDER_TYPES = ("BoxCollider", "SphereCollider", "CapsuleCollider", "MeshCollider")
 FIRST_USER_LAYER = 8
@@ -93,6 +94,13 @@ def layer_names(client):
     return {int(row["index"]): row.get("name") for row in layers}
 
 
+def auto_sync_transforms(ctx):
+    """m_AutoSyncTransforms as saved in the physics settings; no skill reads it."""
+    path = os.path.join(ctx.project_path, *DYNAMICS_MANAGER.split("/"))
+    docs = V.uyaml.load(path) if os.path.isfile(path) else None
+    return docs[0].body.get("m_AutoSyncTransforms") if docs else None
+
+
 def collision_states(ctx, pairs):
     return {"%d,%d" % pair: ctx.read("physics_get_layer_collision", layer1=pair[0], layer2=pair[1])
             .get("collisionEnabled") for pair in pairs}
@@ -155,6 +163,7 @@ class DC6(PublicTask):
 
         layers_at_start = {str(slot): name for slot, name in layer_names(c).items()
                            if slot >= FIRST_USER_LAYER and slot not in LAYER_SLOTS}
+        auto_sync = auto_sync_transforms(ctx)
         _claim_layers(ctx, {actor["index"]: actor["name"], pickup["index"]: pickup["name"]})
         closed = tuple(sorted((0, actor["index"])))
         for pair, enabled in sorted(collision_states(ctx, self.layer_pairs).items()):
@@ -223,6 +232,7 @@ class DC6(PublicTask):
             "managerScript": "%s/ScoreKeeper_%s.cs" % (scripts_dir, k),
             "coinScript": "%s/CoinPickup_%s.cs" % (scripts_dir, k),
             "actorLayer": actor, "pickupLayer": pickup, "layersAtStart": layers_at_start,
+            "autoSyncAtStart": auto_sync,
         }
 
     def snapshot(self, ctx):
@@ -335,6 +345,10 @@ class DC6(PublicTask):
         left = [slot for slot, name in wanted.items() if (now.get(slot) or "") != name]
         if left:
             raise RuntimeError("layer slots %s still differ from their start (%s)" % (left, errors))
+        auto_sync = (ctx.handles or {}).get("autoSyncAtStart")
+        if auto_sync is not None and auto_sync_transforms(ctx) != auto_sync:
+            c.write("scriptableobject_set_serialized_property", assetPath=DYNAMICS_MANAGER,
+                    propertyPath="m_AutoSyncTransforms", value="true" if str(auto_sync) == "1" else "false")
         return {"layersRestored": restored, "errors": errors}
 
 

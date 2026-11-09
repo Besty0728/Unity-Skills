@@ -118,14 +118,14 @@ def open_pack(rt, pack_dir=None, private_zip=None, private_dir=None):
         raise ProblemError(problem("PACK_INVALID", detail="%s: %s" % (type(exc).__name__, str(exc)[:200])))
 
 
-def open_session_pack(rt, session):
+def open_session_pack(rt, session, check_manifest=True):
     info = session["pack"]
     private = info.get("private") or {}
     kind, path = private.get("kind"), private.get("path")
     pack = open_pack(rt, pack_dir=path if info.get("source") == "pack-dir" else None,
                      private_zip=path if kind == "zip" else None,
                      private_dir=path if kind == "private-dir" else None)
-    if pack.manifest_sha256 != info.get("manifestSha256"):
+    if check_manifest and pack.manifest_sha256 != info.get("manifestSha256"):
         raise ProblemError(problem("PACK_INVALID", detail="the task pack changed since the session started"))
     return pack
 

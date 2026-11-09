@@ -10,6 +10,7 @@ from unittest import mock
 
 from .runner_support import Bench, real_private, rest, store, verify_module
 from usk_eval import attempt, fixture, session
+from usk_eval.problems import ProblemError, problem
 
 
 class Crash(BaseException):
@@ -236,6 +237,26 @@ class ClassificationTests(Base):
         before_submit(data)
         code, env = self.submit(sid, data)
         return sid, data, code, env, self.b.result(sid, data["attemptId"])
+
+    def test_pack_change_at_submit_invalidates_and_still_tears_down(self):
+        real = session.open_session_pack
+
+        def changed(rt, info, check_manifest=True):
+            if check_manifest:
+                raise ProblemError(problem("PACK_INVALID", detail="the task pack changed since the session started"))
+            return real(rt, info, check_manifest=False)
+
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        with mock.patch.object(session, "open_session_pack", changed):
+            _code, env = self.submit(sid, data)
+        self.assertIn("PACK_INVALID", self.codes(env))
+        state = self.b.state(sid, data["attemptId"])
+        self.assertEqual((state["status"], state["phase"]), ("invalid", "torn_down"))
+        self.assertTrue(state["teardown"]["ok"], state["teardown"])
+        self.assertIn("task_teardown", state["teardown"]["actions"])
+        self.assertFalse(os.path.isdir(self.run_dir(data)))
 
     def test_editor_side_change_contaminates(self):
         _sid, _data, code, _env, result = self.finish(lambda d: self.b.unity.editor_change("Main Camera"))

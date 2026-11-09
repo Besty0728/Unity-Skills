@@ -65,6 +65,31 @@ def meta_guid(project_path, asset_path):
         return None
 
 
+def id_free(value):
+    """The value without instance ids: children and id keys dropped, reference strings reduced to type and name."""
+    if isinstance(value, dict):
+        return {key: id_free(item) for key, item in value.items() if key not in ("children", "instanceId", "entityId")}
+    if isinstance(value, list):
+        return [id_free(item) for item in value]
+    ref = V.parse_ref(value)
+    return "%s:%s" % (ref[1], ref[2]) if ref else value
+
+
+def state_by_path(ctx, path):
+    return id_free(V.go_state(ctx.probe, V.object_id(ctx.probe.go_path(path))))
+
+
+def ser_by_path(ctx, path, component):
+    res = ctx.read("component_get_serialized_properties", componentType=component, path=path, limit=5000)
+    return {row.get("propertyPath"): row.get("value") for row in res.get("properties") or []}
+
+
+def owner_path(ctx, ref_value):
+    """Hierarchy path of the GameObject that a reference points at, or None."""
+    owner = ctx.probe.owner(ref_value)
+    return (ctx.probe.go(owner) or {}).get("path") if owner else None
+
+
 class T9(PublicTask):
     id = "T9"
     track = "dev"
@@ -109,20 +134,25 @@ class T9(PublicTask):
         c.write("component_add", componentType=route, **address(route_obj))
         c.write("component_set_property", componentType=route, propertyName="speed", value=repr(ROUTE_SPEED),
                 **address(route_obj))
-        return {"guardsPath": ctx.path("Guards"), "patrolScript": ctx.asset("Scripts", patrol + ".cs"),
+        return {"guardsPath": ctx.path("Guards"),
+                "guardPaths": [ctx.path("Guards", "Guard_%d" % (index + 1)) for index in range(3)],
+                "waypointPaths": [ctx.path("Waypoints", "W%d" % (index + 1)) for index in range(3)],
+                "routePath": ctx.path("Route"), "patrolScript": ctx.asset("Scripts", patrol + ".cs"),
                 "routeScript": ctx.asset("Scripts", route + ".cs"), "guards": guards, "waypoints": points,
                 "route": route_obj}
 
     def snapshot(self, ctx):
-        p, h, project = ctx.probe, ctx.handles, ctx.project_path
+        h, project = ctx.handles, ctx.project_path
         patrol = class_name(h["patrolScript"])
         rows = []
-        for ref in h["guards"]:
-            values = p.ser(ref, patrol) or {}
-            rows.append([ref, {"speed": values.get("speed"), "laps": values.get("laps"),
-                               "waypoint": p.owner(values.get("waypoint"))}])
-        return {"data": {"objects": [[ref, V.go_state(p, ref)] for ref in h["guards"] + h["waypoints"] + [h["route"]]],
-                         "guards": rows, "route": p.ser(h["route"], class_name(h["routeScript"])),
+        for path in h["guardPaths"]:
+            values = ser_by_path(ctx, path, patrol)
+            rows.append([path, {"speed": values.get("speed"), "laps": values.get("laps"),
+                                "waypoint": owner_path(ctx, values.get("waypoint"))}])
+        paths = h["guardPaths"] + h["waypointPaths"] + [h["routePath"]]
+        return {"data": {"objects": [[path, state_by_path(ctx, path)] for path in paths],
+                         "guards": rows,
+                         "route": id_free(ser_by_path(ctx, h["routePath"], class_name(h["routeScript"]))),
                          "patrolGuid": meta_guid(project, h["patrolScript"]),
                          "scripts": [[path, file_sha(project, path)] for path in cs_files(project)]},
                 "digests": {}}

@@ -839,8 +839,12 @@ def _imported_at_submit(value, depth=0):
 
 def _verify(rt, session, state, overrides):
     started = time.time()
-    pack = S.open_session_pack(rt, session)
-    task = S.load_task(rt, pack, state["taskId"])
+    try:
+        pack = S.open_session_pack(rt, session)
+        task = S.load_task(rt, pack, state["taskId"])
+    except ProblemError as exc:                                # no score is possible, but the project still comes back
+        _fail_build(rt, session, state, "; ".join(p["code"] for p in exc.problems))
+        raise
     meta = pack.meta(state["taskId"])
     private = submodule("private")
     try:                                                       # S7
@@ -1016,7 +1020,7 @@ def _teardown(rt, session, state, task=None):
         return {"ok": False, "actions": [], "error": "; ".join(p["code"] for p in exc.problems)}
     if task is None:
         try:
-            task = S.load_task(rt, S.open_session_pack(rt, session), state["taskId"])
+            task = S.load_task(rt, S.open_session_pack(rt, session, check_manifest=False), state["taskId"])
         except ProblemError as exc:
             rt.log.warn("teardown of %s without the task hook: %s" % (state["attemptId"], exc))
     hook = None

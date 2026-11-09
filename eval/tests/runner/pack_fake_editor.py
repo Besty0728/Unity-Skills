@@ -161,6 +161,7 @@ class FakeEditor(object):
         self.unity = unity
         self.objects = {}
         self.roots = []
+        self.saved_scenes = {}
         self.scene_path = "Assets/Scenes/Main.unity"
         self.materials = {}
         self.known = set()
@@ -462,6 +463,7 @@ class FakeEditor(object):
         return {"success": True, "scenePath": self.scene_path}
 
     def _skill_scene_save(self, agent, args):
+        self.saved_scenes[self.scene_path] = (self.objects, self.roots)
         self.publish("scene_saved", agent, {"name": os.path.basename(self.scene_path)[:-6], "path": self.scene_path})
         self._imported(agent, [self.scene_path])
         return {"success": True, "scenePath": self.scene_path}
@@ -471,7 +473,7 @@ class FakeEditor(object):
         if not os.path.isfile(self.disk(path)):
             raise _fail("SCENE_NOT_FOUND", "Scene not found: %s" % path)
         self.scene_path = path
-        self.objects, self.roots = {}, []
+        self.objects, self.roots = self.saved_scenes.get(path, ({}, []))
         self.publish("scene_opened", agent, {"path": path})
         return {"success": True, "scenePath": path}
 

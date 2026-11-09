@@ -28,7 +28,11 @@ def _pair(ctx, a, b, enabled):
     ctx.c.write("physics_set_layer_collision", layer1=a, layer2=b, enableCollision=enabled)
 
 
-def _solve(ctx, route="flat", allocation="low", mutate=None, reverse=False):
+def _add_layer(ctx, index, name):
+    ctx.c.write("project_add_layer", layerName=name, index=index)
+
+
+def _solve(ctx, route="flat", allocation="low", mutate=None, reverse=False, name_slot=_set_name):
     before = _names(ctx)
     labels = ctx.handles["names"]
     rows = V.structure(ctx.probe, ctx.root)
@@ -41,7 +45,7 @@ def _solve(ctx, route="flat", allocation="low", mutate=None, reverse=False):
     if allocation == "occupied":
         slots[0] = next(i for i in range(8, 32) if before[i] and before[i] not in labels)
     for index, name in zip(slots, labels[:2]):
-        _set_name(ctx, index, name)
+        name_slot(ctx, index, name)
     names = _names(ctx)
     for a, b, enabled in ctx.private.requests(names, labels):
         _pair(ctx, b if reverse else a, a if reverse else b, enabled)
@@ -66,6 +70,11 @@ def _solve(ctx, route="flat", allocation="low", mutate=None, reverse=False):
 
 def reference(ctx):
     return _solve(ctx)
+
+
+def add_layer_skill(ctx):
+    """The two layers named through project_add_layer instead of the TagManager property."""
+    return _solve(ctx, name_slot=_add_layer)
 
 
 def recursive_restore_other_slots(ctx):
@@ -271,6 +280,7 @@ NEGATIVES = [
     Negative("direct_file", direct_file, {"A7", "A10"}),
     Negative("inaccurate_report", inaccurate_report, {"A8"}),
 ]
-ALTERNATIVES = [("recursive_restore_other_slots", recursive_restore_other_slots), ("save_run_scene", save_run_scene)]
+ALTERNATIVES = [("recursive_restore_other_slots", recursive_restore_other_slots), ("save_run_scene", save_run_scene),
+                ("add_layer_skill", add_layer_skill)]
 
 # Producer:Betsy

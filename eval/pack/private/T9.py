@@ -118,6 +118,33 @@ def _read(ctx, skill, **args):
     return result if isinstance(result, dict) and result.get("success") is not False else None
 
 
+def id_free(value):
+    """The value without instance ids: children and id keys dropped, reference strings reduced to type and name."""
+    if isinstance(value, dict):
+        return {key: id_free(item) for key, item in value.items() if key not in ("children", "instanceId", "entityId")}
+    if isinstance(value, list):
+        return [id_free(item) for item in value]
+    ref = V.parse_ref(value)
+    return "%s:%s" % (ref[1], ref[2]) if ref else value
+
+
+def state_by_path(ctx, path):
+    """Id-free gameobject state of the object now at `path`, or None when nothing is there."""
+    return id_free(V.go_state(ctx.probe, V.object_id(ctx.probe.go_path(path))))
+
+
+def ser_by_path(ctx, path, component):
+    """{propertyPath: value} of `component` on the object now at `path`; empty when it cannot be read."""
+    res = _read(ctx, "component_get_serialized_properties", componentType=component, path=path, limit=5000)
+    return {row.get("propertyPath"): row.get("value") for row in (res or {}).get("properties") or []}
+
+
+def owner_path(ctx, ref_value):
+    """Hierarchy path of the GameObject that a reference points at now, or None."""
+    owner = ctx.probe.owner(ref_value)
+    return (ctx.probe.go(owner) or {}).get("path") if owner else None
+
+
 def compiled(ctx):
     """True when no compilation is running and the last one ended without errors."""
     state = _read(ctx, "debug_check_compilation") or {}
@@ -148,7 +175,7 @@ def field_ok(found, name, kind, default):
 
 
 def verify(ctx, card):
-    p, h, c0 = ctx.probe, ctx.handles, ctx.c0
+    h, c0 = ctx.handles, ctx.c0
     patrol, route = class_names(h)
     code = COMMENT_RE.sub("", _text(ctx, h["patrolScript"]) or "")
     found = declarations(code)
@@ -164,7 +191,7 @@ def verify(ctx, card):
 
     feedback = (_read(ctx, "script_get_compile_feedback", scriptPath=h["patrolScript"]) or {}).get("hasErrors")
     rows = c0.get("guards") or []
-    values = [p.ser(ref, patrol) or {} for ref, _was in rows]
+    values = [ser_by_path(ctx, path, patrol) for path, _was in rows]
     exposes = bool(values) and all("moveSpeed" in got and "patrolTarget" in got and "speed" not in got and
                                    "waypoint" not in got for got in values)
     is_clean = compiled(ctx)
@@ -175,11 +202,12 @@ def verify(ctx, card):
     card.check("C4", len(rows) == 3 and all(V.close_tuple(value, (_number(was.get("speed")),))
                                             for value, (_ref, was) in zip(speeds, rows)),
                expected=[was.get("speed") for _ref, was in rows], actual=speeds)
-    holders = [p.owner(got.get("patrolTarget")) for got in values]
+    holders = [owner_path(ctx, got.get("patrolTarget")) for got in values]
     kinds = [(V.parse_ref(got.get("patrolTarget")) or (None, None, None))[1] for got in values]
-    card.check("C5", len(rows) == 3 and all(V.same_id(value, was.get("waypoint")) and kind == "UnityEngine.Transform"
-                                            for value, kind, (_ref, was) in zip(holders, kinds, rows)),
-               expected=[was.get("waypoint") for _ref, was in rows],
+    card.check("C5", len(rows) == 3 and all(holder is not None and V.norm_path(holder) == was.get("waypoint") and
+                                            kind == "UnityEngine.Transform"
+                                            for holder, kind, (_path, was) in zip(holders, kinds, rows)),
+               expected=[was.get("waypoint") for _path, was in rows],
                actual={"owners": holders, "raw": [got.get("patrolTarget") for got in values]})
     laps = [got.get("laps") for got in values]
     card.check("C6", len(rows) == 3 and all(V.as_int(value) is not None and
@@ -200,27 +228,29 @@ def verify(ctx, card):
     card.check("C8", guid is not None and guid == c0.get("patrolGuid") and not others,
                expected=c0.get("patrolGuid"), actual={"guid": guid, "otherCodeChanged": others})
 
-    changed = [str(ref) for ref, state in c0.get("objects") or [] if not V.same(state, V.go_state(p, ref))[0]]
-    route_same = V.same(c0.get("route"), p.ser(h["route"], route))[0]
+    changed = [path for path, state in c0.get("objects") or [] if not V.same(state, state_by_path(ctx, path))[0]]
+    route_same = V.same(c0.get("route"), id_free(ser_by_path(ctx, h["routePath"], route)))[0]
     card.check("C9", not changed and route_same, actual={"changedObjects": changed, "routeUnchanged": route_same})
 
     bad = ctx.violations()
     card.check("C10", not bad, actual={"violations": bad[:10]})
 
     reported = V.answer(ctx, "guards")
+    current = [V.object_id(ctx.probe.go_path(path)) for path, _was in rows]
+    holder_ids = [V.object_id(ctx.probe.go_path(path)) if path else None for path in holders]
     matched = []
     if isinstance(reported, list) and len(reported) == len(rows):
         for item in reported:
-            index = next((i for i, (ref, _was) in enumerate(rows)
-                          if isinstance(item, dict) and V.same_id(item.get("instanceId"), ref)), None)
+            index = next((i for i, ident in enumerate(current)
+                          if isinstance(item, dict) and V.same_id(item.get("instanceId"), ident)), None)
             if index is None or index in matched:
                 break
-            speed_now, holder_now = _number(speeds[index]) if speeds[index] is not None else None, holders[index]
+            speed_now = _number(speeds[index]) if speeds[index] is not None else None
             told = item.get("waypointInstanceId")
             if not ((speed_now is None and item.get("moveSpeed") is None) or
                     (speed_now is not None and V.close_tuple(item.get("moveSpeed"), (speed_now,)))):
                 break
-            if not ((holder_now is None and told in (None, 0)) or V.same_id(told, holder_now)):
+            if not ((holder_ids[index] is None and told in (None, 0)) or V.same_id(told, holder_ids[index])):
                 break
             matched.append(index)
     answer_ok = (len(rows) == 3 and len(matched) == len(rows) and
@@ -243,14 +273,13 @@ def SCENARIO(ctx):
         return {"executionMode": "edit", "timeoutSeconds": 30, "steps": [check]}
     steps = [{"kind": "wait_frames", "frames": 2}]
     steps += [{"kind": "read", "skill": "component_get_serialized_properties",
-               "args": dict({"componentType": patrol}, **V.address(ref))} for ref in h["guards"]]
+               "args": {"componentType": patrol, "path": path}} for path in h["guardPaths"]]
     return {"executionMode": "play", "timeoutSeconds": 90, "steps": steps + [check]}
 
 
 def verify_runtime(ctx, card):
     scenario = ctx.scenario or {}
     rows = ctx.c0.get("guards") or []
-    names = {str(V.object_id(ref)): (state or {}).get("name") for ref, state in ctx.c0.get("objects") or []}
     reads = [step.get("actual") for step in scenario.get("steps") or []
              if step.get("kind") == "read" and isinstance(step.get("actual"), dict)]
     seen = []
@@ -259,11 +288,12 @@ def verify_runtime(ctx, card):
                   if isinstance(row, dict)}
         seen.append({key: values.get(key) for key in ("moveSpeed", "patrolTarget", "laps")})
     held = len(rows) == 3 and len(seen) == len(rows)
-    for got, (_ref, was) in zip(seen, rows):
+    for got, (_path, was) in zip(seen, rows):
         link = V.parse_ref(got.get("patrolTarget"))
+        expected = str(was.get("waypoint") or "").rsplit("/", 1)[-1]
         held = held and V.close_tuple(got.get("moveSpeed"), (_number(was.get("speed")),)) and \
             V.as_int(got.get("laps")) == V.as_int(was.get("laps")) and bool(link) and \
-            link[1] == "UnityEngine.Transform" and link[2] == names.get(str(V.object_id(was.get("waypoint"))))
+            link[1] == "UnityEngine.Transform" and link[2] == expected
     card.check("C12", scenario.get("passed") is True and held,
                actual={"passed": scenario.get("passed"), "error": scenario.get("error"),
                        "status": scenario.get("status"), "guards": seen})

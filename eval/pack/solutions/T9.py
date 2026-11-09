@@ -83,15 +83,20 @@ def _fixture(ctx):
     return ctx.task.snapshot(ctx)["data"]
 
 
+def _current_id(ctx, path):
+    return _number(V.object_id(ctx.probe.go_path(path)))
+
+
 def _answer(ctx, rows=None):
     p, h = ctx.probe, ctx.handles
     patrol, _route = ctx.private.class_names(h)
     if rows is None:
         rows = []
-        for ref in h["guards"]:
-            values = p.ser(ref, patrol) or {}
+        for path in h["guardPaths"]:
+            values = ctx.private.ser_by_path(ctx, path, patrol)
             speed = values.get("moveSpeed")
-            rows.append({"instanceId": _number(ref), "moveSpeed": float(speed) if speed is not None else None,
+            rows.append({"instanceId": _current_id(ctx, path),
+                         "moveSpeed": float(speed) if speed is not None else None,
                          "waypointInstanceId": _number(p.owner(values.get("patrolTarget")))})
     return {"scriptPath": h["patrolScript"], "guards": rows, "declaredComplete": True}
 
@@ -118,20 +123,20 @@ def rename_and_reset(ctx):
     rows = _fixture(ctx)["guards"]
     patrol, _route = ctx.private.class_names(ctx.handles)
     _rewrite(ctx, _plain(ctx))
-    for ref, was in rows:
-        at = V.address(ref)
+    for path, was in rows:
+        at = {"path": path}
         ctx.c.write("component_set_property", componentType=patrol, propertyName="moveSpeed", value=was["speed"],
                     **at)
         ctx.c.write("component_set_serialized_property", componentType=patrol, propertyPath="patrolTarget",
-                    referencePath=(ctx.probe.go(was["waypoint"]) or {}).get("path"), objectType="Transform", **at)
+                    referencePath=was["waypoint"], objectType="Transform", **at)
     return _answer(ctx)
 
 
 def claims_preserved(ctx):
     rows = _fixture(ctx)["guards"]
     _rewrite(ctx, _plain(ctx))
-    return _answer(ctx, [{"instanceId": _number(ref), "moveSpeed": float(was["speed"]),
-                          "waypointInstanceId": _number(was["waypoint"])} for ref, was in rows])
+    return _answer(ctx, [{"instanceId": _current_id(ctx, path), "moveSpeed": float(was["speed"]),
+                          "waypointInstanceId": _current_id(ctx, was["waypoint"])} for path, was in rows])
 
 
 def compile_error(ctx):
@@ -228,6 +233,13 @@ def save_run_scene(ctx):
     return answer
 
 
+def reload_scene_before_submit(ctx):
+    reference(ctx)
+    ctx.c.write("scene_save")
+    _wait(ctx, ctx.c.write("scene_load", scenePath=ctx.scene, additive=False))
+    return _answer(ctx)
+
+
 NEGATIVES = [
     Negative("no_attribute", no_attribute, {"C2", "C4", "C5", "C12"}, "renaming alone resets the stored values"),
     Negative("rename_and_reset", rename_and_reset, {"C2", "C7"}, "the values written back through skills"),
@@ -246,6 +258,6 @@ NEGATIVES = [
 ]
 
 ALTERNATIVES = [("edit_file_and_refresh", edit_file_and_refresh), ("literal_edits", literal_edits),
-                ("save_run_scene", save_run_scene)]
+                ("save_run_scene", save_run_scene), ("reload_scene_before_submit", reload_scene_before_submit)]
 
 # Producer:Betsy
