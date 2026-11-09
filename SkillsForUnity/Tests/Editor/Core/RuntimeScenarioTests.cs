@@ -179,6 +179,37 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void ReadOnlyStepAdvancesInMemoryWithoutFlushing()
+        {
+            var job = Start("[" + Assertion + "," + Assertion + "]");
+            BatchPersistence.FlushIfDirty();
+            RuntimeScenarioService.Process(job);
+            Assert.That(Convert.ToInt32(job.metadata["stepIndex"]), Is.EqualTo(1));
+            Assert.That(job.metadata.ContainsKey("stepExecuting") && Convert.ToBoolean(job.metadata["stepExecuting"]), Is.False);
+            Assert.That(BatchPersistence.HasUnflushedChangesForTests, Is.True);
+            BatchPersistence.FlushIfDirty();
+            Assert.That(BatchPersistence.HasUnflushedChangesForTests, Is.False);
+        }
+
+        [Test]
+        public void InvokeStepIsFlushedBeforeDispatchAndAfterIt()
+        {
+            var job = Start("[{\"kind\":\"invoke\",\"skill\":\"component_invoke_method\"}," + Assertion + "]");
+            bool flushedAtDispatch = false, markedAtDispatch = false;
+            RuntimeScenarioService.ExecuteForTests = (skill, args) =>
+            {
+                flushedAtDispatch = !BatchPersistence.HasUnflushedChangesForTests;
+                markedAtDispatch = Convert.ToBoolean(job.metadata["stepExecuting"]);
+                return "{\"status\":\"success\",\"result\":{\"value\":12}}";
+            };
+            RuntimeScenarioService.Process(job);
+            Assert.That(flushedAtDispatch, Is.True);
+            Assert.That(markedAtDispatch, Is.True);
+            Assert.That(Convert.ToInt32(job.metadata["stepIndex"]), Is.EqualTo(1));
+            Assert.That(BatchPersistence.HasUnflushedChangesForTests, Is.False);
+        }
+
+        [Test]
         public void FramesWaitForActualFrameCounter()
         {
             var job = Start("[{\"kind\":\"wait_frames\",\"frames\":2}," + Assertion + "]");

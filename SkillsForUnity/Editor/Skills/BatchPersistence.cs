@@ -437,6 +437,8 @@ namespace UnitySkills
         /// <summary>Points persistence at <paramref name="directory"/> with nothing loaded; Dispose restores the live state.</summary>
         internal static IDisposable BeginTestScope(string directory) => new TestScope(directory);
 
+        internal static bool HasUnflushedChangesForTests => _dirty;
+
         /// <summary>Drops the in-memory state and loads it again, as a domain reload does.</summary>
         internal static void ReloadForTests()
         {

@@ -50,6 +50,20 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void ReadWindow_StackTraceTypesKeepStacksOnlyOnThoseEntries()
+        {
+            ConsoleLogHistoryService.RecordForTests("info", "info-stack", LogType.Log, DateTime.UtcNow);
+            ConsoleLogHistoryService.RecordForTests("boom", "boom-stack", LogType.Error, DateTime.UtcNow);
+
+            var window = ConsoleLogHistoryService.ReadWindow(0, 0, stackTraceTypes: new[] { "Error", "Exception", "Assert" });
+
+            Assert.AreEqual(2, window.logs.Count);
+            Assert.IsNull(JObject.FromObject(window.logs[0]).Value<string>("stackTrace"));
+            Assert.AreEqual("boom-stack", JObject.FromObject(window.logs[1]).Value<string>("stackTrace"));
+            Assert.IsTrue(window.complete);
+        }
+
+        [Test]
         public void ReadWindow_TypeFilterFindsErrorBeyondTheOrdinaryLogLimit()
         {
             for (int i = 0; i < 1001; i++)

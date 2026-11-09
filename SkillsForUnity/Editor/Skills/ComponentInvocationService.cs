@@ -455,7 +455,7 @@ namespace UnitySkills
         internal static void CaptureEvidence(BatchJobRecord job)
         {
             long finishSeq = ConsoleLogHistoryService.GetCurrentSeq();
-            var window = ConsoleLogHistoryService.ReadWindow(Long(job, "acceptedLogSeq"), finishSeq);
+            var window = ConsoleLogHistoryService.ReadWindow(Long(job, "acceptedLogSeq"), finishSeq, stackTraceTypes: RuntimeScenarioService.FailureLogTypes);
             finishSeq = window.snapshotSeq;
             bool started = Bool(job, "invocationStarted");
             job.resultData["acceptedUtc"] = Utc(job, "acceptedUtcTicks");

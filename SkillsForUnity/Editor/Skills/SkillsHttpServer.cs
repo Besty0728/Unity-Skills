@@ -385,6 +385,9 @@ namespace UnitySkills
                 FailQueuedJobs(_lightQueue, ref _lightQueued);
                 FailQueuedJobs(_heavyQueue, ref _heavyQueued);
             }
+
+            // Scenario steps without side effects are held in memory until now.
+            BatchPersistence.FlushIfDirty();
         }
 
         /// <summary>

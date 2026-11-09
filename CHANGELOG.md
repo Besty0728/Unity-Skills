@@ -147,6 +147,9 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **装了新版可选包时误报「未安装」** — 装 YooAsset 3.x 时 39 个技能说未安装并让人去装 `#2.3.18`；装 NGO 3.x 时 38 个技能说未安装并建议安装；装 HybridCLR 9.x 时 `hybridclr_status` 报已安装但各项为空，`copy_hotupdate_dlls(includeAotAssemblies)` 报成功却一个 AOT DLL 都没复制，对应测试夹具整体被跳过、回归看起来是绿的。
 - **Play Mode 下 `scene_save` 返回 INTERNAL** — `EditorSceneManager.SaveScene` 在 Play Mode 下抛出的异常以前被路由报成 `INTERNAL`；现在写盘和快照之前就返回 `SEMANTIC_INVALID`，`suggestedFixes` 指向 `editor_stop`。
 - **回退会改写只读包里的资产** — 路由对每个按名定位的物体顺带快照它渲染器的共享材质，URP 原始体的材质是包里的 `Packages/com.unity.render-pipelines.universal/Runtime/Materials/Lit.mat`；回退时把它写回包缓存并重新导入，评测把这算作越界修改。现在 registry、git 与内置包里的资产不再快照（`file:` 本地包与嵌入包照旧）。由临时 Workflow 回退评测题发现。
+- **`editor_run_scenario` 单步耗时随作业历史变长** — 每一步都重写整个 `batch_state.json`，文件 20 MB 时每步 152 ms，同一时刻的多个 `wait_condition` 打点因此被拖过计时容差。现在只有 `invoke` 步、阶段切换和结束时落盘，只读步只更新内存，域重载前统一落盘；同样 20 MB 下每步 2 ms。由 Unity 6 评测 DS3 发现。
+- **`logWindow` 撑大作业历史** — 每个 scenario / `component_invoke_method` 作业都带堆栈保存整个日志窗口，单个可到 600 KB，最多保留 100 个。现在 `logWindow.logs[]` 只有 Error / Exception / Assert 条目保留 `stackTrace`，其余条目不再带堆栈；`failureLogWindow` 不变。
+- **Workflow 把 `ProjectSettings/` 下的资产当成不安全路径** — 每次加载历史都清空这类快照的 `assetPath`，并按快照逐条告警（一个工程每次域重载 278 条），违反启动日志策略。现在保留路径（这类路径本来就不走文件存储），清除不安全路径时的日志降为 Verbose。
 - **序列化引用每项扫描全部类型** — `component_set_serialized_property(_batch)` 等技能的 `objectType` 不是组件类型时（如 `Material`），以前每一项都要把所有已加载类型扫两遍，Unity 6 + URP 上每项超过 1 秒，2022 上约 330 ms；现在按名字缓存解析结果（含未找到），20 项的批处理从约 20 秒降到 0.3 秒。由 Unity 6 评测自测发现。
 - **评测题 DC4 在 Unity 6 上搭不起来** — 题目给预制体写 Rigidbody 的 `m_Drag` / `m_AngularDrag`，Unity 6 已改名为 `m_LinearDamping` / `m_AngularDamping`，20 个用例全部 `FIXTURE_FAILED`；现在旧名报 `SEMANTIC_INVALID` 时改写新名，2022 上行为不变。DC4 的 gateInputsHash 随之改变，各版本需重跑一次 DC4 自测。
 - **回退与预览读回的快照一直留在内存里** — 每次回退、dryRun 预览或冲突检查读回的完整快照以前直到域重载都不释放，反复预览一个较早的检查点会把成千上万步的内容留在内存中；现在操作结束即释放。

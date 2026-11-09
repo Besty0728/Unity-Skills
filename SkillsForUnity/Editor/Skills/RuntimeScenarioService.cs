@@ -15,7 +15,7 @@ namespace UnitySkills
         internal static Action<bool> SetPlayingForTests;
         internal static Func<string, string, string> ExecuteForTests;
         internal static Func<int> FrameForTests;
-        private static readonly string[] FailureLogTypes = { "Error", "Exception", "Assert" };
+        internal static readonly string[] FailureLogTypes = { "Error", "Exception", "Assert" };
         internal static Func<JObject> LogWindowForTests;
         internal static Func<long> LogSeqForTests;
         internal static Func<bool> BackgroundForTests;
@@ -29,6 +29,8 @@ namespace UnitySkills
         private static bool Flag(BatchJobRecord job, string key) => ComponentInvocationService.Bool(job, key);
         private static long Number(BatchJobRecord job, string key) => ComponentInvocationService.Long(job, key);
         private static void Save(BatchJobRecord job) => ComponentInvocationService.Persist(job);
+        // For steps without side effects: a flush rewrites the whole job table, and a domain reload flushes first anyway.
+        private static void Track(BatchJobRecord job) => BatchPersistence.UpsertJob(job);
         private static bool Terminal(BatchJobRecord job) => job == null || job.status == "completed" || job.status == "failed" || job.status == "cancelled";
         private static JObject Error(string message) => (JObject)ComponentInvocationService.Error(message);
 
@@ -156,7 +158,7 @@ namespace UnitySkills
                 if (!Flag(job, "waiting"))
                 {
                     job.metadata["waiting"] = true; job.metadata["waitFrame"] = Frame;
-                    job.metadata["waitTicks"] = DateTime.UtcNow.Ticks; Save(job);
+                    job.metadata["waitTicks"] = DateTime.UtcNow.Ticks; Track(job);
                 }
                 bool done = kind == "wait_frames" ? Frame - Number(job, "waitFrame") >= step.Value<int>("frames") :
                     (DateTime.UtcNow.Ticks - Number(job, "waitTicks")) / (double)TimeSpan.TicksPerSecond >= step.Value<double>("seconds");
@@ -184,8 +186,8 @@ namespace UnitySkills
             {
                 string skillName = step.Value<string>("skill");
                 if (!SkillRouter.TryGetSkill(skillName, out var info) || (kind != "invoke" && !info.ReadOnly)) { Finish(job, false, "Step skill metadata changed; re-submit after inspection."); return; }
-                // Persist before dispatch so a reload inside arbitrary skill code cannot replay this step.
-                job.metadata["stepExecuting"] = true; Save(job);
+                // Persist before dispatch so a reload inside arbitrary skill code cannot replay this step. ReadOnly skills cannot reload.
+                if (kind == "invoke") { job.metadata["stepExecuting"] = true; Save(job); }
                 using (SkillsAuditLog.BeginRequestContext((int)Number(job, "callerRemotePort"),
                     job.metadata.TryGetValue("callerAgentId", out var callerId) ? Convert.ToString(callerId) : null, Flag(job, "callerExplicit")))
                     actual = JToken.Parse(Execute(skillName, (step["args"] ?? new JObject()).ToString(Formatting.None)));
@@ -203,7 +205,7 @@ namespace UnitySkills
                 if (!passed && kind == "wait_condition")
                 {
                     // Save the last observation for timeout evidence; polling remains subject to Router gates.
-                    job.resultData["lastConditionActual"] = selected ?? JValue.CreateNull(); Save(job); return;
+                    job.resultData["lastConditionActual"] = selected ?? JValue.CreateNull(); Track(job); return;
                 }
                 Record(job, step, selected, passed);
                 if (!passed) { Finish(job, false, "Assertion failed."); return; }
@@ -244,7 +246,8 @@ namespace UnitySkills
             job.resultData["lastActual"] = actual;
             job.metadata["stepIndex"] = Number(job, "stepIndex") + 1;
             job.metadata.Remove("childJobId"); job.metadata.Remove("waiting");
-            job.status = "running"; job.currentStage = "step_" + Number(job, "stepIndex"); Save(job);
+            job.status = "running"; job.currentStage = "step_" + Number(job, "stepIndex");
+            if (step.Value<string>("kind") == "invoke") Save(job); else Track(job);
         }
         private static void Finish(BatchJobRecord job, bool passed, string error, string failureStage = "failed")
         {
@@ -274,7 +277,7 @@ namespace UnitySkills
             if (window == null)
             {
                 long start = Number(job, "startLogSeq");
-                var all = ConsoleLogHistoryService.ReadWindow(start);
+                var all = ConsoleLogHistoryService.ReadWindow(start, stackTraceTypes: FailureLogTypes);
                 var serializer = JsonSerializer.Create(SkillsCommon.JsonSettings);
                 window = JObject.FromObject(all, serializer);
                 failureWindow = JObject.FromObject(ConsoleLogHistoryService.ReadWindow(start, all.snapshotSeq, types: FailureLogTypes), serializer);
