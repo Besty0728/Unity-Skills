@@ -11,17 +11,17 @@ Project information and configuration. Parameters come from the schema (`GET /sk
 - Checking the Unity version or the render pipeline
 - Listing installed packages, shaders, layers or tags
 - Reading build or Player Settings
-- Adding a custom tag or starting a player build
+- Adding a custom tag or layer, or starting a player build
 
 ## Rules
 - Eight query skills are `SemiAuto` read-only and run in every mode.
-- `project_add_tag` is `FullAuto`: under Approval it needs a grant.
+- `project_add_tag` and `project_add_layer` are `FullAuto`: under Approval they need a grant.
 - `build_player` is high risk and has no dryRun: it runs only in Bypass or when allowlisted. It returns at once with a `jobId`; poll `GET /jobs/{id}` for the BuildReport summary. Output must stay inside the project directory.
-- Player Settings, Build Settings and Layers are read-only here. To edit them, open the window with `editor_execute_menu` (`Edit/Project Settings...` or `File/Build Settings...`). That skill is refused under Approval and Auto, so under those modes tell the user to open the window.
+- Player Settings and Build Settings are read-only here. To edit them, open the window with `editor_execute_menu` (`Edit/Project Settings...` or `File/Build Settings...`). That skill is refused under Approval and Auto, so under those modes tell the user to open the window.
 
 ## Routing
 - Graphics, quality or SRP configuration → `graphics` module.
-- Layers are read-only here (`project_get_layers`); tags can be added (`project_add_tag`).
+- Layers can be read (`project_get_layers`) and defined (`project_add_layer`); tags can be added (`project_add_tag`).
 - Build settings → `project_get_build_settings`; producing a player → `build_player`.
 - Installed packages with their versions → `package_list`; the manifest entries → `project_get_packages`.
 
@@ -88,6 +88,16 @@ Add a custom Tag.
 | tagName | string | Yes | - | Tag name to add |
 
 **Returns:** `{ success, tag }`
+
+### `project_add_layer`
+Define a named Layer in Tags & Layers. Slots 0-7 are built in, so only slots 8-31 can be used.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| layerName | string | Yes | - | Layer name to define |
+| index | int | No | -1 | Slot 8-31; -1 uses the first empty user slot |
+
+**Returns:** `{ success, layer, index }`
 
 ### `project_get_player_settings`
 Player Settings.

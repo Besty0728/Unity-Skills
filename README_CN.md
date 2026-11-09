@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-872-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-873-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -58,7 +58,7 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **872 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
+- 🛠️ **873 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
 - ⚡ **支持UnityCLI**：支持绑定UnityCLI，对应项目冷启动，不用开启UnityHub
 - 🔐 **三档权限模式**：Approval / Auto / Bypass + 双轨审批，对齐 Claude Code permission modes。
 - 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
@@ -212,7 +212,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><b>📦 Skills 分类概要 (872)</b></summary>
+<summary><b>📦 Skills 分类概要 (873)</b></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -267,7 +267,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Smart** | 10 | 场景SQL查询/空间查询/自动布局/对齐地面/网格吸附/随机化/替换 |
 | **Terrain** | 10 | 地形创建/高度图/Perlin噪声/平滑/平坦化/纹理绘制 |
 | **Texture** | 10 | 纹理导入设置/平台设置/Sprite/类型/尺寸查找/批量 |
-| **Project** | 10 | Player 出包/渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings/质量 |
+| **Project** | 11 | Player 出包/渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings/质量 |
 | **Addressables** | 8 | Addressable 资产组/Profiles/Labels/构建路径/构建/条目增删（com.unity.addressables，反射实现） |
 | **QFramework** | 20 | QFramework 架构层代码生成/ViewController 与 UIKit 面板代码生成/UIKit 设置/ResKit AssetBundle 标记-构建-清理/架构扫描/API 文档查询（无 UPM 包，反射实现） |
 | **Sample** | 8 | 基础示例：创建/删除/变换/场景信息 |
@@ -317,7 +317,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   ├── Evaluation~/                # 评测集：run_eval.py 运行器、usk_eval/、pack/（manifest + 41 题）
 │   └── Editor/
 │       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 872 Skills)
+│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 873 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP 服务器核心 (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # 请求路由 & 反射发现 Skills
 │       │   ├── WorkflowManager.cs  # 持久化工作流 (Task/Session/Snapshot)
@@ -325,7 +325,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # 泛型批处理框架
 │       │   ├── Localization.cs     # 多语言本地化管理引擎
-│       │   └── ...                 # 872 Skills 源码
+│       │   └── ...                 # 873 Skills 源码
 │       └── UI/                     # UI Toolkit 窗口与控制器
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # 主控制面板窗口
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI 配置面板

@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-872-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-873-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -58,7 +58,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **872 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
+- 🛠️ **873 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
 - ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
 - 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
@@ -212,7 +212,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><b>📦 Skills Category Overview (872)</b></summary>
+<summary><b>📦 Skills Category Overview (873)</b></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -267,7 +267,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Smart** | 10 | Scene SQL query/Spatial query/Auto layout/Snap to ground/Grid snap/Randomize/Replace |
 | **Terrain** | 10 | Terrain create/Heightmap/Perlin noise/Smooth/Flatten/Texture painting |
 | **Texture** | 10 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
-| **Project** | 10 | Player builds/Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
+| **Project** | 11 | Player builds/Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
 | **Addressables** | 8 | Addressable asset groups/Profiles/Labels/Build paths/Build/Entry add-remove (com.unity.addressables, reflection-based) |
 | **QFramework** | 20 | QFramework architecture-layer codegen/ViewController & UIKit panel codegen/UIKit settings/ResKit AssetBundle mark-build-clear/architecture scan/API doc query (no UPM package, reflection-based) |
 | **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
@@ -317,7 +317,7 @@ Each task temporarily adds assets under `Assets/__UnitySkillsEval/` and the runn
 │   ├── Evaluation~/                # Evaluation set: run_eval.py runner, usk_eval/, pack/ (manifest + 41 tasks)
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 872 Skills)
+│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 873 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP Server Core (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
 │       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
@@ -325,7 +325,7 @@ Each task temporarily adds assets under `Assets/__UnitySkillsEval/` and the runn
 │       │   ├── GameObjectFinder.cs # Unified GO Finder (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
 │       │   ├── Localization.cs     # Multi-Language Localization Engine
-│       │   └── ...                 # 872 Skills source code
+│       │   └── ...                 # 873 Skills source code
 │       └── UI/                     # UI Toolkit Windows & Controllers
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # Main Dashboard Window
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI Configuration Panel

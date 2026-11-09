@@ -26,6 +26,9 @@ namespace UnitySkills
             WorkflowSettingRestorerRegistry.Register("project.tags",
                 CaptureTags,
                 ApplyTags);
+            WorkflowSettingRestorerRegistry.Register("project.layers",
+                CaptureLayers,
+                ApplyLayers);
         }
 
         private static SerializedObject GetTagManager()
@@ -62,6 +65,35 @@ namespace UnitySkills
                 tagsProp.GetArrayElementAtIndex(i).stringValue = tags[i];
             }
             tagManager.ApplyModifiedProperties();
+            return true;
+        }
+
+        private static string CaptureLayers()
+        {
+            var tagManager = GetTagManager();
+            var layersProp = tagManager?.FindProperty("layers");
+            var layers = new List<string>();
+            if (layersProp != null)
+            {
+                for (int i = 0; i < layersProp.arraySize; i++)
+                    layers.Add(layersProp.GetArrayElementAtIndex(i).stringValue);
+            }
+            return Newtonsoft.Json.JsonConvert.SerializeObject(layers);
+        }
+
+        private static bool ApplyLayers(string json)
+        {
+            var layers = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(json) ?? new List<string>();
+            var tagManager = GetTagManager();
+            var layersProp = tagManager?.FindProperty("layers");
+            if (layersProp == null)
+                return false;
+
+            // The layer table is a fixed 32-slot array, so entries are restored by index rather than resized.
+            for (int i = 0; i < layersProp.arraySize && i < layers.Count; i++)
+                layersProp.GetArrayElementAtIndex(i).stringValue = layers[i];
+            tagManager.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
             return true;
         }
 
@@ -404,6 +436,76 @@ namespace UnitySkills
             tagManager.ApplyModifiedProperties();
             return new { success = true, tag = tagName };
         }
+
+        private const int FirstUserLayerIndex = 8;
+        private const int LastLayerIndex = 31;
+
+        [UnitySkill("project_add_layer", "Define a named Layer in Tags & Layers. layerName is required; index (8-31) picks the slot, otherwise the first empty user slot is used.",
+            Category = SkillCategory.Project, Operation = SkillOperation.Create,
+            Tags = new[] { "project", "layer", "add", "custom" },
+            Outputs = new[] { "layer", "index" },
+            RequiresInput = new[] { "layerName" },
+            TracksWorkflow = true, MutatesAssets = true)]
+        public static object ProjectAddLayer(string layerName, int index = -1)
+        {
+            if (Validate.Required(layerName, "layerName") is object err) return err;
+            if (index != -1 && (index < FirstUserLayerIndex || index > LastLayerIndex))
+                return LayerError($"Layer index {index} is outside the user range {FirstUserLayerIndex}-{LastLayerIndex}",
+                    "Slots 0-7 are built-in; pass index 8-31, or omit index to use the first empty user slot.");
+
+            var tagManager = GetTagManager();
+            var layersProp = tagManager?.FindProperty("layers");
+            if (layersProp == null)
+                return new { error = "ProjectSettings/TagManager.asset could not be loaded." };
+
+            for (int i = 0; i < layersProp.arraySize; i++)
+            {
+                if (layersProp.GetArrayElementAtIndex(i).stringValue == layerName)
+                    return LayerError($"Layer '{layerName}' already exists at index {i}", "Choose a different layer name.");
+            }
+
+            int chosenIndex = index;
+            if (chosenIndex == -1)
+            {
+                chosenIndex = FindFirstEmptyUserLayer(layersProp);
+                if (chosenIndex == -1)
+                    return LayerError($"No empty user layer slot in {FirstUserLayerIndex}-{LastLayerIndex}",
+                        "Remove an unused user layer, then retry.");
+            }
+            else
+            {
+                var occupiedBy = layersProp.GetArrayElementAtIndex(chosenIndex).stringValue;
+                if (!string.IsNullOrEmpty(occupiedBy))
+                    return LayerError($"Layer index {chosenIndex} is already used by '{occupiedBy}'",
+                        "Omit index to use the first empty user slot, or pass a free index.");
+            }
+
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("project.layers", CaptureLayers(), "Project: Layers");
+
+            layersProp.GetArrayElementAtIndex(chosenIndex).stringValue = layerName;
+            tagManager.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+            return new { success = true, layer = layerName, index = chosenIndex };
+        }
+
+        private static int FindFirstEmptyUserLayer(SerializedProperty layersProp)
+        {
+            for (int i = FirstUserLayerIndex; i <= LastLayerIndex && i < layersProp.arraySize; i++)
+            {
+                if (string.IsNullOrEmpty(layersProp.GetArrayElementAtIndex(i).stringValue))
+                    return i;
+            }
+            return -1;
+        }
+
+        private static object LayerError(string message, string reason) => new
+        {
+            error = message,
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            suggestedFixes = new[] { new { action = "fix_param", reason } }
+        };
 
         [UnitySkill("project_get_player_settings", "Get Player Settings",
             Category = SkillCategory.Project, Operation = SkillOperation.Query,
