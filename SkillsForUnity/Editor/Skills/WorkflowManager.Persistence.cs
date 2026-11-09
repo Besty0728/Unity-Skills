@@ -213,11 +213,17 @@ namespace UnitySkills
             }
         }
 
-        private static void SanitizeSnapshot(ObjectSnapshot snapshot, string source)
+        internal static void SanitizeSnapshot(ObjectSnapshot snapshot, string source)
         {
-            if (!string.IsNullOrEmpty(snapshot.assetPath) && Validate.SafePath(snapshot.assetPath, "assetPath") is object)
+            if (!string.IsNullOrEmpty(snapshot.assetPath) && IsSafeProjectSettingsPath(snapshot.assetPath))
             {
-                SkillsLogger.LogWarning($"WorkflowManager: stripped unsafe assetPath from {source}: {snapshot.assetPath}");
+                // The file store only serves Assets/ and Packages/, so a ProjectSettings/ snapshot has no file backup.
+                snapshot.fileHash = null;
+                snapshot.metaFileHash = null;
+            }
+            else if (!string.IsNullOrEmpty(snapshot.assetPath) && Validate.SafePath(snapshot.assetPath, "assetPath") is object)
+            {
+                SkillsLogger.LogVerbose($"WorkflowManager: stripped unsafe assetPath from {source}: {snapshot.assetPath}");
                 snapshot.assetPath = null;
                 snapshot.fileHash = null;
                 snapshot.metaFileHash = null;
@@ -229,9 +235,15 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(snapshot.previousAssetPath) &&
                 Validate.SafePath(snapshot.previousAssetPath, "previousAssetPath") is object)
             {
-                SkillsLogger.LogWarning($"WorkflowManager: stripped unsafe previousAssetPath from {source}: {snapshot.previousAssetPath}");
+                SkillsLogger.LogVerbose($"WorkflowManager: stripped unsafe previousAssetPath from {source}: {snapshot.previousAssetPath}");
                 snapshot.previousAssetPath = null;
             }
+        }
+
+        private static bool IsSafeProjectSettingsPath(string path)
+        {
+            var normalized = path.Replace('\\', '/');
+            return normalized.StartsWith("ProjectSettings/") && !normalized.Contains("..");
         }
 
         #endregion
