@@ -1159,6 +1159,10 @@ namespace UnitySkills
                 RestoreObjectReferences(obj, snapshot.objectReferencesCaptured,
                     snapshot.objectReferences, legacyReferences);
                 EditorUtility.SetDirty(obj);
+                // An asset with no file backup (a ProjectSettings object) only reaches disk here; scene objects save with their scene.
+                // SaveAssetIfDirty does not write ProjectSettings objects.
+                if (!string.IsNullOrEmpty(snapshot.assetPath))
+                    AssetDatabase.SaveAssets();
                 return true;
             }
 
