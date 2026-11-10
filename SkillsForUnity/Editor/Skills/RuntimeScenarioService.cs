@@ -16,6 +16,9 @@ namespace UnitySkills
         internal static Func<string, string, string> ExecuteForTests;
         internal static Func<int> FrameForTests;
         internal static readonly string[] FailureLogTypes = { "Error", "Exception", "Assert" };
+        // Entering Play Mode reloads the domain, which slows down over a long editor session; it has its own limit so the
+        // scenario's timeoutSeconds starts once Play Mode is running.
+        internal const int PlayEntryTimeoutSeconds = 300;
         internal static Func<JObject> LogWindowForTests;
         internal static Func<long> LogSeqForTests;
         internal static Func<bool> BackgroundForTests;
@@ -65,7 +68,7 @@ namespace UnitySkills
                 new Dictionary<string, object> {
                     ["steps"] = parsed.ToString(Formatting.None), ["executionMode"] = executionMode,
                     ["startedPlayMode"] = startedPlay, ["originalRunInBackground"] = Background,
-                    ["deadlineTicks"] = DateTime.UtcNow.AddSeconds(timeoutSeconds).Ticks,
+                    ["timeoutSeconds"] = timeoutSeconds, ["deadlineTicks"] = DateTime.UtcNow.AddSeconds(startedPlay ? PlayEntryTimeoutSeconds : timeoutSeconds).Ticks,
                     ["scenarioStage"] = startedPlay ? "entering_play_mode" : "running", ["stepIndex"] = 0,
                     ["startedUtcTicks"] = DateTime.UtcNow.Ticks, ["startLogSeq"] = LogSeqForTests?.Invoke() ?? ConsoleLogHistoryService.GetCurrentSeq(),
                     ["callerActive"] = caller.Active, ["callerRemotePort"] = caller.RemotePort,
@@ -137,11 +140,17 @@ namespace UnitySkills
                 }
                 Complete(job); return;
             }
-            if (DateTime.UtcNow.Ticks > Number(job, "deadlineTicks")) { Finish(job, false, "Scenario timeout; steps will not be replayed.", "timeout"); return; }
+            if (DateTime.UtcNow.Ticks > Number(job, "deadlineTicks"))
+            {
+                if (stage == "entering_play_mode" && job.metadata.ContainsKey("timeoutSeconds")) Finish(job, false, $"Play Mode did not start within {PlayEntryTimeoutSeconds} s; steps will not be replayed.", "timeout");
+                else Finish(job, false, "Scenario timeout; steps will not be replayed.", "timeout");
+                return;
+            }
             if (stage == "entering_play_mode")
             {
                 if (!Playing) return;
                 job.metadata["scenarioStage"] = "running";
+                if (job.metadata.ContainsKey("timeoutSeconds")) job.metadata["deadlineTicks"] = DateTime.UtcNow.AddSeconds(Number(job, "timeoutSeconds")).Ticks;
                 job.status = "running";
                 Save(job); return;
             }

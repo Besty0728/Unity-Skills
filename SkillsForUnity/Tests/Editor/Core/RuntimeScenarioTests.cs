@@ -55,6 +55,15 @@ namespace UnitySkills.Tests.Core
         }
         private const string Assertion = "{\"kind\":\"assert\",\"skill\":\"editor_get_state\",\"select\":\"value\",\"expected\":12}";
 
+        private BatchJobRecord StartPlay(int timeoutSeconds)
+        {
+            var response = JObject.FromObject(RuntimeScenarioService.Start("[" + Assertion + "]", "play", timeoutSeconds));
+            Assert.That(response["error"], Is.Null, response.ToString());
+            string id = response.Value<string>("jobId"); _jobs.Add(id);
+            _playing = false;
+            return AsyncJobService.Get(id);
+        }
+
         [Test]
         public void PreviewHasNoDispatchJobsOrEditorStateChanges()
         {
@@ -232,6 +241,50 @@ namespace UnitySkills.Tests.Core
             RuntimeScenarioService.Process(job);
             Assert.That(job.status, Is.EqualTo("failed"));
             Assert.That(_dispatches, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PlayEntryDeadlineIsIndependentOfScenarioBudget()
+        {
+            var job = StartPlay(1);
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.metadata["scenarioStage"], Is.EqualTo("entering_play_mode"));
+            Assert.That(job.status, Is.Not.EqualTo("failed"));
+            long deadline = Convert.ToInt64(job.metadata["deadlineTicks"]);
+            Assert.That(Math.Abs(deadline - DateTime.UtcNow.AddSeconds(RuntimeScenarioService.PlayEntryTimeoutSeconds).Ticks), Is.LessThan(TimeSpan.FromSeconds(5).Ticks));
+        }
+
+        [Test]
+        public void RunningStageResetsDeadlineToScenarioBudget()
+        {
+            var job = StartPlay(1);
+            _playing = true;
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.metadata["scenarioStage"], Is.EqualTo("running"));
+            long deadline = Convert.ToInt64(job.metadata["deadlineTicks"]);
+            Assert.That(Math.Abs(deadline - DateTime.UtcNow.AddSeconds(1).Ticks), Is.LessThan(TimeSpan.FromSeconds(5).Ticks));
+        }
+
+        [Test]
+        public void EnteringPlayModePastDeadlineFailsWithPlayEntryMessage()
+        {
+            var job = StartPlay(30);
+            job.metadata["deadlineTicks"] = DateTime.UtcNow.AddSeconds(-1).Ticks;
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.status, Is.EqualTo("failed"));
+            Assert.That(job.resultData["error"], Is.EqualTo("Play Mode did not start within 300 s; steps will not be replayed."));
+            Assert.That(_dispatches, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void LegacyEnteringJobKeepsScenarioTimeoutMessage()
+        {
+            var job = StartPlay(30);
+            job.metadata.Remove("timeoutSeconds");
+            job.metadata["deadlineTicks"] = DateTime.UtcNow.AddSeconds(-1).Ticks;
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.status, Is.EqualTo("failed"));
+            Assert.That(job.resultData["error"], Is.EqualTo("Scenario timeout; steps will not be replayed."));
         }
 
         [TestCase(false, false)]
