@@ -327,6 +327,19 @@ namespace UnitySkills
             RequiresInput = new[] { "sceneName" })]
         public static object SceneUnload([SkillParam(SceneNameNote)] string sceneName)
         {
+            // Unloading saves a dirty scene first, and EditorSceneManager cannot save in Play Mode.
+            if (IsPlaying)
+                return new
+                {
+                    error = "Scenes cannot be unloaded in Play Mode.",
+                    errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    suggestedFixes = new[]
+                    {
+                        new { action = "retry", skill = "editor_stop", reason = "Exit Play Mode first, then unload the scene." }
+                    }
+                };
+
             Scene sceneToUnload = default;
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {

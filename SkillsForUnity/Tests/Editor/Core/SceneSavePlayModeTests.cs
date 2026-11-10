@@ -51,6 +51,17 @@ namespace UnitySkills.Tests.Core
             Assert.That(AssetDatabase.IsValidFolder(TempRoot), Is.False);
         }
 
+        [Test]
+        public void SceneUnload_DuringPlayMode_ReturnsSemanticInvalid()
+        {
+            SceneSkills.PlayingOverrideForTests = true;
+
+            var json = ToJson(SceneSkills.SceneUnload("AnyScene"));
+
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"), json.ToString(Formatting.None));
+            Assert.That(json["suggestedFixes"]?[0]?["skill"]?.ToString(), Is.EqualTo("editor_stop"), json.ToString(Formatting.None));
+        }
+
         // ---------- helpers ----------
 
         private void DeleteTempRoot()
