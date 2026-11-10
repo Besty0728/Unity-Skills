@@ -276,6 +276,9 @@ namespace UnitySkills
                 lightQueued,
                 heavyQueued,
                 domainReloadPending = _domainReloadPending,
+                // This session's reload durations; restartRecommended means reloads have slowed down several times over
+                // and only an editor restart resets them.
+                domainReload = DomainReloadStats.Current,
                 // True when this session's workflow history failed to load: rollback data is degraded, and
                 // library cleanup stays paused until the history is cleared.
                 workflowRecoveryMode = WorkflowManager.IsHistoryRecoveryMode,

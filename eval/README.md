@@ -80,9 +80,11 @@ A gate vouches for the plugin build that ran it: the editor must load this check
 `packageRoot`; `--allow-other-package` records anyway, marked `override`) and must have compiled every `.cs`/`.asmdef`
 in it (none newer than `assembliesLoadedAtUtc`), otherwise no gate is recorded. `--task` may be repeated.
 
-A long gate run needs editor restarts. On 2022.3 every domain reload of an editor process makes the next one slower,
-whether or not the plugin is installed: about 0.8 s fresh, 7 s after 250 reloads. Only a restart resets it, and past
-about 26 s Play Mode cases time out. Open each editor with its own `-logFile`, and between two tasks run
+A long gate run needs editor restarts. Every domain reload of an editor process makes the next one slower, whether or
+not the plugin is installed: on 2022.3 about 0.8 s fresh and 7 s after 250 reloads, on 6000.3 about 1.6 s fresh and 17 s
+after 320. Mono's generic-sharing tables outlive each reload, and only a restart resets them. Before 3.0 a Play Mode
+case's timeout also counted the slow reload that entering Play Mode triggers; `/health` now reports `domainReload`,
+whose `restartRecommended` turns true once recent reloads take three times the session's first ones and at least 10 s. Open each editor with its own `-logFile`, and between two tasks run
 `python3 -B eval/tools/reload_guard.py <that log>`. When it exits 3 (the median of the last three reloads is 3 s or
 more), restart that editor before the next task. The tool is not a gate input, so it does not change any gate hash.
 

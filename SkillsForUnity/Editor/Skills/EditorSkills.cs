@@ -349,10 +349,10 @@ namespace UnitySkills
             return new { success = true, message = "Redo performed" };
         }
 
-        [UnitySkill("editor_get_state", "Get current editor state",
+        [UnitySkill("editor_get_state", "Get current editor state, including domainReload timing (restartRecommended: reloads have slowed down and only restarting Unity resets them).",
             Category = SkillCategory.Editor, Operation = SkillOperation.Query,
             Tags = new[] { "state", "status", "info" },
-            Outputs = new[] { "isPlaying", "isPaused", "isCompiling", "unityVersion" },
+            Outputs = new[] { "isPlaying", "isPaused", "isCompiling", "unityVersion", "domainReload" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object EditorGetState()
@@ -364,7 +364,8 @@ namespace UnitySkills
                 isCompiling = EditorApplication.isCompiling,
                 timeSinceStartup = EditorApplication.timeSinceStartup,
                 unityVersion = Application.unityVersion,
-                platform = Application.platform.ToString()
+                platform = Application.platform.ToString(),
+                domainReload = DomainReloadStats.Current
             };
         }
 
