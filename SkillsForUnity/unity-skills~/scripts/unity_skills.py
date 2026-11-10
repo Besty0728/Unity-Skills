@@ -18,6 +18,7 @@ import time
 import json
 import os
 import re
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1940,7 +1941,43 @@ def get_cli_config(project_root: Optional[str] = None) -> Optional[Dict[str, Any
         return None
 
 
-def wait_for_health(timeout: float = 600.0, check_interval: float = 3.0) -> Optional[Dict[str, Any]]:
+# A cold-started Editor that never gets focus can sit idle without ticking its update loop, so the UnitySkills server
+# never starts; bringing its window to the front resumes it at once (macOS).
+WAKE_AFTER_SECONDS = 45.0
+
+
+def _editor_pids(project_root: str) -> List[int]:
+    """Process ids of the Unity Editors that have project_root open, without their import workers (macOS, Linux)."""
+    if os.name == 'nt':
+        return []
+    try:
+        listing = subprocess.run(['ps', '-axo', 'pid=,command='], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    root = _normalize_project_path(project_root)
+    pids = []
+    for line in listing.splitlines():
+        pid, _, command = line.strip().partition(' ')
+        match = re.search(r'-projectpath\s+(.+?)(?=\s+-\w|$)', command, re.IGNORECASE)
+        if pid.isdigit() and match and 'AssetImportWorker' not in command \
+                and _normalize_project_path(match.group(1)) == root:
+            pids.append(int(pid))
+    return pids
+
+
+def _bring_editor_to_front(pid: int) -> bool:
+    """Front the window of the Editor process `pid` (macOS only; the terminal may ask once to control System Events)."""
+    if sys.platform != 'darwin':
+        return False
+    script = 'tell application "System Events" to set frontmost of (first process whose unix id is %d) to true' % pid
+    try:
+        return subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def wait_for_health(timeout: float = 600.0, check_interval: float = 3.0, project_root: Optional[str] = None,
+                    wake_after: float = WAKE_AFTER_SECONDS) -> Optional[Dict[str, Any]]:
     """Wait for a UnitySkills server after a cold start (unity CLI `open`).
 
     Unlike wait_for_unity(), this resets the cached default client on every
@@ -1948,10 +1985,21 @@ def wait_for_health(timeout: float = 600.0, check_interval: float = 3.0) -> Opti
     fresh and may bind any port in the 8090-8100 range. First import/compile
     can take minutes; default timeout is generous. Returns the /health payload
     once reachable, or None on timeout.
+
+    If nothing answers for wake_after seconds while an Editor process has
+    project_root (default: the current directory) open, its window is brought
+    to the front once; 0 turns that off.
     """
     global _default_client
     start_time = time.time()
+    woken = not wake_after
     while time.time() - start_time < timeout:
+        if not woken and time.time() - start_time >= wake_after:
+            woken = True
+            for pid in _editor_pids(project_root or os.getcwd()):
+                if _bring_editor_to_front(pid):
+                    print(f"[unity-skills] no /health after {int(time.time() - start_time)}s while Editor pid {pid} "
+                          "is running; brought its window to the front", file=sys.stderr)
         _default_client = None
         try:
             client = _get_default_client()

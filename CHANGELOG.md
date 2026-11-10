@@ -152,6 +152,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **装了新版可选包时误报「未安装」** — 装 YooAsset 3.x 时 39 个技能说未安装并让人去装 `#2.3.18`；装 NGO 3.x 时 38 个技能说未安装并建议安装；装 HybridCLR 9.x 时 `hybridclr_status` 报已安装但各项为空，`copy_hotupdate_dlls(includeAotAssemblies)` 报成功却一个 AOT DLL 都没复制，对应测试夹具整体被跳过、回归看起来是绿的。
 - **Play Mode 下 `scene_save` 返回 INTERNAL** — `EditorSceneManager.SaveScene` 在 Play Mode 下抛出的异常以前被路由报成 `INTERNAL`；现在写盘和快照之前就返回 `SEMANTIC_INVALID`，`suggestedFixes` 指向 `editor_stop`。
+- **Play Mode 下 `scene_unload` 返回 INTERNAL** — 卸载前会保存脏场景，Play Mode 下保存抛异常；现在与 `scene_save` 一样先返回 `SEMANTIC_INVALID`，指向 `editor_stop`。
+- **冷启动后 REST 偶尔一直不起来** — 编辑器打开后若一直没获得焦点，可能整段时间不跑 update 循环，插件的启动检查一次都不执行（实测一次停了 15 分钟，激活窗口或任一 CLI 命令进来后立刻恢复）。插件的托管代码叫不醒停住的循环，所以改在客户端：`wait_for_health` 等 45 秒仍没有 `/health`、且有编辑器进程打开着该工程时，在 macOS 上把这个进程的窗口切到前台一次（终端第一次可能请求控制 System Events 的权限；`wake_after=0` 关闭，`project_root` 指定工程）。修复前 9 次冷启动未能复现这种停顿，激活路径已在实机上验证。
 - **回退会改写只读包里的资产** — 路由对每个按名定位的物体顺带快照它渲染器的共享材质，URP 原始体的材质是包里的 `Packages/com.unity.render-pipelines.universal/Runtime/Materials/Lit.mat`；回退时把它写回包缓存并重新导入，评测把这算作越界修改。现在 registry、git 与内置包里的资产不再快照（`file:` 本地包与嵌入包照旧）。由临时 Workflow 回退评测题发现。
 - **`editor_run_scenario` 单步耗时随作业历史变长** — 每一步都重写整个 `batch_state.json`，文件 20 MB 时每步 152 ms，同一时刻的多个 `wait_condition` 打点因此被拖过计时容差。现在只有 `invoke` 步、阶段切换和结束时落盘，只读步只更新内存，域重载前统一落盘；同样 20 MB 下每步 2 ms。由 Unity 6 评测 DS3 发现。
 - **`logWindow` 撑大作业历史** — 每个 scenario / `component_invoke_method` 作业都带堆栈保存整个日志窗口，单个可到 600 KB，最多保留 100 个。现在 `logWindow.logs[]` 只有 Error / Exception / Assert 条目保留 `stackTrace`，其余条目不再带堆栈；`failureLogWindow` 不变。

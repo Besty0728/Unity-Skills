@@ -74,6 +74,8 @@ from unity_skills import wait_for_health
 health = wait_for_health(timeout=600)   # polls /health on ports 8090-8100
 ```
 
+An Editor that never got focus after launch can sit idle without starting the server. On macOS, if nothing answers for 45 seconds while an Editor process has the project open, `wait_for_health` brings that window to the front once (the terminal may ask once for permission to control System Events). Pass `project_root` when the current directory is not the project, and `wake_after=0` to turn this off.
+
 `open` exits `6` (`OPEN_EDITOR_EXITED`; `OPEN_EDITOR_EXITED_SIGNAL` beta10+) when the Editor dies inside the CLI's short watch window. Report it at once. A later death is never observed, so a `wait_for_health` timeout remains the real failure signal. Skip `open --until-ready`: its readiness check is the Pipeline server, which UnitySkills projects may lack, so it just waits out `--timeout` (exit `10`). `/health` is the readiness signal.
 
 ### `wait_for_health` timed out: diagnose, do not relaunch
