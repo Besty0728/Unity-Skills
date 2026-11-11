@@ -9,7 +9,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 
 > **Multi-instance**: For version-specific projects, call `unity_skills.set_unity_version(...)` first.
 > **Schema-first**: Exact signatures come from `GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` (`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")`) or from `GET /skills/schema?names=a,b&wire=v2` when the name is known. The full `GET /skills/schema` is about 707 KB. Module docs add workflow guidance and guardrails.
-> **Split modules**: gameobject, component, batch, script, material, editor, cinemachine, particle, workflow, addressables, asset, behavior, camera, event, light, prefab, qframework, terrain, ui keep shared rules and the skill list in `SKILL.md`, and each skill's parameter table, item fields and return shape in `reference/<skill_name>.md` (one small file per skill). Read the reference file only when the schema's parameter notes are not enough.
+> **Split modules**: a module whose folder has one `reference/<skill_name>.md` per skill keeps shared rules and the skill list in its entry doc, and each skill's parameter table, item fields and return shape in that per-skill file. Read the reference file only when the schema's parameter notes are not enough.
 
 ## REST modules
 

@@ -21,7 +21,7 @@ The REST API is the same on every OS; only the client shell changes. This page g
 Setup once per session: the port from `/health` probing (`8090`-`8100`) and the project name go in every write's `expectProject`.
 
 ```powershell
-$u = 'http://localhost:8090'
+$u = 'http://localhost:<port>'
 $q = '?expectProject=' + [uri]::EscapeDataString('MyProject')
 function Invoke-Skill($path, $body) {
     $json = if ($body -is [string]) { $body } else { $body | ConvertTo-Json -Depth 10 -Compress }

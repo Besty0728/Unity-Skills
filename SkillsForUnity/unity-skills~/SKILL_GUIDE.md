@@ -47,7 +47,7 @@ Route common topics to the corresponding manual advisories:
 - Creating and editing materials / changing colors → [`skills/manual-material/SKILL.md`](skills/manual-material/SKILL.md)
 - Navigating scenes, saving, and simple scene operations → [`skills/manual-scene/SKILL.md`](skills/manual-scene/SKILL.md)
 
-Read-only skills such as `scene_get_hierarchy` may be used to help explain what is already in the scene. Under the default Approval operating mode, even read-only skills can require a grant before they execute; mention this if you invoke one.
+Read-only skills such as `scene_get_hierarchy` may be used to help explain what is already in the scene. A skill whose schema says `approvalBehavior: allow` runs directly in every operating mode; one that says `grant` needs a user grant under Approval. Never assume the mode: take `currentMode` from `/health` (a fresh install starts in Auto).
 
 ## Fallback protocol
 
