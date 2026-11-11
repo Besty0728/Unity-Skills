@@ -8,17 +8,17 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### 相对 origin/main（v2.9.1 → 当前 3.0）
 
-比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `660775d9`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
+比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `2ff4b095`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
 
 | 维度 | main（v2.9.1） | 3.0.0（领先） |
 |---|---|---|
 | 包版本 | 2.9.1 | **3.0.0** |
-| 相对提交 | — | **149 个提交**领先 |
-| 代码体量 | — | **1403 文件**，约 **+158.9k / −17.3k** 行 |
+| 相对提交 | — | **155 个提交**领先 |
+| 代码体量 | — | **1408 文件**，约 **+159.5k / −17.3k** 行 |
 | 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **436 文件 / +89.1k** 行 |
-| 其中 Editor | 2.9.1 能力面 | 约 **211 文件 / +33.1k / −5.2k**（Workflow、Particle、Evaluation、entityId、Console…） |
-| 其中测试 | — | 约 **193 文件 / +23.0k / −0.4k** |
-| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7661 B**（7936 B 起步，评测补规则到 8188 B，逐句重写到 7433 B，再加 advisory 路由）；`SKILL_FULL` **删除**；85 个模块文档统一英文骨架，大模块拆出 `reference/`（约 532 文件 / +10.4k / −11.1k） |
+| 其中 Editor | 2.9.1 能力面 | 约 **213 文件 / +33.3k / −5.2k**（Workflow、Particle、Evaluation、entityId、Console…） |
+| 其中测试 | — | 约 **195 文件 / +23.2k / −0.4k** |
+| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7661 B**（7936 B 起步，评测补规则到 8188 B，逐句重写到 7433 B，再加 advisory 路由）；`SKILL_FULL` **删除**；85 个模块文档统一英文骨架，大模块拆出 `reference/`（约 532 文件 / +10.5k / −11.1k） |
 | 技能数 | 839 | **873（+34）** |
 | 用户侧公开题 | 无 | **41 题 / pack 1.2.0** |
 | Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
@@ -26,7 +26,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 设置作用域 | 本机全局偏好为主 | **按工程** `UserSettings/UnitySkills/settings.json` |
 | 面板 | 既有标签 | **石墨配色**；History 检查点手风琴；Evaluation 四步 |
 
-提交主题粗分（`v2.9.1..beta` 149 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 28 条为设置、UI、CI、回归与杂项。
+提交主题粗分（`v2.9.1..beta` 155 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 34 条为设置、UI、CI、回归与杂项。
 
 ### 公开题包 1.2.0 结构（41 题）
 
@@ -81,10 +81,10 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **Unity 6 URP 正式评测**（Claude Code 2.1.312 无头模式 + Haiku 5.5 · max，Unity 6000.3.9f1 URP，插件 3.0.0，41 题每题 1 次）：通过 **39/41**，完全通过率 95.1%，平均完成度 97.5%，等级优秀；Agent 用时合计 352 分钟，处理 token 38.9M，费用 $3.22。没通过的两题：T9（42.5%）代码改对了，但 agent 提交前自己重载场景，判题器仍用旧 instanceId，属判题局限，已改为按路径定位；OC8（55%）Haiku 认定没有技能能定义 Layer 而放弃（当时确实只能用通用属性写入，文档还写着 Layer 只读），已补 `project_add_layer`。实例钉 100%，幻觉调用 0。OS2 首次因 API 连续重试判无效，重跑通过。
 - **Unity 6 评测中发现的插件问题**：scenario 计时（DS3 的 D10）被 `batch_state.json` 每步整份重写拖慢、日志证据撑大作业历史、Workflow 清掉 `ProjectSettings` 快照路径、回退 `ProjectSettings` 后不落盘，均已修复（见 Fixed）。起初怀疑是后台编辑器节流，实测窗口可见时 Play Mode 约 670 fps，排除。
-- **题包验证（gate）**：每题用参考解（2 次）、反例与替代解在真实编辑器上跑，2022.3.62f2 URP 与 6000.3.9f1 URP 都是 **41/41**。之后修了 runner 的提交失败路径（`attempt.py` 计入所有题的 gate 哈希），只重跑受影响的题：T9、DC6 两个版本都重新转绿，OC8 在两个版本各跑参考解、`project_add_layer` 替代解与两个反例（6/6），并在全新 Unity 6 URP 工程上验证首跑 teardown；其余 38 题的 gate 记录显示过期，改动不涉及它们的判分路径。
+- **题包验证（gate）**：每题用参考解（2 次）、反例与替代解在真实编辑器上跑，2022.3.62f2 URP 与 6000.3.9f1 URP 最终都是 **41/41**。中途修了 runner 的提交失败路径（`attempt.py` 计入所有题的 gate 哈希），T9、DC6 先在两个版本重新转绿，OC8 另在全新 Unity 6 URP 工程上验证首跑 teardown；这次改动使其余 39 题的 gate 过期，两个版本全部重跑，编辑器每 3–7 题重启一次，避开长会话里的重载变慢。Unity 6 的 DB6 在一段里跑到后半程，场景断言 F6 开始逐个失败（进入 Play Mode 的重载耗尽场景预算），换新编辑器重试通过；这个误报本身已修复（见 Fixed）。
 - **长会话域重载变慢（Unity / Mono 自身）**：同一编辑器进程里每次域重载都比上一次慢，与是否安装插件无关。空的 6000.3 工程连续 120 次编译重载，第 5–15 次中位 1.64 秒、第 110–120 次 3.08 秒，装上插件为 1.75 / 3.32 秒；评测负载下 6000.3 第 320 次约 17 秒，2022.3 第 308 次约 9 秒。采样显示时间耗在 Mono 共享泛型模板的线性查找上（`rgctx_template_get_other_slot`），这些表跨重载只增不减，只有重启编辑器能清零。插件修正了因此误报的场景超时，并在 `/health` 报告重载耗时（见 Added / Fixed）。
 - **临时 Workflow 回退题**（不入题包，2022.3 URP）：题目先以另一个 agent 的身份搭场景、打检查点并继续修改，再以模拟用户的身份在 Inspector 改一处；被测 Agent 要回退到检查点并保留用户的改动。Haiku、Sonnet、Opus 默认 effort 各 1 次，全部通过；Opus 用了 `agents:"all"`，把模拟用户的改动也回退了，随后自己改回，题目仍判通过。
-- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2738 个，1 个失败（`LocalGitSyncTests` 中一项撞上 Unity QuickSearch 写 `propertyDatabase.db` 的偶发异常，单独重跑 3 次均通过），89 个按环境跳过；6000.3.9f1 URP 上 2749 个，0 失败，77 个跳过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`660775d9`）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2752 个，0 失败，89 个按环境跳过；6000.3.9f1 URP 上 2763 个，1 个失败（`DryRunPolicyBatchTests` 中一项读审计日志时撞上后台落盘的时序，单独重跑 3 次均通过），77 个跳过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`2ff4b095`）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
 
@@ -158,13 +158,13 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **冷启动后 REST 偶尔一直不起来** — 编辑器打开后若一直没获得焦点，可能整段时间不跑 update 循环，插件的启动检查一次都不执行（实测一次停了 15 分钟，激活窗口或任一 CLI 命令进来后立刻恢复）。插件的托管代码叫不醒停住的循环，所以改在客户端：`wait_for_health` 等 45 秒仍没有 `/health`、且有编辑器进程打开着该工程时，在 macOS 上把这个进程的窗口切到前台一次（终端第一次可能请求控制 System Events 的权限；`wake_after=0` 关闭，`project_root` 指定工程）。修复前 9 次冷启动未能复现这种停顿，激活路径已在实机上验证。
 - **回退会改写只读包里的资产** — 路由对每个按名定位的物体顺带快照它渲染器的共享材质，URP 原始体的材质是包里的 `Packages/com.unity.render-pipelines.universal/Runtime/Materials/Lit.mat`；回退时把它写回包缓存并重新导入，评测把这算作越界修改。现在 registry、git 与内置包里的资产不再快照（`file:` 本地包与嵌入包照旧）。由临时 Workflow 回退评测题发现。
 - **`editor_run_scenario` 单步耗时随作业历史变长** — 每一步都重写整个 `batch_state.json`，文件 20 MB 时每步 152 ms，同一时刻的多个 `wait_condition` 打点因此被拖过计时容差。现在只有 `invoke` 步、阶段切换和结束时落盘，只读步只更新内存，域重载前统一落盘；同样 20 MB 下每步 2 ms。由 Unity 6 评测 DS3 发现。
-- **长会话里 Play Mode 场景误报超时** — `editor_run_scenario` 的 `timeoutSeconds` 以前从进入 Play Mode 之前算起，进入 Play Mode 触发的那次域重载也计入预算；长会话里这次重载要 17–25 秒，24 秒预算的场景还没跑第一步就超时（Unity 6 gate 的 DB6）。现在进入 Play Mode 有单独的 300 秒上限，`timeoutSeconds` 从场景开始运行时计时；旧版本留下的作业行为不变。在 300 次重载后的编辑器上（单次重载约 18 秒），5 秒预算的场景通过。
+- **长会话里 Play Mode 场景误报超时** — `editor_run_scenario` 的 `timeoutSeconds` 以前从进入 Play Mode 之前算起，进入 Play Mode 触发的那次域重载也计入预算；长会话里这次重载要 17–25 秒，24 秒预算的场景还没跑第一步就超时（Unity 6 gate 的 DB6）。现在进入 Play Mode 有单独的 300 秒上限，`timeoutSeconds` 从场景开始运行时计时；旧版本留下的作业行为不变。脚本有编译错误时 Unity 不会进入 Play Mode，需要进入 Play Mode 的场景现在直接返回 `SEMANTIC_INVALID`，不建作业，免得白等 300 秒（DB6 的编译错误反例因此曾被判为基础设施失败）。在 300 次重载后的编辑器上（单次重载约 18 秒），5 秒预算的场景通过。
 - **`logWindow` 撑大作业历史** — 每个 scenario / `component_invoke_method` 作业都带堆栈保存整个日志窗口，单个可到 600 KB，最多保留 100 个。现在 `logWindow.logs[]` 只有 Error / Exception / Assert 条目保留 `stackTrace`，其余条目不再带堆栈；`failureLogWindow` 不变。
 - **Workflow 把 `ProjectSettings/` 下的资产当成不安全路径** — 每次加载历史都清空这类快照的 `assetPath`，并按快照逐条告警（一个工程每次域重载 278 条），违反启动日志策略。现在保留路径（这类路径本来就不走文件存储），清除不安全路径时的日志降为 Verbose。
 - **回退 `ProjectSettings` 资产后磁盘仍是旧值** — 这类资产没有文件备份，走 JSON 回退，内存已还原、接口报 `restored`，但文件要等下一次保存才更新。现在回退后立即保存。
 - **序列化引用每项扫描全部类型** — `component_set_serialized_property(_batch)` 等技能的 `objectType` 不是组件类型时（如 `Material`），以前每一项都要把所有已加载类型扫两遍，Unity 6 + URP 上每项超过 1 秒，2022 上约 330 ms；现在按名字缓存解析结果（含未找到），20 项的批处理从约 20 秒降到 0.3 秒。由 Unity 6 评测自测发现。
 - **评测题 DC4 在 Unity 6 上搭不起来** — 题目给预制体写 Rigidbody 的 `m_Drag` / `m_AngularDrag`，Unity 6 已改名为 `m_LinearDamping` / `m_AngularDamping`，20 个用例全部 `FIXTURE_FAILED`；现在旧名报 `SEMANTIC_INVALID` 时改写新名，2022 上行为不变。DC4 的 gateInputsHash 随之改变，各版本需重跑一次 DC4 自测。
-- **评测判题与框架** — T9 按层级路径定位对象，agent 提交前自己重载场景不再被误判；OC8 在取基线前先保存一次设置资产，全新工程的模板升级不再导致首跑 teardown 失败；DC6 的 teardown 还原 `m_AutoSyncTransforms`，反例改动不再留在工程里；提交时题包校验失败（`PACK_INVALID`）现在记为 invalid 并完成 teardown，不再把题目改过的设置留在工程里。runner 的改动使其余题目的 gate 过期，本版只重跑了受影响的题目。
+- **评测判题与框架** — T9 按层级路径定位对象，agent 提交前自己重载场景不再被误判；OC8 在取基线前先保存一次设置资产，全新工程的模板升级不再导致首跑 teardown 失败；DC6 的 teardown 还原 `m_AutoSyncTransforms`，反例改动不再留在工程里；提交时题包校验失败（`PACK_INVALID`）现在记为 invalid 并完成 teardown，不再把题目改过的设置留在工程里。runner 的改动使其余 39 题的 gate 过期，两个版本都已全部重跑。
 - **回退与预览读回的快照一直留在内存里** — 每次回退、dryRun 预览或冲突检查读回的完整快照以前直到域重载都不释放，反复预览一个较早的检查点会把成千上万步的内容留在内存中；现在操作结束即释放。
 - **删除文件夹时整份读入内存** — 删除文件夹前的备份以前对每个文件 `File.ReadAllBytes`，含大文件的文件夹会瞬间占用同等内存，超过 2 GB 的文件直接失败；现在与单文件备份一样流式计算哈希并复制。
 - **单步超过 500 个对象时静默截断** — 一步最多记录 500 个对象，以前超出的部分只写一条 Verbose 日志，回退时这些对象不会被还原也不报告；现在步骤记录跳过的数量（日志字段 `ns`），回退结果的 `skippedItems` 与 dryRun 预览的无法还原项会列出它。
