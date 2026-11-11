@@ -588,7 +588,7 @@ namespace UnitySkills.Tests.Core
         /// Reconstructs a v2 entry into v1-entry shape following v2's own declared omission rules: flags is
         /// expanded back into six booleans, riskLevel defaults to "low" when absent, supportsDryRun defaults
         /// to true when absent, and members swallowed by NullValueHandling are restored as explicit null.
-        /// longRunning doesn't participate — v1 never carries this field, it's a pure v2 addition.
+        /// longRunning and doc don't participate — v1 never carries these fields, they are pure v2 additions.
         /// </summary>
         private static JObject ReconstructV1Entry(JObject v2)
         {

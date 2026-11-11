@@ -34,6 +34,7 @@ All layers are server-cached with ETag / `304`; send `Accept-Encoding: gzip`. Th
 
 - A **`flags`** array replaces v1's six booleans and adds v2-only `longRunning`: `readOnly`, `tracksWorkflow`, `mutatesScene`, `mutatesAssets`, `mayTriggerReload`, `mayEnterPlayMode`, `longRunning`. An absent flag is false.
 - **Omitted means default**: `riskLevel` appears only when it is not `"low"`, `supportsDryRun` only when it is `false`, and null members are dropped, so an absent key is never null.
+- A **`doc`** string on a skill entry is the module doc path relative to the skill root, present only when that module has multi-skill workflow rules a schema cannot express. Read that doc before chaining the module's skills; most entries have no `doc`.
 - Every v2 response carries a **`defaults`** block (`{"riskLevel":"low","supportsDryRun":true}`) and a `metaUrl`; take the rule from the payload.
 - A v2 dryRun keeps every verdict field (`valid`, `validation`, `impact`, `authorization`, `steps`, `changes`) and slims the echo: `skill` shrinks to name, category, operation, mode, riskLevel, longRunning and flags, and `parameters` lists only what you sent plus required parameters still missing. Its `note` says what `valid:true` proves: no validation errors (`warnings` never block); for a skill without a semantic planner it adds that the target was not looked up, so `valid:true` does not prove the object exists.
 - On `/skills/batch`, a dry run returns v2 step payloads; executed steps return the skills' own results either way.

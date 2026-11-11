@@ -653,6 +653,7 @@ namespace UnitySkills
             requiresPackages = s.RequiresPackages,
             mode = SkillsModeManager.SkillModeToWire(s.Mode),
             approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(s),
+            doc = SkillModuleDocs.DocFor(s.Category),
         };
 
         // ========== Skill dependency chain ==========

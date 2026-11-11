@@ -973,7 +973,8 @@ namespace UnitySkills
                         requiresPackages = s.RequiresPackages,
                         mode = SkillsModeManager.SkillModeToWire(s.Mode),
                         approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(s),
-                        parameters = BuildParameterSchema(s)
+                        parameters = BuildParameterSchema(s),
+                        doc = SkillModuleDocs.DocFor(s.Category)
                     })
             };
         }
