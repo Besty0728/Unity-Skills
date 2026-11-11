@@ -11,7 +11,11 @@ namespace UnitySkills
         private static readonly Dictionary<SkillCategory, string> _docs = new Dictionary<SkillCategory, string>
         {
             { SkillCategory.UI, "skills/ui/MODULE.md" },
+            { SkillCategory.UIToolkit, "skills/uitoolkit/MODULE.md" },
             { SkillCategory.Prefab, "skills/prefab/MODULE.md" },
+            { SkillCategory.Animator, "skills/animator/MODULE.md" },
+            { SkillCategory.ShaderGraph, "skills/shadergraph/MODULE.md" },
+            { SkillCategory.Particle, "skills/particle/MODULE.md" },
         };
 
         internal static string DocFor(SkillCategory category) =>
