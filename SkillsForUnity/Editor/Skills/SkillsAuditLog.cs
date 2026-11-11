@@ -367,7 +367,8 @@ namespace UnitySkills
             // Coalesce multiple appends into a single flush task, delayed (see FlushDelayMs) so REST-context
             // entries' agent field gets a fair chance to resolve before BuildLine runs. FlushSync (used by
             // ReadRecent/DeleteEntry/ClearAll -- anything needing read-your-writes *now*) bypasses this delay
-            // entirely and uses whatever's resolved (or not) at that instant; it must never wait.
+            // entirely and uses whatever's resolved (or not) at that instant; it waits only for a write
+            // already in progress, never for this delay.
             if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) != 0) return;
             Task.Run(async () =>
             {
@@ -382,9 +383,11 @@ namespace UnitySkills
 
         private static void FlushPending()
         {
-            if (_queue.IsEmpty) return;
             lock (_writeLock)
             {
+                // Checked under the lock: a caller needing read-your-writes must wait for a worker that has
+                // dequeued entries but not yet closed the writer, or it would read the file without them.
+                if (_queue.IsEmpty) return;
                 try
                 {
                     // ??= writes the resolved result back into _cachedDir (not just a local variable), so
