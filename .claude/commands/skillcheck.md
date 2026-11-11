@@ -42,7 +42,7 @@ advisory 名单、Category 例外表、试点名单与预算、已知冗余、�
 - 计数口径：按唯一技能名；分类表按 `SkillCategory` 归组，不按文件。不要给分类表加 `Batch` / `Diagnose` 行（枚举里没有，分别并入 Workflow+Validation 与 Debug）。相邻数字各有定义，别互相"对齐"。数量以工作区为准。
 - 根 `unity-skills~/SKILL.md` 不写计数，也不要加回；新增内容下沉 `references/` 或模块文档。
 - 不要为让预算变绿而抬试点预算或删必要内容；预算为 `-1` 表示尚未拍板，如实报"预算待定"。
-- 不要把 `check_skill_frontmatter.py` 的 glob 改成 `*.md`（只有含 `SKILL.md` 的目录会被发现器注册为 skill）。
+- 模块入口文件名是 `MODULE.md`，索引是 `skills/INDEX.md`。不要在 `unity-skills~/skills/` 下新增名为 `SKILL.md` 的文件（发现器会把每个 `SKILL.md` 注册成独立 skill，`check_skill_frontmatter.py` 会拦）。
 - 不改 `CHANGELOG.md` 历史条目，不改 C# 与文档内容（除非用户要求修复），不 `git commit`。唯一自动写入是 `--sync-counts`，范围仅 `AGENTS.md` / `README.md` / `README_CN.md` 的计数。
 
 ## 报告格式

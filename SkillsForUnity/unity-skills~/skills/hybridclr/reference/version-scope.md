@@ -3,7 +3,7 @@
 
 ## Version scope
 
-- **Supported range**: `com.code-philosophy.hybridclr` `>=8.12.0 <10.0.0`. Anything else returns `unsupported_package_version` (see the rules in SKILL.md).
+- **Supported range**: `com.code-philosophy.hybridclr` `>=8.12.0 <10.0.0`. Anything else returns `unsupported_package_version` (see the rules in MODULE.md).
 - **8.x line** (anchored to **8.12.0**; 8.13–8.15 work the same for everything this module touches). **9.x line** (anchored to **9.0.3**; 9.0.0–9.0.3 are the same for everything this module touches, except that `method_bridge_empty` appeared in 9.0.2).
 
 | Area | 8.x | 9.x |

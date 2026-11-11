@@ -36,7 +36,7 @@ Unity CLI is **experimental (beta)** and changes every release. This module is v
 - Search instead of guessing flags: `<cliPath> commands --grep <term>` (10–50 KB as JSON for one term). **Never** run bare `commands --json` (1.4 MB).
 - If a command errors unexpectedly, run `<cliPath> doctor --format json` first (`--tail <n>` for more log) and re-check `--help`.
 - Never modify the server or config to work around a CLI quirk.
-- Which commands you may run at all: see [../SKILL.md](../SKILL.md).
+- Which commands you may run at all: see [../MODULE.md](../MODULE.md).
 
 ## 1. Cold start and lifecycle (`features.coldStart`)
 

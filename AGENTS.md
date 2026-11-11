@@ -53,7 +53,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 - Validation: `if (Validate.Required(x, "x") is object err) return err;`.
 - Writers register Undo and call `WorkflowManager.SnapshotXxx(...)` when `TracksWorkflow=true`. `SnapshotType` = Modified/Created/Deleted/Moved/Setting; settings restore through `WorkflowSettingRestorerRegistry`; file + `.meta` are content-addressed (`fileHash`/`metaFileHash`, schemaVersion 5); cleanup never deletes referenced blobs; limit `0` = unlimited.
 - Provide `xxx` and `xxx_batch` pairs; batch uses `BatchExecutor.Execute<TItem>(items, perItem, idFn)`.
-- New module: `SkillCategory` enum entry + `XxxSkills.cs` + `unity-skills~/skills/<module>/SKILL.md`; reflection discovers the methods. Run `/skillcheck` afterwards.
+- New module: `SkillCategory` enum entry + `XxxSkills.cs` + `unity-skills~/skills/<module>/MODULE.md` (no frontmatter; never name a file `SKILL.md` under `unity-skills~/skills/`, since discovery scanners register every `SKILL.md` as its own skill and `check_skill_frontmatter.py` enforces it); reflection discovers the methods. Run `/skillcheck` afterwards.
 - Never write a regression test whose failure mode installs a package, compiles scripts or enters Play Mode: a regressed guard would change the project running the test (round6: a red run of a `package_install_cinemachine` guard installed Cinemachine into the dev project). Test such guards through an internal seam, or not at all.
 - Gate version-specific tests with `#if UNITY_6000_4_OR_NEWER` or `Assert.Ignore`, never `Assume`: an Inconclusive result makes the command-line test run exit non-zero, so CI fails with no failed test.
 
@@ -92,7 +92,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 
 ## Workflow and commands
 Commands are prompt files under `.claude/commands/`; agents without slash commands read the file and follow it.
-- `/skillcheck` (`.claude/commands/skillcheck.md`) — C# ↔ `skills/*/SKILL.md` consistency audit driven by `.github/scripts/skill_inventory.py`, plus skill-count sync (`--sync-counts`) across `AGENTS.md` and README×2 (the root `SKILL.md` carries no counts). Run after adding, renaming or removing any skill.
+- `/skillcheck` (`.claude/commands/skillcheck.md`) — C# ↔ `skills/*/MODULE.md` consistency audit driven by `.github/scripts/skill_inventory.py`, plus skill-count sync (`--sync-counts`) across `AGENTS.md` and README×2 (the root `SKILL.md` carries no counts). Run after adding, renaming or removing any skill.
 - `/metacheck` (`.claude/commands/metacheck.md`) — `.meta` GUID audit; run after adding assets or `.meta` files.
 - `/updateversion <MAJOR.MINOR.PATCH>` (`.claude/commands/updateversion.md`) — bumps the declared version anchors (plus `.github/SECURITY.md` supported-versions table on minor/major bumps) and writes the CHANGELOG entry; verifies with `.github/scripts/check_project_version.py`. Never search-and-replace version numbers globally.
 - `/release [version]` (`.claude/commands/release.md`) — candidate matrix → beta/main sync → tag → stable GitHub Release. Develop on `beta`; `main` is linear, no merge commits. `beta` and `main` run parallel: Star History chart commits land on `main` only, never sync them into `beta`; `/release` drops them when it moves `main`. Never move or re-publish a released tag: users install by `#vX.Y.Z`, so fix forward with a new number.

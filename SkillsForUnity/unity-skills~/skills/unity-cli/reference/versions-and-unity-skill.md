@@ -23,6 +23,6 @@ The safest way to branch is `<cliPath> version --format json` (beta9+) and `<cli
 
 `<cliPath> skill show` (read-only), a `unity-cli` skill the user installed into their agent client, and the installer's auto-setup (since beta15 the install scripts add Unity's skills to every agent client found; `UNITY_CLI_SKIP_SETUP=1` skips it) are Unity's guide for driving the CLI **and a running Editor through the Pipeline package**. It is a second reference only. This module's gate and allowlist still apply.
 
-That guide routes agents to `unity command` / `script eval`, `pipeline install`, `mcp configure`, `setup`, `skill install|sync`, `self-update`, a hand-launched `-batchmode` Editor, `vcs`, `projects create`. **None of these are used here.** Editor running means UnitySkills REST. Editor closed means only the allowlist in [../SKILL.md](../SKILL.md). If both skills are loaded, REST and this module win.
+That guide routes agents to `unity command` / `script eval`, `pipeline install`, `mcp configure`, `setup`, `skill install|sync`, `self-update`, a hand-launched `-batchmode` Editor, `vcs`, `projects create`. **None of these are used here.** Editor running means UnitySkills REST. Editor closed means only the allowlist in [../MODULE.md](../MODULE.md). If both skills are loaded, REST and this module win.
 
 The whole tree is about 720 KB (`SKILL.md` about 70 KB). Read single files only, e.g. `skill show --path references/build-run-test.md`.

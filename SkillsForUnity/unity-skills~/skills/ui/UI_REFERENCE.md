@@ -1,6 +1,6 @@
 # UGUI Reference
 
-Extended UGUI examples and element and property details. The entry [SKILL.md](SKILL.md) keeps routing and core rules; per-skill parameters are in `reference/<skill_name>.md`.
+Extended UGUI examples and element and property details. The entry [MODULE.md](MODULE.md) keeps routing and core rules; per-skill parameters are in `reference/<skill_name>.md`.
 
 ## Efficient Menu Example
 

@@ -11,7 +11,7 @@
 - Several needs in one task: repeat `intent=` (`?intent=move+object&intent=light+color&includeSchema=true&topN=3&wire=v2`). Each intent is ranked on its own with the same `topN` / `includeSchema` / `wire`, and the answer becomes `{topN, includeSchema, …, intents:[{intent, expandedKeywords, totalMatches, results}]}`. A single distinct intent keeps the single-intent shape `{intent, expandedKeywords, topN, includeSchema, totalMatches, results}`.
 - A result carries `name`, `description`, `category`, `score`, `semanticScore`, `confidence`, `matchedOn`, optional `telemetry` / `warnings`, and `schema` when `includeSchema=true`. `unavailable` (with `missingPackages`) marks a skill whose optional package is not installed: calling it answers `MISSING_PACKAGE`, so the marker already settles availability (while the package list is still loading, nothing is marked).
 - Skills hidden by the surface profile are left out of the ranking. Under a profile other than `full` the envelope adds `surfaceProfile` and `surfaceProfileHint`: a skill missing from the results may be hidden rather than nonexistent.
-- Skills are named `module_verb` (`<module>_<action>`, `_batch` for the multi-object twin), so the prefix is the routing key. The [module index](../skills/SKILL.md) lists every module, including the docs-only ones (`manual-*`, `*-design`, `unity-cli`).
+- Skills are named `module_verb` (`<module>_<action>`, `_batch` for the multi-object twin), so the prefix is the routing key. The [module index](../skills/INDEX.md) lists every module, including the docs-only ones (`manual-*`, `*-design`, `unity-cli`).
 
 ## Exact signatures by name
 

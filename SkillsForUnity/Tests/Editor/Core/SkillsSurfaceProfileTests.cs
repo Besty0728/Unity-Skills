@@ -366,13 +366,13 @@ namespace UnitySkills.Tests.Core
 
             var expected = new Dictionary<SkillCategory, string>
             {
-                { SkillCategory.GameObject, "skills/manual-gameobject/SKILL.md" },
-                { SkillCategory.Component, "skills/manual-component/SKILL.md" },
-                { SkillCategory.Material, "skills/manual-material/SKILL.md" },
-                { SkillCategory.Scene, "skills/manual-scene/SKILL.md" },
+                { SkillCategory.GameObject, "skills/manual-gameobject/MODULE.md" },
+                { SkillCategory.Component, "skills/manual-component/MODULE.md" },
+                { SkillCategory.Material, "skills/manual-material/MODULE.md" },
+                { SkillCategory.Scene, "skills/manual-scene/MODULE.md" },
                 // Sample's write is just GameObject authoring under a different name, so it reuses
                 // the gameobject manual rather than leaving the agent with no doc to read.
-                { SkillCategory.Sample, "skills/manual-gameobject/SKILL.md" },
+                { SkillCategory.Sample, "skills/manual-gameobject/MODULE.md" },
             };
 
             foreach (var (category, skill, args) in WriteProbes)

@@ -12,7 +12,7 @@ These are the sunk detail of the root `../SKILL.md`, not background reading. Ope
 | `protocol-error-codes.md` | You got an `errorCode` the root doc's quick table doesn't cover, or you are writing your own client and need the full code / `retryStrategy` list. |
 | `protocol-operating-mode.md` | You hit `MODE_RESTRICTED` / `MODE_FORBIDDEN` / `SURFACE_EXCLUDED` / `INSTANCE_MISMATCH`, or need the grant protocol, the mode table, the Allowlist rules, the surface profiles, or the expected-instance and registry (`reloading`) rules. |
 | `protocol-observability.md` | You need to close the loop after a mutation — the `GET /jobs/{id}?wait=` long poll, compilation status, the `GET /events` long-poll, analytics. |
-| `protocol-unity-cli.md` | The user opted into Unity CLI cold start and you must launch a closed Editor. Per-command detail lives in `../skills/unity-cli/SKILL.md`. |
+| `protocol-unity-cli.md` | The user opted into Unity CLI cold start and you must launch a closed Editor. Per-command detail lives in `../skills/unity-cli/MODULE.md`. |
 | `protocol-runtime-verification.md` | You verify behaviour in Play Mode: `component_get_methods` → `component_invoke_method` / `editor_run_scenario`, then the bounded compile → scenario → repair → rerun loop (`scripts/runtime_verification.py`). |
 
 `../SKILL.md` stays small by living off these six; treat them as its chapters.

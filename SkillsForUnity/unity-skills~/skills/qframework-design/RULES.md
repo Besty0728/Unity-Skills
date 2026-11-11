@@ -1,6 +1,6 @@
 # QFramework Design Rules - Critical Summary, Version Scope, Known Gaps
 
-Sub-doc of [qframework-design](./SKILL.md). Holds the critical rule table, version scope and known gaps that do not fit the entry page.
+Sub-doc of [qframework-design](./MODULE.md). Holds the critical rule table, version scope and known gaps that do not fit the entry page.
 
 Sources: **QFramework.cs** (core single-file architecture, repo root; its header comment reads `Latest Update: 2026.8.12 return module instance after register`), **Doc.md** (official tutorial, 8820 lines, repo root), and **QFramework API.md** (core signature index; it has no Toolkits coverage and, as of this fetch, still lacks the 2026-08-12 return-value change). Line numbers refer to the upstream [liangxiegame/QFramework](https://github.com/liangxiegame/QFramework) v1.0.257 snapshot; Toolkits source lives under `QFramework.Unity2018+/Assets/QFramework/`. When sources disagree, follow `QFramework.cs`; Doc.md and API.md only corroborate, and the tutorial may lag behind the source.
 

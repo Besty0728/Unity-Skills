@@ -225,6 +225,24 @@ class FrontmatterCheckTests(unittest.TestCase):
             result = run_script("check_skill_frontmatter.py", repo)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_skill_md_under_skills_fails(self):
+        with tempfile.TemporaryDirectory() as repo:
+            write(repo, "SkillsForUnity/unity-skills~/SKILL.md", "---\nname: x\ndescription: short\n---\nbody\n")
+            write(repo, "SkillsForUnity/unity-skills~/skills/x/SKILL.md", "# x\n")
+            write(repo, "SkillsForUnity/unity-skills~/skills/y/deep/SKILL.md", "# y\n")
+            result = run_script("check_skill_frontmatter.py", repo)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("skills/x/SKILL.md", result.stdout)
+            self.assertIn("skills/y/deep/SKILL.md", result.stdout)
+
+    def test_module_and_index_names_pass(self):
+        with tempfile.TemporaryDirectory() as repo:
+            write(repo, "SkillsForUnity/unity-skills~/SKILL.md", "---\nname: x\ndescription: short\n---\nbody\n")
+            write(repo, "SkillsForUnity/unity-skills~/skills/INDEX.md", "# index\n")
+            write(repo, "SkillsForUnity/unity-skills~/skills/x/MODULE.md", "# x\n")
+            result = run_script("check_skill_frontmatter.py", repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 class ProjectVersionCheckTests(unittest.TestCase):
     @staticmethod

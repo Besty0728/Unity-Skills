@@ -21,7 +21,8 @@ from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 ENTRY = os.path.join(REPO, "SkillsForUnity", "unity-skills~", "scripts", "unity_eval.py")
-EVALUATION_DOC = os.path.join(REPO, "SkillsForUnity", "unity-skills~", "skills", "evaluation", "SKILL.md")
+EVALUATION_DOC = os.path.join(REPO, "SkillsForUnity", "unity-skills~", "skills", "evaluation", "MODULE.md")
+EVAL_SKILL_DOC = os.path.join(REPO, "SkillsForUnity", "unity-skills-eval~", "SKILL.md")
 RUNNER_PACKAGE = os.path.join(REPO, "SkillsForUnity", "Evaluation~")
 PACKAGE_NAME = "com.besty.unity-skills"
 
@@ -595,14 +596,16 @@ def load_runner_problems():
 
 
 class EvaluationDocTests(unittest.TestCase):
-    """The advisory doc agents read before they run the evaluation."""
+    """The advisory doc agents read before they run the evaluation (MODULE.md). Its frontmatter assertions
+    target the separately installed unity-skills-eval SKILL.md, the only file the discovery layer registers."""
 
     @classmethod
     def setUpClass(cls):
         with open(EVALUATION_DOC, "r", encoding="utf-8") as handle:
             cls.text = handle.read()
-        match = re.match(r"---\n(.*?)\n---\n", cls.text, re.DOTALL)
-        assert match, "frontmatter missing"
+        with open(EVAL_SKILL_DOC, "r", encoding="utf-8") as handle:
+            match = re.match(r"---\n(.*?)\n---\n", handle.read(), re.DOTALL)
+        assert match, "unity-skills-eval SKILL.md frontmatter missing"
         cls.frontmatter = match.group(1)
 
     def field(self, name):
@@ -610,8 +613,8 @@ class EvaluationDocTests(unittest.TestCase):
         self.assertIsNotNone(match, name)
         return match.group(1).strip()
 
-    def test_frontmatter_names_the_module_and_stays_within_the_discovery_limit(self):
-        self.assertEqual(self.field("name"), "unity-evaluation")
+    def test_frontmatter_names_the_skill_and_stays_within_the_discovery_limit(self):
+        self.assertEqual(self.field("name"), "unity-skills-eval")
         self.assertLessEqual(len(self.field("description")), 1024)
 
     def test_description_asks_for_an_explicit_evaluation_request_and_excludes_normal_work(self):
@@ -622,7 +625,7 @@ class EvaluationDocTests(unittest.TestCase):
     def test_doc_is_plain_lf_utf8_without_rest_call_examples(self):
         with open(EVALUATION_DOC, "rb") as handle:
             raw = handle.read()
-        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), "a BOM hides the frontmatter from some agents")
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), "module docs ship as UTF-8 without a BOM")
         self.assertNotIn(b"\r", raw)
         self.assertNotIn("call_skill", self.text)
         self.assertNotIn("/skill/", self.text)

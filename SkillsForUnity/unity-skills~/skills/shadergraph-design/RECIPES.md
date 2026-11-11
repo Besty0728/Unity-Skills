@@ -6,7 +6,7 @@ type: reference
 
 # Recipes
 
-Sub-doc of [shadergraph-design](./SKILL.md). Every recipe below is intentionally limited to the current supported node subset.
+Sub-doc of [shadergraph-design](./MODULE.md). Every recipe below is intentionally limited to the current supported node subset.
 
 ## 1. BaseColor Texture Sample Chain
 

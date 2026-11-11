@@ -27,6 +27,9 @@ from dataclasses import dataclass, field
 SKILLS_DIR = "SkillsForUnity/Editor/Skills"
 PACKAGE_DIR = "SkillsForUnity/unity-skills~"
 DOCS_DIR = PACKAGE_DIR + "/skills"
+ROOT_DOC = "SKILL.md"  # the only SKILL.md; discovery registers it
+MODULE_DOC = "MODULE.md"  # per-module entry under skills/<module>/
+INDEX_DOC = "INDEX.md"  # module index under skills/
 TEST_FILE = "SkillsForUnity/Tests/Editor/Core/SkillDocumentationConsistencyTests.cs"
 ROOT_DOC_BYTE_BUDGET = 8192
 ATTRIBUTE_FILE = SKILLS_DIR + "/UnitySkillAttribute.cs"
@@ -650,7 +653,7 @@ class Audit:
         self.categories = load_categories(root)
         self.reg = load_registries(root, self.findings)
         docs_root = os.path.join(root, DOCS_DIR)
-        module_dirs = sorted(d for d in glob.glob(os.path.join(docs_root, "*")) if os.path.isfile(os.path.join(d, "SKILL.md")))
+        module_dirs = sorted(d for d in glob.glob(os.path.join(docs_root, "*")) if os.path.isfile(os.path.join(d, MODULE_DOC)))
         self.modules = [os.path.basename(d) for d in module_dirs]
         self.advisory = [m for m in self.modules if m.lower() in {a.lower() for a in self.reg.advisory}]
         real_categories = [x for x in self.categories if x != "Uncategorized"]
@@ -857,17 +860,17 @@ class Audit:
         for module in self.modules:
             if module in self.advisory:
                 continue
-            path = os.path.join(self.root, DOCS_DIR, module, "SKILL.md")
+            path = os.path.join(self.root, DOCS_DIR, module, MODULE_DOC)
             for no, name in do_not_names(path):
                 if name in self.skills:
                     self.add("error", "do-not-real-skill", f"DO NOT block denies `{name}` but it exists in C#",
-                             f"{module}/SKILL.md:{no}")
+                             f"{module}/{MODULE_DOC}:{no}")
 
     def check_overview(self) -> None:
         for module in self.modules:
             if module in self.advisory:
                 continue
-            path = os.path.join(self.root, DOCS_DIR, module, "SKILL.md")
+            path = os.path.join(self.root, DOCS_DIR, module, MODULE_DOC)
             lines = section_lines(path, r"##\s+Skills Overview")
             if not lines:
                 continue
@@ -881,18 +884,18 @@ class Audit:
             owned = self.module_skills(module)
             for n, no in sorted(listed.items()):
                 if n not in self.skills and not n.endswith("_"):
-                    self.add("warning", "overview-unknown", f"Overview lists `{n}` which is not a C# skill", f"{module}/SKILL.md:{no}")
+                    self.add("warning", "overview-unknown", f"Overview lists `{n}` which is not a C# skill", f"{module}/{MODULE_DOC}:{no}")
             missing = sorted(owned - set(listed))
             if missing and owned:
                 self.add("info", "overview-missing",
                          f"{module}: {len(missing)} of {len(owned)} skills not in Skills Overview: {missing[:8]}"
-                         + (" ..." if len(missing) > 8 else ""), f"{module}/SKILL.md")
+                         + (" ..." if len(missing) > 8 else ""), f"{module}/{MODULE_DOC}")
 
     def check_mode(self) -> None:
         for module in self.modules:
             if module in self.advisory:
                 continue
-            path = os.path.join(self.root, DOCS_DIR, module, "SKILL.md")
+            path = os.path.join(self.root, DOCS_DIR, module, MODULE_DOC)
             for no, line, fenced in iter_lines(read_text(path)):
                 if fenced or "SemiAuto" not in line:
                     continue
@@ -903,7 +906,7 @@ class Audit:
                         s = self.skills.get(name)
                         if s and s.mode != "SemiAuto":
                             self.add("error", "mode-doc-vs-code",
-                                     f"`{name}` documented SemiAuto but C# Mode is {s.mode}", f"{module}/SKILL.md:{no}")
+                                     f"`{name}` documented SemiAuto but C# Mode is {s.mode}", f"{module}/{MODULE_DOC}:{no}")
 
     def check_pilots(self) -> None:
         docs_root = os.path.join(self.root, DOCS_DIR)
@@ -926,12 +929,12 @@ class Audit:
                              f"{module}/reference/{stem}.md defines {defs or 'nothing'}, expected exactly [{stem}]")
             for name in sorted(owned - ref_files):
                 self.add("error", "pilot-reference-missing", f"{module}: `{name}` has no reference/{name}.md")
-            size = len(read_text(os.path.join(docs_root, module, "SKILL.md")).replace("\r", "").encode("utf-8"))
+            size = len(read_text(os.path.join(docs_root, module, MODULE_DOC)).replace("\r", "").encode("utf-8"))
             self.stats.setdefault("pilot_entry_bytes", {})[module] = {"bytes": size, "budget": budget}
             if budget < 0:
-                self.add("error", "pilot-budget-pending", f"{module}/SKILL.md budget is -1 (not decided): {size} bytes")
+                self.add("error", "pilot-budget-pending", f"{module}/{MODULE_DOC} budget is -1 (not decided): {size} bytes")
             elif size > budget:
-                self.add("error", "pilot-budget", f"{module}/SKILL.md is {size} bytes > budget {budget}")
+                self.add("error", "pilot-budget", f"{module}/{MODULE_DOC} is {size} bytes > budget {budget}")
 
     def check_undocumented(self) -> None:
         tokens: set[str] = set()
@@ -943,12 +946,12 @@ class Audit:
                 self.add("info", "undocumented-skill", f"`{s.name}` is not mentioned anywhere under skills/", f"{s.file}:{s.line}")
 
     def check_root_doc(self) -> None:
-        root_doc = os.path.join(self.root, PACKAGE_DIR, "SKILL.md")
+        root_doc = os.path.join(self.root, PACKAGE_DIR, ROOT_DOC)
         if os.path.isfile(root_doc):
             size = len(read_text(root_doc).replace("\r", "").encode("utf-8"))
             self.stats["root_doc_bytes"] = {"bytes": size, "budget": ROOT_DOC_BYTE_BUDGET}
             if size > ROOT_DOC_BYTE_BUDGET:
-                self.add("error", "root-doc-budget", f"root SKILL.md is {size} bytes > {ROOT_DOC_BYTE_BUDGET} (LF-normalised)")
+                self.add("error", "root-doc-budget", f"root {ROOT_DOC} is {size} bytes > {ROOT_DOC_BYTE_BUDGET} (LF-normalised)")
         gitattributes = os.path.join(self.root, ".gitattributes")
         if not os.path.isfile(gitattributes) or not re.search(r"^\*\.md\s+text\s+eol=lf\s*$", read_text(gitattributes), re.M):
             self.add("error", "gitattributes", ".gitattributes missing or lacks `*.md text eol=lf` (issue #59)")
@@ -961,9 +964,9 @@ class Audit:
     # -- links
     def link_sources(self) -> list[str]:
         pkg = os.path.join(self.root, PACKAGE_DIR)
-        sources = [os.path.join(pkg, "SKILL.md")]
+        sources = [os.path.join(pkg, ROOT_DOC)]
         sources += sorted(glob.glob(os.path.join(pkg, "references", "*.md")))
-        sources.append(os.path.join(pkg, "skills", "SKILL.md"))
+        sources.append(os.path.join(pkg, "skills", INDEX_DOC))
         for d in sorted(glob.glob(os.path.join(pkg, "skills", "*"))):
             if os.path.isdir(d):
                 sources += doc_files(d)
@@ -1029,7 +1032,7 @@ class Audit:
         self.stats["links_checked"] = checked
         for stale in sorted(self.reg.known_broken_links - reported):
             self.add("warning", "known-broken-link-stale", f"KnownBrokenDocLinks entry now resolves: {stale}")
-        root_doc = os.path.join(pkg, "SKILL.md")
+        root_doc = os.path.join(pkg, ROOT_DOC)
         seen, queue = {root_doc}, [root_doc]
         while queue:
             for nxt in graph.get(queue.pop(), ()):
@@ -1056,7 +1059,7 @@ class Audit:
                 self.add("error", "frontmatter", line[4:].strip())
         if proc.returncode != 0 and not any(line.startswith("  - ") for line in out):
             self.add("error", "frontmatter", (proc.stderr or proc.stdout).strip()[-300:])
-        self.stats["frontmatter"] = [line for line in out if line.startswith(("扫描", "description", "最长"))]
+        self.stats["frontmatter"] = [line for line in out if line.startswith("description")]
 
     # -- counts
     def count_anchors(self) -> list[tuple[str, re.Pattern]]:

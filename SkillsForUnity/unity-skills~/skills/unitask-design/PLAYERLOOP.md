@@ -6,7 +6,7 @@ type: reference
 
 # UniTask PlayerLoop & Timing
 
-Sub-doc of [unitask-design](./SKILL.md). Everything here maps to `PlayerLoopHelper.cs`, `UniTask.Delay.cs`, and Unity's player loop order.
+Sub-doc of [unitask-design](./MODULE.md). Everything here maps to `PlayerLoopHelper.cs`, `UniTask.Delay.cs`, and Unity's player loop order.
 
 ## `PlayerLoopTiming` — full enum
 

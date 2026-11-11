@@ -847,7 +847,7 @@ namespace UnitySkills
     /// structured installation hint, without a compile failure or a thrown exception.
     ///
     /// Node-level graph topology editing is deliberately out of scope; see the Limitations section of the
-    /// module's SKILL.md.
+    /// module's MODULE.md.
     /// </summary>
     public static class BehaviorSkills
     {

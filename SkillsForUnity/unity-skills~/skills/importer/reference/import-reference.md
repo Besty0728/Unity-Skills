@@ -1,6 +1,6 @@
 # Importer reference
 
-Detail behind [SKILL.md](../SKILL.md): every field, the platform override rules, the extended skills and practical presets.
+Detail behind [MODULE.md](../MODULE.md): every field, the platform override rules, the extended skills and practical presets.
 
 ## Efficient Configuration Example
 

@@ -24,4 +24,4 @@ Every generation entry point is a `[MenuItem]`-annotated public static parameter
 | HybridCLR/Generate/MethodBridgeAndReversePInvokeWrapper | `MethodBridgeGeneratorCommand.GenerateMethodBridgeAndReversePInvokeWrapper` |
 | HybridCLR/Generate/AOTGenericReference | `AOTReferenceGeneratorCommand.CompileAndGenerateAOTGenericReference` |
 
-Running these headless avoids the main-thread blocking problem entirely — see [unity-cli](../../unity-cli/SKILL.md). Installation has no parameterless menu method; it must go through the Installer window.
+Running these headless avoids the main-thread blocking problem entirely — see [unity-cli](../../unity-cli/MODULE.md). Installation has no parameterless menu method; it must go through the Installer window.

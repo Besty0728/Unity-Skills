@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Cancellation
 
-Sub-doc of [unitask-design](./SKILL.md). Cancellation is the part of UniTask most often done wrong. The source lives in `CancellationTokenExtensions.cs`, `CancellationTokenSourceExtensions.cs`, and `Triggers/AsyncTriggerExtensions.cs`.
+Sub-doc of [unitask-design](./MODULE.md). Cancellation is the part of UniTask most often done wrong. The source lives in `CancellationTokenExtensions.cs`, `CancellationTokenSourceExtensions.cs`, and `Triggers/AsyncTriggerExtensions.cs`.
 
 ## The core model
 

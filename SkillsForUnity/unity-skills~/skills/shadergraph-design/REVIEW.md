@@ -6,7 +6,7 @@ type: reference
 
 # Review Checklist
 
-Sub-doc of [shadergraph-design](./SKILL.md). Use this when reviewing a Shader Graph proposal or an AI-generated editing plan.
+Sub-doc of [shadergraph-design](./MODULE.md). Use this when reviewing a Shader Graph proposal or an AI-generated editing plan.
 
 ## Topology
 

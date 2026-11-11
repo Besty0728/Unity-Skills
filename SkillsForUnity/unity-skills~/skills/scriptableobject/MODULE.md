@@ -1,0 +1,154 @@
+# Unity ScriptableObject Skills
+
+Create and manage ScriptableObject assets. Parameters come from the schema (`GET /skills/schema?names=<skill>&wire=v2`); execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
+- Creating or editing ScriptableObject data assets
+- Finding ScriptableObject instances
+- Scripting ScriptableObject management
+
+## Rules
+- Changes are saved to the asset automatically. There is no save skill.
+- To create a ScriptableObject script, use the [script](../script/MODULE.md) module with template `"ScriptableObject"`.
+- Choose the setter by what the field is. `scriptableobject_set` and `scriptableobject_set_batch` reach only top-level public simple fields (reflection). Use `scriptableobject_set_serialized_property` (and its `_batch`) for nested paths, arrays and lists, object references, private `[SerializeField]` fields, gradients, curves and `[Flags]` enums.
+- `scriptableobject_import_json` with no changed serialized field returns `success: true` plus a `warning`. Treat the warning as "nothing was written" and check the field names against `scriptableobject_export_json` output.
+
+## Pitfalls
+- `scriptableobject_create_type`, `scriptableobject_get_properties`, `scriptableobject_read`, `scriptableobject_set_property`, `scriptableobject_set_field` and `scriptableobject_save` do not exist. Use `scriptableobject_get` or `scriptableobject_get_serialized_properties` to read, `scriptableobject_set` or `scriptableobject_set_serialized_property` to write.
+- `scriptableobject_export_json` with `savePath` writes a file, so it is a write even though it is read-only in every other respect. Leave `savePath` out to get the JSON inline. The two return shapes are exclusive, so reading the data with `savePath` costs a second call.
+
+## Skills
+
+### scriptableobject_create
+Create a new ScriptableObject asset.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| typeName | string | Yes | - | ScriptableObject type name |
+| savePath | string | Yes | - | Asset save path |
+
+### scriptableobject_get
+Get properties of a ScriptableObject.
+**Parameters:**
+- `assetPath` (string): Asset path.
+
+### scriptableobject_set
+Set a top-level public field/property on a ScriptableObject via reflection. For nested paths, arrays, object references or private `[SerializeField]` fields use `scriptableobject_set_serialized_property`.
+**Parameters:**
+- `assetPath` (string): Asset path.
+- `fieldName` (string): Field or property name.
+- `value` (string): Value to set, parsed per member type as in `component_set_property` (bools `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`, anything else rejected; an AnimationCurve as a preset or the JSON curve below).
+
+### scriptableobject_list_types
+List available ScriptableObject types in the project.
+**Parameters:**
+- `filter` (string, optional): Filter by name.
+
+### scriptableobject_duplicate
+Duplicate a ScriptableObject asset.
+**Parameters:**
+- `assetPath` (string): Source asset path to duplicate.
+
+### scriptableobject_set_batch
+Set multiple fields on a ScriptableObject at once. fields: JSON object {fieldName: value, ...}
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the ScriptableObject |
+| fields | string | Yes | - | JSON object with field-value pairs, e.g. `{"fieldName": "value", ...}` |
+
+**Returns:** `{ success, fieldsSet, failed, results: [{ field, error }] }`: a key that is not a writable public field/property, or whose value its type rejects, fails on its own (listed in `results`) while the other keys are still set; malformed `fields` JSON is rejected before anything is written.
+
+### scriptableobject_get_serialized_properties
+List Inspector serialized properties of a ScriptableObject asset — `propertyPath`, type, and current value for every serialized field, including private `[SerializeField]` and nested/array children. Use the returned `propertyPath` values with `scriptableobject_set_serialized_property`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the ScriptableObject |
+| includeChildren | bool | No | `true` | Recurse into nested/array child properties |
+| limit | int | No | `200` | Maximum number of properties to return |
+| includeHidden | bool | No | `false` | Also list fields the Inspector hides (`[HideInInspector]` members and Unity's `m_ObjectHideFlags` / `m_PrefabInstance` bookkeeping); they count toward `limit` |
+
+**Returns:** `{ success, path, typeName, properties: [{ propertyPath, name, displayName, propertyType, type, isArray, editable, value }] }`; an `ObjectReference` property also has `referenceState` (`none`, `missing` or `assigned`), which tells a never-assigned reference from one whose target was deleted when `value` reads `"null"`.
+
+### scriptableobject_set_serialized_property
+Set a single Inspector serialized property by `propertyPath`. Works where `scriptableobject_set` cannot: nested fields, arrays/lists, `UnityEngine.Object` references, private `[SerializeField]` fields, gradients, animation curves, and `[Flags]` enums.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the target ScriptableObject |
+| propertyPath | string | Yes | - | Serialized property path (see syntax below); `speed` auto-falls back to `m_Speed` / `_speed` |
+| value | string | No | `null` | Value to set (format depends on property type) |
+| valueAssetPath | string | No | `null` | For ObjectReference properties: asset path of the asset to reference |
+| valueObjectType | string | No | `null` | Optional type filter for the referenced asset (e.g. `"Sprite"`, useful for sub-assets) |
+
+**propertyPath syntax:**
+- Top-level field: `speed`
+- Nested field: `stats.maxHp`
+- Array/List element: `items.Array.data[2]`
+- Array/List resize: `items.Array.size` with `value: "5"` (resize first, then set elements)
+
+**Value formats:**
+- Primitives: `"3.5"` / `"true"` / `"hello"` (bools: `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`); Vector: `"1,2,3"`; Color: `"1,0,0,1"`; Enum: name, or a number `0`..`n-1` as the member index (a `warnings` entry names the member when its value differs; a larger number is a member value or declared bits, undeclared bits are rejected)
+- `[Flags]` enum: comma-separated names `"Fire,Ice"` (also `|`), or a raw bitmask number above the last member index (`"-1"` = Everything; smaller numbers are member indexes, as for any enum)
+- ObjectReference: pass `valueAssetPath: "Assets/Icons/sword.png"` (optionally `valueObjectType`); clear with `value: "null"`
+- Gradient: `{"colorKeys":[{"color":"1,0,0,1","time":0},{"color":"0,0,1,1","time":1}],"alphaKeys":[{"alpha":1,"time":0},{"alpha":1,"time":1}],"mode":"Blend"}`
+- AnimationCurve: `{"keys":[{"time":0,"value":0},{"time":1,"value":1,"inTangent":2,"outTangent":2}],"preWrapMode":"ClampForever","postWrapMode":"Loop"}`
+
+**Returns:** `{ success, assetPath, propertyPath, valueSet, warnings? }`. A rejected value writes nothing. Unknown propertyPath returns `error` plus `availableProperties` (first 60) for self-correction.
+
+### scriptableobject_set_serialized_property_batch
+Set multiple Inspector serialized properties on one ScriptableObject asset in a single call.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the target ScriptableObject |
+| items | string | Yes | - | JSON array of `{propertyPath, value, valueAssetPath, valueObjectType}` |
+
+Example `items`: `[{"propertyPath":"items.Array.size","value":"2"},{"propertyPath":"items.Array.data[0]","value":"101"},{"propertyPath":"icon","valueAssetPath":"Assets/Icons/sword.png"}]`
+
+**Returns:** `{ success, totalItems, successCount, failCount, results }`
+
+### scriptableobject_delete
+Delete a ScriptableObject asset.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the ScriptableObject to delete |
+
+**Returns:** `{ success, deleted }`
+
+### scriptableobject_find
+Find ScriptableObject assets by type name.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| typeName | string | Yes | - | ScriptableObject type name to search for |
+| searchPath | string | No | `"Assets"` | Folder path to search within |
+| limit | int | No | `50` | Maximum number of results to return |
+
+**Returns:** `{ success, count, assets }`
+
+### scriptableobject_export_json
+Export a ScriptableObject to JSON.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the ScriptableObject to export |
+| savePath | string | No | `null` | File path to write the JSON to; **omit it** to get the JSON inline instead |
+
+**Returns:** `{ success, path }` when `savePath` was given (the JSON is *not* echoed), `{ success, json }` otherwise.
+
+> **`savePath` makes this a write.** With it the skill does a `File.WriteAllText`, so it is flagged `MutatesAssets = true` and not `ReadOnly`, even though it stays `SkillMode.SemiAuto` (no grant needed in any mode). Reading a ScriptableObject's values costs nothing on disk as long as you leave `savePath` out — and note the two return shapes are mutually exclusive, so passing `savePath` when you wanted to *read* the data means a second call.
+
+### scriptableobject_import_json
+Import JSON data into a ScriptableObject. Two accepted formats:
+- Bare field object `{"hp": 100, "title": "Boss"}` — auto-wrapped into `{"MonoBehaviour": {...}}` before applying
+- The `{"MonoBehaviour": {...}}` envelope produced by `scriptableobject_export_json`
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| assetPath | string | Yes | - | Asset path of the target ScriptableObject |
+| json | string | No | `null` | JSON string to import |
+| jsonFilePath | string | No | `null` | Path to a JSON file to read and import |
+
+**Returns:** `{ success, assetPath }`. If no serialized field changed (field names did not match, or values already equal), returns `success: true` plus a `warning` — treat the warning as "nothing was written" and verify field names against `scriptableobject_export_json` output.

@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Basics
 
-Sub-doc of [unitask-design](./SKILL.md). Read alongside the source; every API shape below is backed by an explicit `file:line`.
+Sub-doc of [unitask-design](./MODULE.md). Read alongside the source; every API shape below is backed by an explicit `file:line`.
 
 ## Why UniTask exists
 

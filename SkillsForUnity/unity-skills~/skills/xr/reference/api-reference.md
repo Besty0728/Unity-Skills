@@ -1,6 +1,6 @@
 # XR API Reference
 
-Detailed workflows, verified XRI property names, and event and property tables. The entry [SKILL.md](../SKILL.md) keeps routing and critical guardrails. XR property names are reflection-sensitive: check them here before a detailed edit.
+Detailed workflows, verified XRI property names, and event and property tables. The entry [MODULE.md](../MODULE.md) keeps routing and critical guardrails. XR property names are reflection-sensitive: check them here before a detailed edit.
 
 ## Workflow 1: XR Rig Setup
 

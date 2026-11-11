@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Pitfalls
 
-Sub-doc of [unitask-design](./SKILL.md). Every item below is a real pattern that breaks in production. Read this before reviewing a PR that touches async code.
+Sub-doc of [unitask-design](./MODULE.md). Every item below is a real pattern that breaks in production. Read this before reviewing a PR that touches async code.
 
 Format: ❌ wrong → ✅ right, with a short WHY.
 

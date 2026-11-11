@@ -215,4 +215,4 @@ These are frequent training-data hallucinations. If you catch yourself typing on
 | `package.LoadSceneAsync(location, LoadSceneMode.Additive, addToBuild: true)` | There is no `addToBuild` parameter; build inclusion is decided by the bundle layout. | `package.LoadSceneAsync(location, LoadSceneMode.Additive, LocalPhysicsMode.None, suspendLoad: false)` |
 | `initParams.UnpackingPath = "…"` | Field does not exist on `InitializeParameters`. | Set `FileSystemParametersDefine.UNPACK_FILE_SYSTEM_ROOT` (added 2.3.18) on the buildin FS parameters |
 
-Source for every "why it's wrong" claim: the files listed in the main [SKILL.md](./SKILL.md) rule table plus `CHANGELOG.md`. When in doubt, grep the Runtime or Editor directory before emitting code.
+Source for every "why it's wrong" claim: the files listed in the main [MODULE.md](./MODULE.md) rule table plus `CHANGELOG.md`. When in doubt, grep the Runtime or Editor directory before emitting code.

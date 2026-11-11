@@ -1,5 +1,5 @@
 ### qframework_generate_view_controller_code
-Generate the bound-view code for a GameObject's `ViewController` component through `CodeGenKit.Generate(IBindGroup)`. Writes `.cs` and `.Designer.cs` immediately and returns before compilation (two-phase protocol, see [SKILL.md](../SKILL.md)). The target must already carry a `ViewController` component, or a subclass, with `ScriptsFolder` and `ScriptName` set.
+Generate the bound-view code for a GameObject's `ViewController` component through `CodeGenKit.Generate(IBindGroup)`. Writes `.cs` and `.Designer.cs` immediately and returns before compilation (two-phase protocol, see [MODULE.md](../MODULE.md)). The target must already carry a `ViewController` component, or a subclass, with `ScriptsFolder` and `ScriptName` set.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|

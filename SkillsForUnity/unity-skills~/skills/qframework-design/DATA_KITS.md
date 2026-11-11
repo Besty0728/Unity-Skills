@@ -1,6 +1,6 @@
 # FSMKit, TableKit, PoolKit & GridKit
 
-Sub-doc of [qframework-design](./SKILL.md). Four small, independent data-structure kits: a runtime state machine, an indexed table for join-style queries, two object pools, and 2D grid containers.
+Sub-doc of [qframework-design](./MODULE.md). Four small, independent data-structure kits: a runtime state machine, an indexed table for join-style queries, two object pools, and 2D grid containers.
 
 ## FSMKit: pure in-memory runtime state machine
 

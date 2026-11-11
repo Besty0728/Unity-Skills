@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Integration
 
-Sub-doc of [dotween-design](./SKILL.md). Covers how DOTween interoperates with UniTask, Coroutines, Addressables/YooAsset-loaded assets, and Netcode-driven deterministic replay.
+Sub-doc of [dotween-design](./MODULE.md). Covers how DOTween interoperates with UniTask, Coroutines, Addressables/YooAsset-loaded assets, and Netcode-driven deterministic replay.
 
 ## UniTask bridge — the preferred async path
 

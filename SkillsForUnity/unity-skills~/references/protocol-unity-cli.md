@@ -2,7 +2,7 @@
 
 > Unity CLI cold start is opt-in (v2.3+). Most sessions do not need it. This protocol was verified against Unity CLI `1.0.0-beta.17`.
 
-If the REST server is unreachable at session start, check `<projectRoot>/Library/UnitySkills/cli_config.json` (helper: `unity_skills.get_cli_config()`). **Only if** it exists with `enabled: true` has the user bound the experimental Unity CLI in the panel — then read `skills/unity-cli/SKILL.md` and you may:
+If the REST server is unreachable at session start, check `<projectRoot>/Library/UnitySkills/cli_config.json` (helper: `unity_skills.get_cli_config()`). **Only if** it exists with `enabled: true` has the user bound the experimental Unity CLI in the panel — then read `skills/unity-cli/MODULE.md` and you may:
 
 1. Triage liveness via the UnitySkills registry (`~/.unity_skills/registry.json` → is the project entry's `pid` alive? alive → it's a Domain Reload window, keep waiting; not alive → continue checking).
 2. Cross-check with `<cliPath> editors running --format json --non-interactive` (a sandboxed shell may see nothing — an empty list is not proof).
@@ -22,4 +22,4 @@ When scripting CLI calls, set these environment variables (advisory) and capture
 - `UNITY_NO_UPDATE_CHECK=1`, `UNITY_NO_AGENT_HINTS=1` — no update notifications / agent plugin suggestions (relay such hints to the user, never execute them).
 - `UNITY_NO_CRASH_REPORT=1`, `UNITY_NO_CLI_INVOKED_TELEMETRY=1` — opt out of crash reporting and the per-run usage ping.
 
-For build/test/run exit codes (`test`: `8` failed, `6` no verdict; beta14+ timeouts exit `14`; beta16+ `17`/`18` for a busy/blocked Editor; unknown code → stop and report, `<cliPath> --help` lists them), signal diagnostics (`SIGSEGV/SIGILL/SIGTRAP/SIGFPE/SIGBUS`), and NDJSON terminal-frame handling, see `skills/unity-cli/SKILL.md`. The binary's own `--help` is always the final authority.
+For build/test/run exit codes (`test`: `8` failed, `6` no verdict; beta14+ timeouts exit `14`; beta16+ `17`/`18` for a busy/blocked Editor; unknown code → stop and report, `<cliPath> --help` lists them), signal diagnostics (`SIGSEGV/SIGILL/SIGTRAP/SIGFPE/SIGBUS`), and NDJSON terminal-frame handling, see `skills/unity-cli/MODULE.md`. The binary's own `--help` is always the final authority.

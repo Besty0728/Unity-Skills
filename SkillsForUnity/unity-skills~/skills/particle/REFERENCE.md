@@ -1,6 +1,6 @@
 # Particle Reference
 
-Detail behind [SKILL.md](./SKILL.md): payload shapes, value types, references, limits, recipes and troubleshooting. The authoritative field list of the running Editor is `particle_get_capabilities` (`module=` scopes it); the tables at the end are a snapshot of it.
+Detail behind [MODULE.md](./MODULE.md): payload shapes, value types, references, limits, recipes and troubleshooting. The authoritative field list of the running Editor is `particle_get_capabilities` (`module=` scopes it); the tables at the end are a snapshot of it.
 
 ## Payloads
 

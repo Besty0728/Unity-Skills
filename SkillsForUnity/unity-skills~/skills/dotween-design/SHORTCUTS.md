@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Shortcuts Cheat Sheet
 
-Sub-doc of [dotween-design](./SKILL.md). Shortcut extensions live across multiple files: `DOTween/ShortcutExtensions.cs` (core) plus Modules (`DOTweenModuleUI.cs`, `DOTweenModulePhysics.cs`, etc.).
+Sub-doc of [dotween-design](./MODULE.md). Shortcut extensions live across multiple files: `DOTween/ShortcutExtensions.cs` (core) plus Modules (`DOTweenModuleUI.cs`, `DOTweenModulePhysics.cs`, etc.).
 
 All shortcuts follow this pattern:
 1. Return `Tweener` or `TweenerCore<...>` with `target` pre-set (for `DOTween.Kill(target)` to work).

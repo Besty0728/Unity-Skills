@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Conversion & Interop
 
-Sub-doc of [unitask-design](./SKILL.md). Covers every bridge between UniTask and Unity's legacy `AsyncOperation` / `Coroutine`, and between UniTask and `System.Threading.Tasks.Task`.
+Sub-doc of [unitask-design](./MODULE.md). Covers every bridge between UniTask and Unity's legacy `AsyncOperation` / `Coroutine`, and between UniTask and `System.Threading.Tasks.Task`.
 
 ## `AsyncOperation.ToUniTask`
 

@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Lifetime & Ownership
 
-Sub-doc of [dotween-design](./SKILL.md). This is where most DOTween bugs live: tweens running on destroyed targets, tween pool exhaustion, tweens surviving scene load.
+Sub-doc of [dotween-design](./MODULE.md). This is where most DOTween bugs live: tweens running on destroyed targets, tween pool exhaustion, tweens surviving scene load.
 
 ## `SetTarget` — grouping by owner
 

@@ -42,10 +42,10 @@ Present steps in this order and format:
 
 Route common topics to the corresponding manual advisories:
 
-- Creating and organizing GameObjects / hierarchy / basic transforms → [`skills/manual-gameobject/SKILL.md`](skills/manual-gameobject/SKILL.md)
-- Adding and configuring components in the Inspector → [`skills/manual-component/SKILL.md`](skills/manual-component/SKILL.md)
-- Creating and editing materials / changing colors → [`skills/manual-material/SKILL.md`](skills/manual-material/SKILL.md)
-- Navigating scenes, saving, and simple scene operations → [`skills/manual-scene/SKILL.md`](skills/manual-scene/SKILL.md)
+- Creating and organizing GameObjects / hierarchy / basic transforms → [`skills/manual-gameobject/MODULE.md`](skills/manual-gameobject/MODULE.md)
+- Adding and configuring components in the Inspector → [`skills/manual-component/MODULE.md`](skills/manual-component/MODULE.md)
+- Creating and editing materials / changing colors → [`skills/manual-material/MODULE.md`](skills/manual-material/MODULE.md)
+- Navigating scenes, saving, and simple scene operations → [`skills/manual-scene/MODULE.md`](skills/manual-scene/MODULE.md)
 
 Read-only skills such as `scene_get_hierarchy` may be used to help explain what is already in the scene. A skill whose schema says `approvalBehavior: allow` runs directly in every operating mode; one that says `grant` needs a user grant under Approval. Never assume the mode: take `currentMode` from `/health` (a fresh install starts in Auto).
 

@@ -1,0 +1,96 @@
+# Debug Skills
+
+Compile state, console errors and logs, system and assembly information, scripting defines and an aggregated health snapshot. Parameters come from the schema (`GET /skills/schema?category=Debug&wire=v2`). Execution and dryRun rules: root [SKILL.md](../../SKILL.md).
+
+## When to use
+- Diagnosing compile failures
+- Checking errors after a change
+- Forcing recompilation
+- Gathering system diagnostics
+
+## Rules
+- `debug_force_recompile` and `debug_set_defines` carry `MayTriggerReload`, so they are refused under Approval and Auto (`MODE_FORBIDDEN`); only Bypass or an Allowlist entry runs them. Expect the REST server to be unavailable for a few seconds after a reload.
+- `debug_check_compilation`: `isCompiling: false` alone does not mean the last compile succeeded. After a failed compile, Unity keeps running the old assemblies; read `lastCompilation.succeeded`.
+- Call `unity_diagnose` first when triaging a problem: it combines console errors, compile state, workflow tasks, recent jobs and server stats in one response.
+- Routing: runtime console logs and pause-on-error go to the [console](../console/MODULE.md) module; play mode goes to [editor](../editor/MODULE.md); script compile feedback goes to `script_get_compile_feedback` ([script](../script/MODULE.md)).
+
+## Pitfalls
+- `debug_compile` and `debug_recompile` do not exist: use `debug_force_recompile`.
+- `debug_run` does not exist: use `editor_play`.
+- `debug_clear` does not exist: use `console_clear`.
+
+## Skills
+
+### `unity_diagnose`
+**Aggregated Editor health snapshot — call this FIRST when triaging problems.** Combines console errors, compile state, recent workflow tasks, recent jobs, and server stats in a single response. Avoids chaining 4-5 individual skills.
+
+**Parameters:**
+- `errorLimit` (int, optional, default 20, range 1-200): Max console entries to return.
+- `includeWarnings` (bool, optional, default true): Include warnings (false = errors only).
+- `includeRecentJobs` (bool, optional, default true): Include the 10 most recent async jobs.
+
+**Returns:** `{ summary: { healthy, consoleErrorCount, consoleWarningCount, isCompiling, serverRunning, hint }, compile, console, workflow, server, recentJobs }`
+
+### `debug_get_logs`
+Get console logs filtered by type and content.
+**Parameters:**
+- `type` (string, optional): Filter by type (Error/Warning/Log/All, case-insensitive; a value naming none of them is rejected with `SEMANTIC_INVALID`). Default: Error.
+- `filter` (string, optional): Filter by content.
+- `limit` (int, optional): Max entries. Default: 50.
+
+### `debug_get_errors`
+Get only active errors and exceptions from console.
+**Parameters:**
+- `limit` (int, optional): Max entries. Default: 50.
+
+### `debug_check_compilation`
+Whether Unity is compiling right now, and whether the last finished compilation succeeded.
+**Parameters:** None.
+**Returns:** `{isCompiling, isUpdating, lastCompilation: {succeeded, errorCount, finishedAtUtc, errors: [{file, line, message}]}}` — `lastCompilation` is null until a compilation finishes in this editor session. `isCompiling: false` alone never means the last compile succeeded: after a failed compile Unity keeps running the old assemblies.
+
+### `debug_force_recompile`
+Request a clean script compilation and return `status:"accepted"`, `jobId` and `waitUrl`. GET the job to verify its matching cycle compiled assemblies successfully and loaded the new domain (`resultData.compilation.compiled`, `success`, `domainLoaded`). Requesting Unity's `CleanBuildCache` is not itself evidence that assemblies were compiled: an empty requested cycle fails at `no_compilation`. Use an actual script mutation's compile job when validating a changed script. Unity may defer the request until Play Mode exits, and the job never exits Play Mode automatically.
+**Parameters:** None.
+
+### `debug_get_system_info`
+Get system and Unity environment information.
+**Parameters:** None.
+
+### `debug_get_stack_trace`
+Get stack trace for a log entry by index.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| entryIndex | int | Yes | - | Index of the log entry to retrieve stack trace for |
+
+**Returns:** `{ index, message, stackTrace }`
+
+### `debug_get_assembly_info`
+Get project assembly information.
+
+**Parameters:** None.
+
+**Returns:** `{ success, count, assemblies }`
+
+### `debug_get_defines`
+Get scripting define symbols for current platform.
+
+**Parameters:** None.
+
+**Returns:** `{ success, buildTargetGroup, defines }`
+
+### `debug_set_defines`
+Set scripting define symbols for current platform.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| defines | string | Yes | - | Scripting define symbols to set |
+
+**Returns:** `{ success, buildTargetGroup, defines, serverAvailability }`
+
+### `debug_get_memory_info`
+Get memory usage information.
+
+**Parameters:** None.
+
+**Returns:** `{ success, totalAllocatedMB, totalReservedMB, totalUnusedReservedMB, monoUsedSizeMB, monoHeapSizeMB }`

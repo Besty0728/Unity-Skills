@@ -1,6 +1,6 @@
 # Reflection anchors
 
-Every skill resolves these by fully-qualified name via `SkillsCommon.FindTypeByName`, which searches all loaded assemblies. Verified against QFramework v1.0.257 (liangxiegame/QFramework, 2026-08 snapshot). Detail behind [SKILL.md](SKILL.md).
+Every skill resolves these by fully-qualified name via `SkillsCommon.FindTypeByName`, which searches all loaded assemblies. Verified against QFramework v1.0.257 (liangxiegame/QFramework, 2026-08 snapshot). Detail behind [MODULE.md](MODULE.md).
 
 **Known assemblies** (Toolkits install; `qframework_get_status.assemblies` reports whichever are loaded): `QFramework`, `QFramework.CoreKit`, `UIKit`, `UIKit.Editor`, `ResKit`, `ResKit.Editor`, `AudioKit`.
 

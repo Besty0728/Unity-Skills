@@ -1,6 +1,6 @@
 # ProBuilder modeling reference
 
-Read when you need spatial design heuristics, furniture decomposition or extended modeling examples. The module [SKILL.md](../SKILL.md) keeps the routing and the skill summaries.
+Read when you need spatial design heuristics, furniture decomposition or extended modeling examples. The module [MODULE.md](../MODULE.md) keeps the routing and the skill summaries.
 
 Calls use the batch endpoint so several steps run in one request: `POST /skills/batch?expectProject=<project>` with `{"steps":[{"skill":"...","args":{...}}]}`.
 

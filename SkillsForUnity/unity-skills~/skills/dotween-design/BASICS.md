@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Basics
 
-Sub-doc of [dotween-design](./SKILL.md). Covers what happens between "import the package" and "write your first tween".
+Sub-doc of [dotween-design](./MODULE.md). Covers what happens between "import the package" and "write your first tween".
 
 ## `DOTween.Init` — the entry point
 

@@ -28,11 +28,11 @@ Run this whenever hot-update C# changes. No `generate_all`, no player rebuild.
    `curl -s "$u/hybridclr_compile_dlls?$p" -d '{"buildTarget":"Android"}'`, then `hybridclr_get_hotupdate_dlls` with the same `buildTarget`; `missing` must be empty.
 3. Stage into the YooAsset collector directory:
    `curl -s "$u/hybridclr_copy_hotupdate_dlls?$p" -d '{"destination":"Assets/HotUpdateDlls","buildTarget":"Android","extension":".bytes","includeAotAssemblies":true,"clearDestination":true}'`
-4. Pack with the [yooasset](../../yooasset/SKILL.md) module. Add the collector once, then rebuild bundles on each change.
+4. Pack with the [yooasset](../../yooasset/MODULE.md) module. Add the collector once, then rebuild bundles on each change.
 
 ## Where the boundary sits
 
-Runtime loading is game code you write, not a skill. Load the `.bytes` `TextAsset` through YooAsset, then call `RuntimeApi.LoadMetadataForAOTAssembly(aotBytes, HomologousImageMode.SuperSet)` for each AOT metadata DLL **before** `Assembly.Load(hotUpdateBytes)`. Order matters. See [yooasset-design](../../yooasset-design/SKILL.md) for the handle-lifecycle rules.
+Runtime loading is game code you write, not a skill. Load the `.bytes` `TextAsset` through YooAsset, then call `RuntimeApi.LoadMetadataForAOTAssembly(aotBytes, HomologousImageMode.SuperSet)` for each AOT metadata DLL **before** `Assembly.Load(hotUpdateBytes)`. Order matters. See [yooasset-design](../../yooasset-design/MODULE.md) for the handle-lifecycle rules.
 
 ## When to re-run `generate_all`
 

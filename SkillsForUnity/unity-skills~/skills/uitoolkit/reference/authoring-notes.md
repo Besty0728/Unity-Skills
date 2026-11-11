@@ -1,6 +1,6 @@
 # UI Toolkit Authoring Notes
 
-USS is not CSS, and the module's files must follow Unity's rules for UXML and USS. The entry [SKILL.md](../SKILL.md) links here for these details.
+USS is not CSS, and the module's files must follow Unity's rules for UXML and USS. The entry [MODULE.md](../MODULE.md) links here for these details.
 
 ## USS vs CSS
 

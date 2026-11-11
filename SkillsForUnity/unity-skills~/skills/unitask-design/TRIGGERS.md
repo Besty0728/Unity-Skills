@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Triggers
 
-Sub-doc of [unitask-design](./SKILL.md). Triggers let you `await` Unity lifecycle events and UI callbacks as UniTasks / AsyncEnumerables. Source lives in `Runtime/Triggers/*.cs`.
+Sub-doc of [unitask-design](./MODULE.md). Triggers let you `await` Unity lifecycle events and UI callbacks as UniTasks / AsyncEnumerables. Source lives in `Runtime/Triggers/*.cs`.
 
 ## Core types
 

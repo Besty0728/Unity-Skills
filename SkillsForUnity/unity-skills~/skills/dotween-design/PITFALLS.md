@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Pitfalls
 
-Sub-doc of [dotween-design](./SKILL.md). Every item is a real production bug. Format: ❌ wrong → ✅ right, with WHY.
+Sub-doc of [dotween-design](./MODULE.md). Every item is a real production bug. Format: ❌ wrong → ✅ right, with WHY.
 
 ---
 

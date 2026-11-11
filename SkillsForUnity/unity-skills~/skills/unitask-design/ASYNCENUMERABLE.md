@@ -6,7 +6,7 @@ type: reference
 
 # UniTask AsyncEnumerable & Reactive
 
-Sub-doc of [unitask-design](./SKILL.md). Covers UniTask's answer to IObservable / IAsyncEnumerable — the `IUniTaskAsyncEnumerable<T>` interface and the `UniTaskAsyncEnumerable` static factory.
+Sub-doc of [unitask-design](./MODULE.md). Covers UniTask's answer to IObservable / IAsyncEnumerable — the `IUniTaskAsyncEnumerable<T>` interface and the `UniTaskAsyncEnumerable` static factory.
 
 ## `IUniTaskAsyncEnumerable<T>`
 

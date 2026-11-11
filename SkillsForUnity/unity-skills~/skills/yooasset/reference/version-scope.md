@@ -37,4 +37,4 @@ Parameter names stay on the 2.x names on both lines. Internally they map to the 
 | `activeRule`, `packRule`, `filterRule`, `ignoreRule` validation | `HasGroupActiveRuleName`, `HasBundlePackRuleName`, `HasAssetFilterRuleName`, `HasAssetIgnoreRuleName` |
 | `downloadingMaxNumber`, `failedTryAgain` | `ResourceDownloaderOptions(maximumConcurrency, retryCount)` |
 
-Runtime-side rules (PlayMode mapping, handle lifecycle, update flow, legacy-API migration) are in [yooasset-design](../../yooasset-design/SKILL.md). 3.x renames are in [yooasset-design V3](../../yooasset-design/V3.md).
+Runtime-side rules (PlayMode mapping, handle lifecycle, update flow, legacy-API migration) are in [yooasset-design](../../yooasset-design/MODULE.md). 3.x renames are in [yooasset-design V3](../../yooasset-design/V3.md).

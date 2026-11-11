@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Sequences
 
-Sub-doc of [dotween-design](./SKILL.md). Sequences are where tweens get composed in time. Most confusion is about Append vs Join vs Insert vs Prepend.
+Sub-doc of [dotween-design](./MODULE.md). Sequences are where tweens get composed in time. Most confusion is about Append vs Join vs Insert vs Prepend.
 
 ## Creating a Sequence
 

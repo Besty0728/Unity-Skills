@@ -143,13 +143,13 @@ def base_files() -> dict[str, str]:
         f"{inv.SKILLS_DIR}/FooSkills.cs": FOO_SKILLS_CS,
         inv.TEST_FILE: TEST_CS,
         ".gitattributes": "*.md      text eol=lf\n",
-        f"{inv.PACKAGE_DIR}/SKILL.md": "---\nname: root\ndescription: r\n---\nSee [index](skills/SKILL.md).\n",
-        f"{docs}/SKILL.md": "---\nname: idx\ndescription: i\n---\n[go](./gameobject/SKILL.md#exact-signatures)\n",
-        f"{docs}/gameobject/SKILL.md": ENTRY_MD,
+        f"{inv.PACKAGE_DIR}/SKILL.md": "---\nname: root\ndescription: r\n---\nSee [index](skills/INDEX.md).\n",
+        f"{docs}/INDEX.md": "[go](./gameobject/MODULE.md#exact-signatures)\n",
+        f"{docs}/gameobject/MODULE.md": ENTRY_MD,
         f"{docs}/gameobject/reference/foo_find.md": REF_FIND,
         f"{docs}/gameobject/reference/foo_batch.md": REF_BATCH,
         f"{docs}/gameobject/reference/foo_stub.md": REF_STUB,
-        f"{docs}/architecture/SKILL.md": "---\nname: arch\ndescription: a\n---\n### Not a skill\n",
+        f"{docs}/architecture/MODULE.md": "### Not a skill\n",
     }
 
 
@@ -284,12 +284,12 @@ class CrossCheckTests(unittest.TestCase):
 
     def test_duplicate_definition_in_module(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/gameobject/SKILL.md"] = ENTRY_MD + "\n### foo_find\ndup\n"
+        f.files[f"{inv.DOCS_DIR}/gameobject/MODULE.md"] = ENTRY_MD + "\n### foo_find\ndup\n"
         self.assertIn("duplicate-in-module", codes(f.audit(), "error"))
 
     def test_do_not_list_denying_a_real_skill(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/gameobject/SKILL.md"] = ENTRY_MD.replace("`foo_move` does", "`foo_batch` does")
+        f.files[f"{inv.DOCS_DIR}/gameobject/MODULE.md"] = ENTRY_MD.replace("`foo_move` does", "`foo_batch` does")
         self.assertIn("do-not-real-skill", codes(f.audit(), "error"))
 
     def test_do_not_ignores_the_recommended_skill_right_of_the_arrow(self):
@@ -303,18 +303,18 @@ class CrossCheckTests(unittest.TestCase):
 
     def test_doc_claims_semi_auto_but_code_is_full_auto(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/gameobject/SKILL.md"] = ENTRY_MD + "\n`foo_batch` is `SemiAuto`; the rest are `FullAuto`.\n"
+        f.files[f"{inv.DOCS_DIR}/gameobject/MODULE.md"] = ENTRY_MD + "\n`foo_batch` is `SemiAuto`; the rest are `FullAuto`.\n"
         self.assertIn("mode-doc-vs-code", codes(f.audit(), "error"))
 
     def test_mixed_clause_is_not_flagged(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/gameobject/SKILL.md"] = ENTRY_MD + "\n`foo_find` is `SemiAuto`; `foo_batch` is `FullAuto`.\n"
+        f.files[f"{inv.DOCS_DIR}/gameobject/MODULE.md"] = ENTRY_MD + "\n`foo_find` is `SemiAuto`; `foo_batch` is `FullAuto`.\n"
         self.assertNotIn("mode-doc-vs-code", codes(f.audit()))
 
     def test_pilot_missing_reference_and_budget(self):
         f = Fixture()
         del f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_stub.md"]
-        f.files[f"{inv.DOCS_DIR}/gameobject/SKILL.md"] = ENTRY_MD + "x" * 5000
+        f.files[f"{inv.DOCS_DIR}/gameobject/MODULE.md"] = ENTRY_MD + "x" * 5000
         found = codes(f.audit(), "error")
         self.assertIn("pilot-reference-missing", found)
         self.assertIn("pilot-missing-skill", found)
@@ -322,12 +322,12 @@ class CrossCheckTests(unittest.TestCase):
 
     def test_module_with_no_category_and_not_advisory(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/mystery/SKILL.md"] = "---\nname: m\ndescription: m\n---\n"
+        f.files[f"{inv.DOCS_DIR}/mystery/MODULE.md"] = "---\nname: m\ndescription: m\n---\n"
         self.assertIn("module-unknown", codes(f.audit(), "error"))
 
     def test_broken_link_and_anchor(self):
         f = Fixture()
-        f.files[f"{inv.DOCS_DIR}/SKILL.md"] += "[a](./nope/SKILL.md) [b](./gameobject/SKILL.md#missing)\n"
+        f.files[f"{inv.DOCS_DIR}/INDEX.md"] += "[a](./nope/MODULE.md) [b](./gameobject/MODULE.md#missing)\n"
         found = codes(f.audit(), "error")
         self.assertIn("link-missing-file", found)
         self.assertIn("link-missing-anchor", found)

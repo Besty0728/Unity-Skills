@@ -12,7 +12,7 @@ compatibility: Unity 2022.3+/6000.x with the UnitySkills package (REST on localh
 
 - **Automate** — the user asked you to act, or it needs traversal, search, batch, exact numbers or many objects: drive the Editor via REST.
 - **Guide** — the user wants to do it themselves, or `surfaceProfile` is `guide`: name menus and Inspector fields per [SKILL_GUIDE.md](SKILL_GUIDE.md).
-- **Advise** — a design question that changes nothing: answer from its advisory doc ([scriptdesign](skills/scriptdesign/SKILL.md), [architecture](skills/architecture/SKILL.md), [patterns](skills/patterns/SKILL.md), all in the [module index](skills/SKILL.md)), no REST calls.
+- **Advise** — a design question that changes nothing: answer from its advisory doc ([scriptdesign](skills/scriptdesign/MODULE.md), [architecture](skills/architecture/MODULE.md), [patterns](skills/patterns/MODULE.md), all in the [module index](skills/INDEX.md)), no REST calls.
 
 ## Target the right Editor
 
@@ -49,13 +49,13 @@ Target objects by `name` or the exact `path`/`entityId` (likewise `parentPath`, 
 
 ## Execute
 
-Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may use objects/components earlier steps add, by name or `{"$ref":"$0.entityId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/SKILL.md).
+Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may use objects/components earlier steps add, by name or `{"$ref":"$0.entityId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/MODULE.md).
 
 **dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a failed validation runs nothing and returns the dryRun report. Script writes (`script_create`/`script_append`/`script_replace`) execute directly too. DryRun first (`?mode=dryRun&wire=v2`) only for deletes (`operation` has `Delete`: any `*_delete*`/`*_remove*`, asset/folder cleanup), every other `mayTriggerReload` skill, non-transactional multi-step batches, approval mode or when unsure.
 
-Never invent skill or parameter names. On failure read `suggestedFixes`; open a module doc only when a response names one, or before writing C# against NGO, YooAsset, Addressables, UniTask, DOTween, PrimeTween, ShaderGraph, PICO or QFramework: read its `*-design` doc ([module index](skills/SKILL.md)) first, since its API may postdate your training.
+Never invent skill or parameter names. On failure read `suggestedFixes`; open a module doc only when a response names one, or before writing C# against NGO, YooAsset, Addressables, UniTask, DOTween, PrimeTween, ShaderGraph, PICO or QFramework: read its `*-design` doc ([module index](skills/INDEX.md)) first, since its API may postdate your training.
 
-**Undo**: `workflow_restore {"to":"last"}` or an id/label from `workflow_list` → [workflow](skills/workflow/SKILL.md).
+**Undo**: `workflow_restore {"to":"last"}` or an id/label from `workflow_list` → [workflow](skills/workflow/MODULE.md).
 
 ## Verify from the read-back
 

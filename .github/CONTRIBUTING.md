@@ -127,7 +127,7 @@ public static object SkillName(string name, float x = 0f)
 
 2. `Category` and `Operation` are required; `Tags` / `Outputs` are strongly recommended. Risk metadata drives the permission system — the server derives blocking from it, so mis-declaring it is a security bug, and skills must not implement their own authorization checks. | `Category` 与 `Operation` 必填，`Tags` / `Outputs` 强烈建议。风险元数据驱动权限系统——服务端据此判定拦截，填错等同安全缺陷；Skill 内部不要自写授权判断。
 3. Return business errors with `SkillErrorResponse.Build(code, msg, ...)` instead of throwing; write operations register `Undo` and take a `WorkflowManager` snapshot. | 业务错误用 `SkillErrorResponse.Build(code, msg, ...)` 返回而不是抛异常；写操作要注册 `Undo` 并调用 `WorkflowManager` 快照。
-4. Document it in `SkillsForUnity/unity-skills~/skills/<module>/SKILL.md`. Advisory (design-guidance) modules are docs-only — no C# stub. | 在 `SkillsForUnity/unity-skills~/skills/<模块>/SKILL.md` 补文档。Advisory（设计指导）模块只有文档，不加 C# stub。
+4. Document it in `SkillsForUnity/unity-skills~/skills/<module>/MODULE.md` (no frontmatter; never add a file named `SKILL.md` under `skills/`). Advisory (design-guidance) modules are docs-only — no C# stub. | 在 `SkillsForUnity/unity-skills~/skills/<模块>/MODULE.md` 补文档（不带 frontmatter；`skills/` 下不得新增名为 `SKILL.md` 的文件）。Advisory（设计指导）模块只有文档，不加 C# stub。
 5. Keep the bundled root `SKILL.md` lean — it is the always-loaded entry point and is kept within a tight token budget (~8 KB). New depth belongs in `skills/` or `references/`. | 随包根 `SKILL.md` 要保持精简——它是常驻加载的入口文档，有严格的 token 预算（约 8 KB）。新增细节请放到 `skills/` 或 `references/`。
 6. Run `/skillcheck` so the skill counts stay in sync across `README.md`, `README_CN.md`, `AGENTS.md` and the skill docs. | 运行 `/skillcheck`，让技能数量在 `README.md`、`README_CN.md`、`AGENTS.md` 与技能文档间保持同步。
 

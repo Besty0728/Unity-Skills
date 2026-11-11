@@ -808,6 +808,28 @@ namespace UnitySkills
             "references/xr.md",
         };
 
+        /// <summary>
+        /// Entry docs that were named SKILL.md before the rename to INDEX.md / MODULE.md. A copy without a manifest
+        /// would otherwise keep them, and the discovery scan would register them again. Only the SKILL.md next to an
+        /// installed MODULE.md (or the index) is returned, so user-made skill folders are never candidates.
+        /// </summary>
+        private static IEnumerable<string> LegacyRenamedEntryPaths(IEnumerable<string> keep)
+        {
+            foreach (string path in keep)
+            {
+                if (string.Equals(path, "skills/INDEX.md", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return "skills/SKILL.md";
+                    continue;
+                }
+
+                string[] parts = path.Split('/');
+                if (parts.Length == 3 && string.Equals(parts[0], "skills", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(parts[2], "MODULE.md", StringComparison.OrdinalIgnoreCase))
+                    yield return $"skills/{parts[1]}/SKILL.md";
+            }
+        }
+
         /// <summary>What an install wrote: template paths (forward slashes) and the SHA256 of each installed file.</summary>
         private sealed class InstallManifest
         {
@@ -851,7 +873,7 @@ namespace UnitySkills
             var kept = new HashSet<string>(keep, StringComparer.OrdinalIgnoreCase);
             var candidates = previous != null
                 ? previous.files.Select(pair => (path: pair.Key, hash: pair.Value))
-                : LegacyRetiredTemplatePaths.Select(path => (path, hash: (string)null));
+                : LegacyRetiredTemplatePaths.Concat(LegacyRenamedEntryPaths(kept)).Select(path => (path, hash: (string)null));
 
             foreach (var (relativePath, hash) in candidates)
             {

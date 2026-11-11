@@ -1,6 +1,6 @@
 # Netcode quick start
 
-Detail behind [SKILL.md](../SKILL.md): one session from setup to shutdown. Each step is a `POST /skill/<name>?expectProject=<project>` call; steps that need no PlayMode can share one `POST /skills/batch`.
+Detail behind [MODULE.md](../MODULE.md): one session from setup to shutdown. Each step is a `POST /skill/<name>?expectProject=<project>` call; steps that need no PlayMode can share one `POST /skills/batch`.
 
 1. Inspect the current state:
 
@@ -29,7 +29,7 @@ curl -s "http://localhost:<port>/skill/netcode_add_to_prefabs_list?expectProject
 curl -s "http://localhost:<port>/skill/netcode_set_player_prefab?expectProject=<project>" -d '{"prefabPath":"Assets/Prefabs/Player.prefab"}'
 ```
 
-5. Generate a NetworkBehaviour template (`netcode_add_network_behaviour_script` is refused under Approval and Auto; see [SKILL.md](../SKILL.md)):
+5. Generate a NetworkBehaviour template (`netcode_add_network_behaviour_script` is refused under Approval and Auto; see [MODULE.md](../MODULE.md)):
 
 ```bash
 curl -s "http://localhost:<port>/skill/netcode_add_network_behaviour_script?expectProject=<project>" -d '{"className":"PlayerController","path":"Assets/Scripts/PlayerController.cs","includeRpc":true,"includeNetworkVariable":true}'

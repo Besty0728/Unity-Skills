@@ -73,7 +73,7 @@ The response reports `changed: true` or `false` per asset by comparing the `.uxm
 | Removing one runtime binding | No dedicated skill | Roll back through the workflow history, or rewrite the element with `uitk_write_file` |
 | Building a `VisualElementReference` or `AuthoringIdPath` on an asset | These runtime types are set through the Inspector on a MonoBehaviour field; no editor API authors one into a scene or prefab | Use `uitk_element_reference_get` to find the `authoring-id` path, then assign the reference in the Inspector or in your C# |
 | Authoring `authoring-id` values | The skill reads existing attributes; it does not assign new ones | Author them in UI Builder (Unity 6000.5+) |
-| World-space UI below Unity 6000.2 | `UIDocument` gained world-space properties in 6000.2, and `PanelRenderer` exists only from 6000.5 | Use a UGUI world-space Canvas (the [ui](../../ui/SKILL.md) module) or `xr_setup_ui_canvas` |
+| World-space UI below Unity 6000.2 | `UIDocument` gained world-space properties in 6000.2, and `PanelRenderer` exists only from 6000.5 | Use a UGUI world-space Canvas (the [ui](../../ui/MODULE.md) module) or `xr_setup_ui_canvas` |
 | Runtime data binding below Unity 6000.0 | `DataBinding` and `BindingMode` do not exist in 2022.3 | Use the `binding-path` SerializedObject binding for editor UI |
 
 `uitk_element_reference_get` follows `<Template src="...">` declarations into other `.uxml` files, up to `maxTemplateDepth` (default 3), with cycle protection. Templates it cannot resolve are listed in `unresolvedTemplates`.

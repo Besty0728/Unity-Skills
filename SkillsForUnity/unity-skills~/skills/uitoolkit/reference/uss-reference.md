@@ -1,6 +1,6 @@
 # UI Toolkit USS Reference
 
-Design tokens, reusable layout and component patterns, and visual effects in USS. The entry [SKILL.md](../SKILL.md) keeps routing rules; authoring notes are in [authoring-notes.md](authoring-notes.md).
+Design tokens, reusable layout and component patterns, and visual effects in USS. The entry [MODULE.md](../MODULE.md) keeps routing rules; authoring notes are in [authoring-notes.md](authoring-notes.md).
 
 ## Design Tokens
 
@@ -411,4 +411,4 @@ Design tokens, reusable layout and component patterns, and visual effects in USS
 3. `uitk_create_uxml` with `<Style src="Features.uss" />` and a `VisualElement` tree that uses those classes.
 4. `uitk_create_document` with `name`, `uxmlPath` and `panelSettingsPath`.
 
-Each step is one `POST /skill/<name>?expectProject=<project>` call; the entry [SKILL.md](../SKILL.md) shows the body format.
+Each step is one `POST /skill/<name>?expectProject=<project>` call; the entry [MODULE.md](../MODULE.md) shows the body format.

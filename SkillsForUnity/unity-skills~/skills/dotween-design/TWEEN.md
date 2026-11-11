@@ -6,7 +6,7 @@ type: reference
 
 # DOTween Tween Lifecycle
 
-Sub-doc of [dotween-design](./SKILL.md). Covers the `Tween` base class, its state machine, and callbacks. Source: `DOTween/Tween.cs`, `DOTween/TweenExtensions.cs`.
+Sub-doc of [dotween-design](./MODULE.md). Covers the `Tween` base class, its state machine, and callbacks. Source: `DOTween/Tween.cs`, `DOTween/TweenExtensions.cs`.
 
 ## Class hierarchy
 

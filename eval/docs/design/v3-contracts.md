@@ -36,7 +36,7 @@ SkillsForUnity/
       tasks/<ID>/prompt.en.md
   unity-skills~/
     scripts/unity_eval.py            # Agent 引导脚本，§1.4（安装器复制到各宿主的技能目录）
-    skills/evaluation/SKILL.md       # advisory 文档（WP13），name: unity-evaluation
+    skills/evaluation/MODULE.md      # advisory 文档（WP13），索引行见 skills/INDEX.md
 ```
 
 - `.github/scripts/check_meta_files.py:27-28` 要求 `SkillsForUnity/` 下所有 `.json` 都有 `.meta`，排除名单不含 `~` 目录；`scan_floor.py` 还与 git 已跟踪文件对比（草案事实 3）。WP13 必须让两者排除 `*~` 目录，否则 `Evaluation~/pack/manifest.json` 会让 CI 失败。当前 `SkillsForUnity` 的 `~` 目录里没有 `.json`（已核实），所以现状不触发。
@@ -1187,7 +1187,7 @@ If any command returns a non-empty problems list, pass each fix on to the user v
 - `agent` 的取值：`BeginRestExecution`（由 `SkillRouter.Execute.cs:52` 调用，处在 `SkillsHttpServer.Dispatch.cs:358` 与 `SkillsHttpServer.Batch.cs:287` 的 `BeginRequestContext` 范围内）读 `SkillsAuditLog.CaptureRequestContext()`（`SkillsAuditLog.cs:77`）。`Active` 时：`AgentIdIsExplicit` 为真用 `FallbackAgentId`；否则 `ClientProcessResolver.TryGetAgentId(RemotePort)` 命中就用它，不命中用 `FallbackAgentId`。不 `Active` 记 `"unknown"`。REST 深度从 0 变为 1 时设定窗口 agent；深度 > 0 时遇到不同的值改为 `"mixed"`；`EndRestExecution` 延迟一帧递减（`:83-93`），深度回到 0 时清空。
 - 防抖属性：`PendingPropertyChange`（`:41-45`）增加捕获时的 `Agent` 与 `IsPlaying`；`FlushPendingProperties`（`:374-396`）改为按 (Source, Agent, IsPlaying) 分组发布，条目取组的值。否则防抖延迟到 REST 深度归零之后才发布，归属会丢。
 - 另在 `EditorApplication.quitting` 时调用 `FlushPendingProperties`（现在只挂了 `beforeAssemblyReload`，`:72`）。
-- 文档：`skills/editor/SKILL.md:36,138-139` 写明磁盘历史（最多 11 段）与新字段；`retention` 仍指内存窗口。
+- 文档：`skills/editor/MODULE.md:36,138-139` 写明磁盘历史（最多 11 段）与新字段；`retention` 仍指内存窗口。
 
 示例：
 

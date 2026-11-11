@@ -36,9 +36,9 @@ namespace UnitySkills.Tests.Core
         private static readonly Regex PythonModuleDefRegex =
             new Regex(@"^def (?<name>[a-z][a-z0-9_]*)\(", RegexOptions.Compiled | RegexOptions.Multiline);
 
-        /// <summary>Relative links in skills/SKILL.md pointing to sibling module docs: `(./&lt;module&gt;/SKILL.md)`.</summary>
+        /// <summary>Relative links in skills/INDEX.md pointing to sibling module docs: `(./&lt;module&gt;/MODULE.md)`.</summary>
         private static readonly Regex ModuleLinkRegex =
-            new Regex(@"\(\./(?<module>[A-Za-z0-9._-]+)/SKILL\.md\)", RegexOptions.Compiled);
+            new Regex(@"\(\./(?<module>[A-Za-z0-9._-]+)/MODULE\.md\)", RegexOptions.Compiled);
 
         /// <summary>Any inline markdown link, with the optional title form `[text](target "title")`.</summary>
         private static readonly Regex MarkdownLinkRegex =
@@ -99,7 +99,7 @@ namespace UnitySkills.Tests.Core
             "manual-component",
             "manual-material",
             "manual-scene",
-            // skills/SKILL.md's index already states unity-cli belongs to the same category as manual-* /
+            // skills/INDEX.md's index already states unity-cli belongs to the same category as manual-* /
             // *-design: "pure doc modules defining no REST skills."
             "unity-cli",
             // Pure authoring guide for extending the plugin itself (0 REST skills), added with the
@@ -180,7 +180,7 @@ namespace UnitySkills.Tests.Core
         private static readonly HashSet<string> KnownBrokenDocLinks = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>
-        /// The doc-split pilots and the skills each one owns: an entry SKILL.md with the module's shared rules plus
+        /// The doc-split pilots and the skills each one owns: an entry MODULE.md with the module's shared rules plus
         /// one reference/&lt;skill_name&gt;.md per skill. Ownership is resolved per pilot rather than by directory
         /// name: gameobject, component and script map to the like-named category, but batch maps to Workflow +
         /// Validation, which also hold the workflow/ and validation/ modules' skills - so the batch module is defined
@@ -210,7 +210,7 @@ namespace UnitySkills.Tests.Core
 
         /// <summary>
         /// Byte budget per pilot module entry, same measurement as <see cref="RootSkillDoc_ShouldStayWithinByteBudget"/>:
-        /// LF-normalised UTF-8 over the whole entry file, frontmatter included. The entry is what an agent reads before
+        /// LF-normalised UTF-8 over the whole entry file. The entry is what an agent reads before
         /// every call to the module, so its size is a recurring cost; reference/*.md files are read on demand and are
         /// deliberately not budgeted.
         ///
@@ -448,7 +448,7 @@ namespace UnitySkills.Tests.Core
         // ============================================================
         // Reference consistency for the top-level unity-skills~/SKILL.md (issue #52)
         //
-        // The other tests only traverse skills/*/SKILL.md via GetDocsRoot(), giving zero coverage of the
+        // The other tests only traverse skills/*/MODULE.md via GetDocsRoot(), giving zero coverage of the
         // top-level SKILL.md - 25 ghost skill names and one bare helper name lurked undetected, eventually
         // causing the agent to repeatedly call the nonexistent `get_skill_schema` / `health_check`. The following three tests close this blind spot.
         // ============================================================
@@ -544,7 +544,7 @@ namespace UnitySkills.Tests.Core
         // ============================================================
 
         /// <summary>
-        /// Module directories and skills/SKILL.md index links must be bidirectionally flush, no exemptions.
+        /// Module directories and skills/INDEX.md index links must be bidirectionally flush, no exemptions.
         ///
         /// The index is the agent's only entry point for finding module docs: a directory that exists but isn't
         /// registered is effectively invisible, and an index entry pointing at a nonexistent directory sends the
@@ -554,7 +554,7 @@ namespace UnitySkills.Tests.Core
         public void SkillsIndexDoc_ShouldLinkEveryModuleDirectory_BothWays()
         {
             var docsRoot = GetDocsRoot();
-            var indexPath = Path.Combine(docsRoot, "SKILL.md");
+            var indexPath = Path.Combine(docsRoot, "INDEX.md");
             Assert.That(File.Exists(indexPath), Is.True, $"模块索引不存在: {indexPath}");
             var index = File.ReadAllText(indexPath);
 
@@ -571,8 +571,8 @@ namespace UnitySkills.Tests.Core
             var issues = new List<string>();
             foreach (var missing in directories.Except(linked).OrderBy(x => x, StringComparer.Ordinal))
             {
-                issues.Add($"模块目录未登记进索引: {missing}/SKILL.md" +
-                           "（agent 只从 skills/SKILL.md 找模块，没登记等于这份文档不存在）");
+                issues.Add($"模块目录未登记进索引: {missing}/MODULE.md" +
+                           "（agent 只从 skills/INDEX.md 找模块，没登记等于这份文档不存在）");
             }
 
             foreach (var dangling in linked.Except(directories).OrderBy(x => x, StringComparer.Ordinal))
@@ -840,10 +840,10 @@ namespace UnitySkills.Tests.Core
 
             foreach (var budget in PilotEntryByteBudgets.OrderBy(x => x.Key, StringComparer.Ordinal))
             {
-                var entryPath = Path.Combine(docsRoot, budget.Key, "SKILL.md");
+                var entryPath = Path.Combine(docsRoot, budget.Key, "MODULE.md");
                 if (!File.Exists(entryPath))
                 {
-                    issues.Add($"试点入口不存在: {budget.Key}/SKILL.md ({entryPath})");
+                    issues.Add($"试点入口不存在: {budget.Key}/MODULE.md ({entryPath})");
                     continue;
                 }
 
@@ -852,7 +852,7 @@ namespace UnitySkills.Tests.Core
 
                 if (budget.Value < 0)
                 {
-                    issues.Add($"{budget.Key}/SKILL.md 预算尚未确定（登记值 {budget.Value}），当前实测 {actual} 字节。" +
+                    issues.Add($"{budget.Key}/MODULE.md 预算尚未确定（登记值 {budget.Value}），当前实测 {actual} 字节。" +
                                "预算数值应在基准对比通过后由 lead 填入 PilotEntryByteBudgets；" +
                                "在此之前本测试故意失败，避免\"没有预算\"被当成\"通过预算\"。" +
                                "do not raise the budget without regression evidence; move content to reference/");
@@ -861,13 +861,13 @@ namespace UnitySkills.Tests.Core
 
                 if (actual > budget.Value)
                 {
-                    issues.Add($"{budget.Key}/SKILL.md 为 {actual} 字节，超出 {budget.Value} 字节预算 " +
+                    issues.Add($"{budget.Key}/MODULE.md 为 {actual} 字节，超出 {budget.Value} 字节预算 " +
                                $"{actual - budget.Value} 字节。入口在每次调用该模块前都会被读取，体积是重复成本；" +
                                "do not raise the budget without regression evidence; move content to reference/");
                 }
             }
 
-            AssertNoIssues(issues, "试点模块入口超出字节预算（口径：LF 归一化 UTF-8，含 frontmatter）");
+            AssertNoIssues(issues, "试点模块入口超出字节预算（口径：LF 归一化 UTF-8，全文）");
         }
 
         /// <summary>
@@ -1146,7 +1146,7 @@ namespace UnitySkills.Tests.Core
                     .OrderBy(x => x, StringComparer.Ordinal));
             }
 
-            var indexDoc = Path.Combine(docsRoot, "SKILL.md");
+            var indexDoc = Path.Combine(docsRoot, "INDEX.md");
             if (File.Exists(indexDoc))
             {
                 sources.Add(indexDoc);
@@ -1304,7 +1304,7 @@ namespace UnitySkills.Tests.Core
                     continue;
                 }
 
-                var skillDocPath = Path.Combine(moduleDir, "SKILL.md");
+                var skillDocPath = Path.Combine(moduleDir, "MODULE.md");
                 if (!File.Exists(skillDocPath))
                 {
                     continue;
@@ -1315,14 +1315,14 @@ namespace UnitySkills.Tests.Core
                 {
                     if (content.IndexOf(retired, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        issues.Add($"残留 {retired.Substring(3)}: {moduleName}/SKILL.md");
+                        issues.Add($"残留 {retired.Substring(3)}: {moduleName}/MODULE.md");
                     }
                 }
 
                 // The entry's one-line schema pointer replaced the per-module Exact Signatures closer.
                 if (content.IndexOf("/skills/schema", StringComparison.OrdinalIgnoreCase) < 0)
                 {
-                    issues.Add($"缺少 schema-first 指引（入口需指向 GET /skills/schema）: {moduleName}/SKILL.md");
+                    issues.Add($"缺少 schema-first 指引（入口需指向 GET /skills/schema）: {moduleName}/MODULE.md");
                 }
             }
         }
@@ -1428,7 +1428,7 @@ namespace UnitySkills.Tests.Core
         /// <summary>
         /// Every `### skill_name` section in every `*.md` of a REST module (<see cref="EnumerateModuleDocs"/>: the files
         /// directly inside the module directory plus its reference/ sub-directory, one level deep), so detail moving out
-        /// of the entry SKILL.md keeps its parameter tables, batch item lists and ghost-name checks under the same
+        /// of the entry MODULE.md keeps its parameter tables, batch item lists and ghost-name checks under the same
         /// scrutiny.
         ///
         /// Occurrences are returned as a list rather than keyed by skill name, because "the same skill documented
@@ -1863,7 +1863,7 @@ namespace UnitySkills.Tests.Core
         {
             public string Name;
             public string Module;
-            /// <summary>Path inside the module directory: `SKILL.md` or `reference/&lt;skill_name&gt;.md`.</summary>
+            /// <summary>Path inside the module directory: `MODULE.md` or `reference/&lt;skill_name&gt;.md`.</summary>
             public string ModuleFile;
             public string FilePath;
             public int Line;

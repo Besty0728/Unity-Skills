@@ -6,7 +6,7 @@ type: reference
 
 # UniTask Composition
 
-Sub-doc of [unitask-design](./SKILL.md). Covers every combinator that lets you run UniTasks in parallel or chained.
+Sub-doc of [unitask-design](./MODULE.md). Covers every combinator that lets you run UniTasks in parallel or chained.
 
 ## `UniTask.WhenAll`
 

@@ -98,6 +98,28 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void Reinstall_WithoutManifest_RemovesRenamedModuleEntries()
+        {
+            var target = Install("renamed");
+            File.Delete(ManifestPath(target));
+            var legacyIndex = Path.Combine(target, "skills", "SKILL.md");
+            var legacyModule = Path.Combine(target, "skills", "gameobject", "SKILL.md");
+            var userModule = Path.Combine(target, "skills", "my-mod", "SKILL.md");
+            Directory.CreateDirectory(Path.GetDirectoryName(legacyModule));
+            Directory.CreateDirectory(Path.GetDirectoryName(userModule));
+            File.WriteAllText(legacyIndex, "a 2.9 module index");
+            File.WriteAllText(legacyModule, "a 2.9 module entry");
+            File.WriteAllText(userModule, "user module");
+
+            Reinstall(target);
+
+            Assert.That(File.Exists(legacyIndex), Is.False, "The pre-rename index must not stay registered beside skills/INDEX.md.");
+            Assert.That(File.Exists(legacyModule), Is.False, "The pre-rename entry must not stay beside skills/gameobject/MODULE.md.");
+            Assert.That(File.Exists(userModule), Is.True, "A user folder without a MODULE.md is the user's.");
+            Assert.That(File.Exists(Path.Combine(target, "SKILL.md")), Is.True, "The root document keeps its name.");
+        }
+
+        [Test]
         public void Reinstall_CaseOnlyRename_KeepsTheNewFile()
         {
             var target = Install("case");

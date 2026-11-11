@@ -187,14 +187,14 @@ namespace UnitySkills
         {
             switch (category)
             {
-                case SkillCategory.GameObject: return "skills/manual-gameobject/SKILL.md";
-                case SkillCategory.Component:  return "skills/manual-component/SKILL.md";
-                case SkillCategory.Material:   return "skills/manual-material/SKILL.md";
-                case SkillCategory.Scene:      return "skills/manual-scene/SKILL.md";
+                case SkillCategory.GameObject: return "skills/manual-gameobject/MODULE.md";
+                case SkillCategory.Component:  return "skills/manual-component/MODULE.md";
+                case SkillCategory.Material:   return "skills/manual-material/MODULE.md";
+                case SkillCategory.Scene:      return "skills/manual-scene/MODULE.md";
                 // The Sample module's write operations are just spawning primitives and calling
                 // transform — the GameObject manual doc teaches exactly these editor steps, so
                 // point there rather than leave the agent with nothing to read.
-                case SkillCategory.Sample:     return "skills/manual-gameobject/SKILL.md";
+                case SkillCategory.Sample:     return "skills/manual-gameobject/MODULE.md";
                 default: return null;
             }
         }

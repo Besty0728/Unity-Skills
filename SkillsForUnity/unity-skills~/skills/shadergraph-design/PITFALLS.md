@@ -6,7 +6,7 @@ type: reference
 
 # Pitfalls
 
-Sub-doc of [shadergraph-design](./SKILL.md). Use this to reject bad Shader Graph advice before it ships.
+Sub-doc of [shadergraph-design](./MODULE.md). Use this to reject bad Shader Graph advice before it ships.
 
 ## 1. PropertyNode Is Not "Just A String"
 
