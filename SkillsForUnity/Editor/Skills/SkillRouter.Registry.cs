@@ -226,6 +226,13 @@ namespace UnitySkills
                 .Select(x => x.Name)
                 .ToList();
 
+            // Edit distance cannot reach the right skill for a known misnomer, so it leads the list when it is visible.
+            if (SkillMisnomers.TryGetCorrection(name, out var correct) && VisibleSkills().Any(s => s.Name == correct))
+            {
+                nearest = nearest.Where(n => n != correct).Take(4).ToList();
+                return SkillErrorResponse.SkillNotFound(name, nearest, correct);
+            }
+
             return SkillErrorResponse.SkillNotFound(name, nearest);
         }
 

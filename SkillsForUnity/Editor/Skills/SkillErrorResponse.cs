@@ -179,18 +179,22 @@ namespace UnitySkills
         }
 
         /// <summary>Skill name lookup missed; may attach candidate suggestions from a fuzzy match.</summary>
-        public static string SkillNotFound(string skillName, IList<string> nearestSkills = null)
+        public static string SkillNotFound(string skillName, IList<string> nearestSkills = null, string correctSkill = null)
         {
+            var related = nearestSkills;
+            if (correctSkill != null)
+                related = new List<string> { correctSkill }.Concat((nearestSkills ?? new List<string>()).Where(s => s != correctSkill)).ToList();
+
             var fixes = new List<SuggestedFix>();
-            if (nearestSkills != null)
+            if (related != null)
             {
-                foreach (var s in nearestSkills)
+                foreach (var s in related)
                 {
                     fixes.Add(new SuggestedFix
                     {
                         action = "retry",
                         skill = s,
-                        reason = "Closest registered skill name"
+                        reason = s == correctSkill ? "Known wrong name; use this skill instead" : "Closest registered skill name"
                     });
                 }
             }
@@ -205,7 +209,7 @@ namespace UnitySkills
                 SkillErrorCode.SkillNotFound,
                 $"Skill '{skillName}' not found",
                 skill: skillName,
-                relatedSkills: nearestSkills,
+                relatedSkills: related,
                 suggestedFixes: fixes.Count > 0 ? fixes : null,
                 retryStrategy: RetryFixAndRetry);
         }
