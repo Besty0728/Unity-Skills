@@ -7,7 +7,7 @@ Scene prefab instances, prefab assets and variants. Parameters come from the sch
 - Instance skills target `entityId` (preferred), `name`, `instanceId` or `path`. Instance writes stay on the instance until `prefab_apply` or `prefab_apply_overrides`.
 - Asset edits take `prefabPath` and a root-relative `gameObjectPath` (empty means the root), and save only that asset. Variant and nested edits stay overrides; they never change the base prefab.
 - Duplicate sibling names are rejected with candidates and `siblingIndex`. Component indices are zero-based among components of exactly the requested type (`prefab_list_components` reports them).
-- `prefab_edit_batch` runs ordered edits, all or nothing: list the 12 single writes in `steps`, not reads or scene skills.
+- `prefab_edit_batch` runs ordered edits, all or nothing: `steps` holds 1–50 operations, each one of the 12 prefab asset writes; no reads or scene skills.
 - Reference fields take a project asset, a node inside this prefab, or an explicit clear; never a scene object.
 - Operating mode: instance and asset reads are `SemiAuto`; writes are `FullAuto`. Component and node deletion and `prefab_edit_batch` carry Delete or high metadata: refused under Approval and Auto.
 - DryRun does not load prefab contents; a step that depends on an earlier one is validated when it runs.

@@ -10,15 +10,14 @@ Change the import settings of textures, audio and models already in the project.
 ## Rules
 - Batch first: use the `*_batch` setters when configuring 2 or more assets of one category.
 - Getters and finders run in every mode. Setters and reimports need a grant under Approval.
-- No skill here deletes or reloads the domain. Setting changes do not always apply in memory at once: call `asset_reimport` or `asset_reimport_batch` after changing importer-critical fields.
+- No skill here deletes or reloads the domain. Setters save and reimport the asset themselves; use `asset_reimport` only for changes made outside these setters.
 - `compression` takes `Uncompressed`, `Compressed`, `CompressedHQ` or `CompressedLQ`; Inspector wording is accepted. Per-platform `compressionQuality` is a separate 0-100 integer.
 - `sprite_set_import_settings` forces `textureType` to `Sprite` for `Single`, `Multiple` and `Polygon`.
 - `animationType` `Human` is also accepted as `Humanoid`.
 
 ## Pitfalls
 - Texture `format` values depend on the editor version: read `validValues` on a rejection.
-- Platform overrides apply only when `overridden` is enabled.
-- After `model_set_rig` or `model_set_animation_clips`, reimport so clips and avatar refresh.
+- `texture_set_platform_settings` enables `overridden` when you omit it; pass `overridden=false` to keep the platform on default settings.
 
 ## Texture
 

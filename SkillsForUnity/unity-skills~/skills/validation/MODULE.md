@@ -15,7 +15,7 @@ Find problems in the scene and project (missing scripts and references, unused a
 
 ## Pitfalls
 - The prefix is `validate_*`, not `validation_*`. `validation_run`, `validation_check`, `validation_fix` and `validation_clean` do not exist.
-- The validate skills report issues; they do not fix them. Use `cleaner_fix_missing_scripts` in the [cleaner](../cleaner/MODULE.md) module to fix missing scripts.
+- The validate skills report issues. The one exception is `validate_fix_missing_scripts` with `dryRun=false`, which removes the missing-script components. Use `cleaner_fix_missing_scripts` in the [cleaner](../cleaner/MODULE.md) module to fix missing scripts.
 
 ## Skills
 

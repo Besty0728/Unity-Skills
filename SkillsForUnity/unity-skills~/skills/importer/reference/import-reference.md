@@ -136,6 +136,6 @@ curl -s "http://localhost:<port>/skill/texture_set_settings_batch?expectProject=
 
 1. Batch assets by category and apply one policy per batch.
 2. Only enable `readable` when runtime CPU access is necessary.
-3. Reimport deliberately after changing importer-critical fields.
+3. Setters reimport on their own; call `asset_reimport` only after changes made outside them.
 4. Keep character rig settings and clip splits documented, because they are easy to drift.
 5. Use platform overrides only when there is a real target-platform constraint.
