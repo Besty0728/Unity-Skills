@@ -79,7 +79,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object. mode: Off/EditorAndRuntime/RuntimeOnly. The target is located by the first of targetEntityId, targetInstanceId, targetPath, targetObjectName that is given; an Object argument by the objectArg* parameters.", TracksWorkflow = true,
+        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object. mode: Off/EditorAndRuntime/RuntimeOnly. Outside Play Mode only EditorAndRuntime listeners fire; RuntimeOnly listeners do not run. The target is located by the first of targetEntityId, targetInstanceId, targetPath, targetObjectName that is given; an Object argument by the objectArg* parameters.", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "add", "callback" },
             Outputs = new[] { "message", "index", "mode", "target", "targetType", "targetEntityId", "targetInstanceId", "targetPath", "targetAssetPath", "method", "argType" },

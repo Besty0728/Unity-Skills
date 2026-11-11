@@ -1783,7 +1783,7 @@ namespace UnitySkills
             return null;
         }
 
-        [UnitySkill("scene_export_report", "Export complete scene structure and script dependency report as markdown file. Use when user asks to: export scene report, generate scene document, save scene overview, create scene context file",
+        [UnitySkill("scene_export_report", "Export complete scene structure and script dependency report as markdown file. Use when user asks to: export scene report, generate scene document, save scene overview, create scene context file. Writes Assets/Docs/SceneReport.md by default and imports it as a project asset.",
             Category = SkillCategory.Perception, Operation = SkillOperation.Analyze | SkillOperation.Execute,
             Tags = new[] { "scene", "report", "export", "markdown", "documentation" },
             Outputs = new[] { "savedTo", "objectCount", "userScriptCount", "referenceCount" },
@@ -2366,7 +2366,7 @@ namespace UnitySkills
             return edges;
         }
 
-        [UnitySkill("scene_dependency_analyze", "Analyze object dependency graph and impact of changes. Use ONLY when user explicitly asks about: dependency analysis, impact analysis, what depends on, what references, safe to delete/disable/remove, refactoring impact, reference check",
+        [UnitySkill("scene_dependency_analyze", "Analyze object dependency graph and impact of changes. Use ONLY when user explicitly asks about: dependency analysis, impact analysis, what depends on, what references, safe to delete/disable/remove, refactoring impact, reference check. Without savePath it only returns analysis; with savePath it writes a markdown file and imports it as a project asset.",
             Category = SkillCategory.Perception, Operation = SkillOperation.Analyze,
             Tags = new[] { "dependency", "impact", "reference", "analysis", "graph" },
             Outputs = new[] { "sceneName", "target", "totalReferences", "objectsAnalyzed", "analysis", "savedTo", "markdown" },

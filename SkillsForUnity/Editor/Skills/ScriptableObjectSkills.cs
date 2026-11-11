@@ -383,7 +383,7 @@ namespace UnitySkills
             MutatesAssets = true,
             RiskLevel = "medium")]
         public static object ScriptableObjectSetSerializedProperty(
-            string assetPath, string propertyPath, string value = null,
+            string assetPath, string propertyPath, [SkillParam("Gradient: JSON {colorKeys:[{color,time}],alphaKeys:[{alpha,time}],mode}. AnimationCurve: JSON {keys:[{time,value,inTangent,outTangent}]}.")] string value = null,
             string valueAssetPath = null, string valueObjectType = null)
         {
             if (Validate.Required(assetPath, "assetPath") is object reqErr1) return reqErr1;

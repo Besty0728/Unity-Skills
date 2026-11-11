@@ -416,7 +416,7 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             var collider = go.GetComponent<Collider>();
-            if (collider == null) return new { error = $"No Collider on {go.name}" };
+            if (collider == null) return new { error = $"No Collider on {go.name}: add one with component_add, then set the material again." };
 #if UNITY_6000_0_OR_NEWER
             var mat = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(materialPath);
 #else

@@ -568,7 +568,7 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("qframework_generate_view_controller_code",
-            "Generate the bound-view code for a GameObject's QFramework ViewController component via CodeGenKit.Generate(IBindGroup). This writes the .cs/.Designer.cs files immediately and returns before compilation — a [DidReloadScripts] callback (after the next domain reload) later adds the compiled component to the GameObject.",
+            "Generate the bound-view code for a GameObject's QFramework ViewController component via CodeGenKit.Generate(IBindGroup). This writes the .cs/.Designer.cs files immediately and returns before compilation — a [DidReloadScripts] callback (after the next domain reload) later adds the compiled component to the GameObject. Poll script_get_compile_feedback before reading the GameObject.",
             Category = SkillCategory.QFramework, Operation = SkillOperation.Create,
             Tags = new[] { "qframework", "codegen", "viewcontroller", "bind" },
             Outputs = new[] { "pendingCompile", "error", "expectedScriptPath", "expectedDesignerScriptPath", "className", "namespaceName", "scriptsFolder" },
@@ -811,7 +811,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("qframework_set_uikit_settings",
-            "Write QFramework UIKit project settings and persist to Assets/QFrameworkData/ProjectConfig/ProjectConfig.json. Only the parameters you pass are changed.",
+            "Write QFramework UIKit project settings and persist to Assets/QFrameworkData/ProjectConfig/ProjectConfig.json. Only the parameters you pass are changed; assemblyNamesToSearch replaces the whole list, so assemblies not passed are dropped.",
             Category = SkillCategory.QFramework, Operation = SkillOperation.Modify,
             Tags = new[] { "qframework", "uikit", "settings", "config", "write" },
             Outputs = new[] { "changed", "namespaceName", "uiScriptDir", "uiPrefabDir", "assemblyNamesToSearch", "isDefaultNamespace" },

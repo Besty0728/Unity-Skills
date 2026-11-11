@@ -91,7 +91,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object VolumeGetComponent(string profilePath, string componentType) => RenderPipelineSkillsCommon.NoSRP();
 
-        [UnitySkill("volume_set_parameter", "Set a parameter on a VolumeComponent override",
+        [UnitySkill("volume_set_parameter", "Set a parameter on a VolumeComponent override. Parameter names come from volume_get_component; use them exactly as returned.",
             Category = SkillCategory.Volume, Operation = SkillOperation.Modify,
             Tags = new[] { "volume", "component", "parameter", "set" },
             Outputs = new[] { "componentType", "parameterName", "value" },
@@ -376,7 +376,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("volume_set_parameter", "Set a parameter on a VolumeComponent override",
+        [UnitySkill("volume_set_parameter", "Set a parameter on a VolumeComponent override. Parameter names come from volume_get_component; use them exactly as returned.",
             Category = SkillCategory.Volume, Operation = SkillOperation.Modify,
             Tags = new[] { "volume", "component", "parameter", "set" },
             Outputs = new[] { "componentType", "parameterName", "value" },

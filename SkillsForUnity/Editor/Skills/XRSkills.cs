@@ -803,7 +803,7 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("xr_configure_interactable", "Configure properties of an existing XR interactable (selectMode, movementType, throwOnDetach, etc.)", TracksWorkflow = true,
+        [UnitySkill("xr_configure_interactable", "Configure properties of an existing XR interactable (selectMode, movementType, throwOnDetach, etc.). A value that cannot be applied is left out of changedProperties while success stays true; compare the list with the request.", TracksWorkflow = true,
             Category = SkillCategory.XR, Operation = SkillOperation.Modify,
             Tags = new[] { "xr", "interactable", "configure", "properties" },
             Outputs = new[] { "name", "instanceId", "interactableType", "changedProperties" },

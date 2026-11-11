@@ -28,7 +28,7 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
         private static object NoCinemachine() => new { error = "Cinemachine is not installed. Install Cinemachine 2.x or 3.x via Package Manager." };
 #endif
-        [UnitySkill("cinemachine_create_vcam", "Create a new Virtual Camera",
+        [UnitySkill("cinemachine_create_vcam", "Create a new Virtual Camera. Also adds a CinemachineBrain to the Main Camera when it has none.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "virtual", "cinemachine", "vcam" },
             Outputs = new[] { "gameObjectName", "instanceId" },
@@ -524,7 +524,7 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise). Supports Cinemachine 2.x and 3.x.",
+        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise). Supports Cinemachine 2.x and 3.x. Removes the stage's current component before adding the requested one; componentType 'None' only removes it, and requesting the type already present is a no-op.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify | SkillOperation.Delete | SkillOperation.Create,
             Tags = new[] { "camera", "pipeline", "body", "aim", "noise" },
             Outputs = new[] { "success", "message" },
@@ -1206,7 +1206,7 @@ namespace UnitySkills
             if (CinemachineAdapter.InvalidBlendStyle(defaultBlendStyle, "defaultBlendStyle") is object styleErr) return styleErr;
 
             var brain = CinemachineAdapter.FindBrain();
-            if (brain == null) return new { error = "No CinemachineBrain found. Add one to the Main Camera first." };
+            if (brain == null) return new { error = "No CinemachineBrain found. cinemachine_create_vcam adds one to the Main Camera; there is no separate add-brain skill." };
 
             WorkflowManager.SnapshotObject(brain);
             Undo.RecordObject(brain, "Set Brain");

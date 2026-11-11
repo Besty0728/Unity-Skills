@@ -28,7 +28,7 @@ namespace UnitySkills
             public System.DateTime createdAt;
         }
 
-        [UnitySkill("bookmark_set", "Save current selection and scene view position as a bookmark",
+        [UnitySkill("bookmark_set", "Save current selection and scene view position as a bookmark. Bookmarks live in memory only and are lost on domain reload.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Create,
             Tags = new[] { "bookmark", "selection", "scene-view", "save" },
             Outputs = new[] { "bookmark", "selectedCount", "hasSceneView" },
@@ -255,7 +255,7 @@ namespace UnitySkills
             return new { id, label };
         }
 
-        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}. scope limits the restore to some targets: comma-separated entity:<id>, object names or paths (trailing / adds children), Assets/ paths (trailing / = folder), setting keys (trailing . = prefix).",
+        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}. scope limits the restore to some targets: comma-separated entity:<id>, object names or paths (trailing / adds children), Assets/ paths (trailing / = folder), setting keys (trailing . = prefix). coverage partial means the change log rotated out part of the window; unknown means the cursor is not in the journal, so some conflicts may go unchecked. Package Manager operations and other external side effects are not rolled back.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "workflow", "restore", "undo", "checkpoint" },
             Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },

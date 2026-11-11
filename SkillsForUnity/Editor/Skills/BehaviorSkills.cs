@@ -1539,7 +1539,7 @@ namespace UnitySkills
                 {
                     error = $"Blackboard variable '{variableName}' was not found on graph '{graph.name}'.",
                     availableVariables = BehaviorReflectionHelper.ListVariableNames(graphVariables),
-                    suggestedFixes = new[] { "Call behavior_blackboard_list to see the exact variable names." }
+                    suggestedFixes = new[] { "Variable names are case-sensitive: call behavior_blackboard_list to see the exact variable names." }
                 };
             }
 

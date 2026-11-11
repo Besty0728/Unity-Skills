@@ -11,7 +11,7 @@ namespace UnitySkills
     /// </summary>
     public static class OptimizationSkills
     {
-        [UnitySkill("optimize_textures", "Optimize texture settings (maxSize, compression). Returns list of modified textures.",
+        [UnitySkill("optimize_textures", "Optimize texture settings (maxSize, compression). Returns list of modified textures. limit caps how many textures are modified; 0 means no cap.",
             Category = SkillCategory.Optimization, Operation = SkillOperation.Execute | SkillOperation.Modify,
             Tags = new[] { "optimization", "texture", "compression", "crunch" },
             Outputs = new[] { "count", "message", "modified" },

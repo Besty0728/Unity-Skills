@@ -371,7 +371,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("addressables_group_add_entry",
-            "Add an asset to an Addressables group by asset path",
+            "Add an asset to an Addressables group by asset path. Moves the asset out of its current group if it has one; an asset belongs to one group.",
             Category = SkillCategory.Addressables,
             Operation = SkillOperation.Modify,
             Tags = new[] { "addressables", "group", "entry", "asset" },
@@ -585,7 +585,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("addressables_build",
-            "Build Addressables content for the current build target",
+            "Build Addressables content for the active build target only (no target parameter). Blocks the Editor main thread and returns no jobId; a client timeout does not cancel it.",
             Category = SkillCategory.Addressables,
             Operation = SkillOperation.Execute,
             Tags = new[] { "addressables", "build", "content" },

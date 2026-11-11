@@ -16,7 +16,7 @@ namespace UnitySkills
     public static class ComponentSkills
     {
         // Also used by BatchSkills' set_property preview, which resolves members and values through the same helpers.
-        internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees; bool true/false/1/0/yes/no/on/off; AnimationCurve preset (linear, easeIn, easeOut, easeInOut, constant) or JSON {keys:[...]}. Omitted or 'null' = type default.";
+        internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees or 'x,y,z,w'; Rect 'x,y,w,h'; Bounds 'cx,cy,cz,sx,sy,sz' (center, size); LayerMask a layer name or integer bit mask; bool true/false/1/0/yes/no/on/off; AnimationCurve preset (linear, easeIn, easeOut, easeInOut, constant) or JSON {keys:[...]}. Omitted or 'null' = type default.";
         internal const string PropertyNameNote = "C# property/field name (e.g. mass, isTrigger, a script field), exact then case-insensitive; list the valid names with component_get_properties (includePrivate=true for non-public fields). For m_* serialized paths use component_set_serialized_property.";
         internal const string AssetReferenceNote = "Project asset path for an object-reference member (Material, Prefab, ScriptableObject...); takes precedence over referencePath/referenceName and value.";
 

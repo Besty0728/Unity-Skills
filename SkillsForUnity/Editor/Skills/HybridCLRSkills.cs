@@ -1045,7 +1045,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_settings_set",
-            "Write HybridCLRSettings fields (enable, hot-update assembly names/asmdefs, preserved + AOT-patch assemblies, output dirs, iteration limits, repo URLs) and persist to ProjectSettings/HybridCLRSettings.asset. Only the parameters you pass are changed; the full prior settings object is snapshotted for workflow undo. On hybridclr_unity 9.x patchAOTAssemblies, hotUpdateDllCompileOutputRootDir and strippedAOTDllOutputRootDir no longer exist: passing one is rejected (SEMANTIC_INVALID) and nothing is written.",
+            "Write HybridCLRSettings fields (enable, hot-update assembly names/asmdefs, preserved + AOT-patch assemblies, output dirs, iteration limits, repo URLs) and persist to ProjectSettings/HybridCLRSettings.asset. Only the parameters you pass are changed; the full prior settings object is snapshotted for workflow undo. Array parameters replace the whole list: call hybridclr_settings_get first and pass the full array. On hybridclr_unity 9.x patchAOTAssemblies, hotUpdateDllCompileOutputRootDir and strippedAOTDllOutputRootDir no longer exist: passing one is rejected (SEMANTIC_INVALID) and nothing is written.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Modify,
             Tags = new[] { "hybridclr", "settings", "config", "assemblies", "write" },
             Outputs = new[] { "changed", "settings", "unresolvedAssemblyDefinitions", "unsupportedFields" },
@@ -1395,7 +1395,7 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("hybridclr_compile_dlls",
-            "Compile the hot-update assemblies for a build target via CompileDllCommand.CompileDll(target, developmentBuild). Writes DLL/PDB into the per-target hot-update directory (hybridclr_get_paths: HybridCLRData/HotUpdateDlls on 8.x, Library/HybridCLR/HotUpdateDlls on 9.x). BLOCKS the Editor main thread for the duration of a full player-script compile (tens of seconds to minutes on large projects); prior output is backed up for workflow undo.",
+            "Compile the hot-update assemblies for a build target via CompileDllCommand.CompileDll(target, developmentBuild). Writes DLL/PDB into the per-target hot-update directory (hybridclr_get_paths: HybridCLRData/HotUpdateDlls on 8.x, Library/HybridCLR/HotUpdateDlls on 9.x). BLOCKS the Editor main thread for the duration of a full player-script compile (tens of seconds to minutes on large projects); prior output is backed up for workflow undo. Returns no jobId; a client timeout does not cancel the compile.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "compile", "hotupdate", "dll", "build" },
             Outputs = new[] { "success", "buildTarget", "outputDir", "files", "elapsedSeconds" },
@@ -1474,7 +1474,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_generate_all",
-            "Run the full HybridCLR prebuild pipeline via PrebuildCommand.GenerateAll() — compile hot-update DLLs, Il2CppDef, link.xml, (9.x: an empty method bridge,) stripped AOT DLLs, method bridges, and AOTGenericReferences.cs, in that order, for the active build target. BLOCKS the Editor main thread for several minutes and rewrites generated C# under Assets/, which triggers a domain reload.",
+            "Run the full HybridCLR prebuild pipeline via PrebuildCommand.GenerateAll() — compile hot-update DLLs, Il2CppDef, link.xml, (9.x: an empty method bridge,) stripped AOT DLLs, method bridges, and AOTGenericReferences.cs, in that order, for the active build target. BLOCKS the Editor main thread for several minutes and rewrites generated C# under Assets/, which triggers a domain reload. Returns no jobId; a client timeout does not cancel it.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "generate", "prebuild", "pipeline", "build" },
             Outputs = new[] { "success", "buildTarget", "elapsedSeconds", "generatedArtifacts" },
@@ -1601,7 +1601,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("hybridclr_generate_step",
-            "Run a single step of the HybridCLR prebuild pipeline instead of the whole thing: il2cpp_def, link_xml, aot_dlls, method_bridge, aot_generic_reference, plus clean_il2cpp_cache (8.x only) or method_bridge_empty (9.x only; generates the empty bridge GenerateAll runs before aot_dlls). Steps that write C#/XML under Assets/ trigger an AssetDatabase refresh and may cause a domain reload. Assumes hot-update DLLs are already compiled — run hybridclr_compile_dlls first.",
+            "Run a single step of the HybridCLR prebuild pipeline instead of the whole thing: il2cpp_def, link_xml, aot_dlls, method_bridge, aot_generic_reference, plus clean_il2cpp_cache (8.x only) or method_bridge_empty (9.x only; generates the empty bridge GenerateAll runs before aot_dlls). Steps that write C#/XML under Assets/ trigger an AssetDatabase refresh and may cause a domain reload. Assumes hot-update DLLs are already compiled — run hybridclr_compile_dlls first. Blocks the Editor main thread and returns no jobId; a client timeout does not cancel the step.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Execute,
             Tags = new[] { "hybridclr", "generate", "step", "linkxml", "methodbridge", "aot" },
             Outputs = new[] { "success", "step", "buildTarget", "elapsedSeconds" },

@@ -39,7 +39,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("shadergraph_create_graph", "Create a Shader Graph asset from a package template",
+        [UnitySkill("shadergraph_create_graph", "Create a Shader Graph asset from a package template. Falls back to a blank graph when the package has no templates; check creationMode in the response.",
             Category = SkillCategory.ShaderGraph, Operation = SkillOperation.Create,
             Tags = new[] { "shadergraph", "create", "graph", "template", "asset" },
             Outputs = new[] { "path", "templatePath", "graph" },
@@ -209,7 +209,7 @@ namespace UnitySkills
             return ShaderGraphReflectionHelper.DescribeGraphInfo(document);
         }
 
-        [UnitySkill("shadergraph_get_structure", "Inspect nodes, edges, properties, and keywords inside a Shader Graph asset",
+        [UnitySkill("shadergraph_get_structure", "Inspect nodes, edges, properties, and keywords inside a Shader Graph asset. Node and slot IDs for other node skills come from this output; re-read it after topology edits.",
             Category = SkillCategory.ShaderGraph, Operation = SkillOperation.Query,
             Tags = new[] { "shadergraph", "structure", "nodes", "edges", "inspect" },
             Outputs = new[] { "nodes", "edges", "properties", "keywords" },
@@ -251,7 +251,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("shadergraph_add_node", "Add a supported node to a Shader Graph or Sub Graph asset",
+        [UnitySkill("shadergraph_add_node", "Add a supported node to a Shader Graph or Sub Graph asset. A PropertyNode binds only to an existing blackboard property; call shadergraph_add_property first.",
             Category = SkillCategory.ShaderGraph, Operation = SkillOperation.Create,
             Tags = new[] { "shadergraph", "node", "add", "graph", "subgraph" },
             Outputs = new[] { "assetPath", "node" },

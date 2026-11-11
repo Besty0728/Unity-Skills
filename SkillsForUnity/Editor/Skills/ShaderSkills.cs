@@ -12,7 +12,7 @@ namespace UnitySkills
     public static class ShaderSkills
     {
 
-        [UnitySkill("shader_create", "Create a new shader file",
+        [UnitySkill("shader_create", "Create a new shader file. template is the full ShaderLab/HLSL source, written verbatim; it is not a preset name.",
             Category = SkillCategory.Shader, Operation = SkillOperation.Create,
             Tags = new[] { "shader", "create", "hlsl", "asset" },
             Outputs = new[] { "shaderName", "path" },
@@ -230,7 +230,7 @@ namespace UnitySkills
         public static object ShaderCheckErrors(string shaderNameOrPath)
         {
             var shader = FindShaderByNameOrPath(shaderNameOrPath);
-            if (shader == null) return new { error = $"Shader not found: {shaderNameOrPath}" };
+            if (shader == null) return new { error = $"Shader not found: {shaderNameOrPath}. Names are case-sensitive and path-like, e.g. 'Universal Render Pipeline/Lit'." };
             int msgCount = ShaderUtil.GetShaderMessageCount(shader);
             return new { shaderName = shader.name, hasErrors = msgCount > 0, messageCount = msgCount };
         }

@@ -17,7 +17,7 @@ namespace UnitySkills
     {
         // ============================ File operations ============================
 
-        [UnitySkill("uitk_create_uss", "Create a USS stylesheet file for UI Toolkit",
+        [UnitySkill("uitk_create_uss", "Create a USS stylesheet file for UI Toolkit. USS is a CSS subset: display:grid, box-shadow, calc(), @media, ::before, z-index and gradients are not supported.",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "uss", "stylesheet", "ui-toolkit", "style" },
             Outputs = new[] { "path", "lines" },
@@ -1481,7 +1481,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             string filePath, string elementType, string parentName = null,
             string elementName = null, string text = null,
             string classes = null, string style = null,
-            string bindingPath = null)
+            [SkillParam("binding-path is the old SerializedObject editor binding, not runtime data binding; use uitk_runtime_binding_add for runtime data.")] string bindingPath = null)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
             if (Validate.Required(elementType, "elementType") is object typeErr) return typeErr;
@@ -1631,7 +1631,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 
         // ============================ USS operations ============================
 
-        [UnitySkill("uitk_add_uss_rule", "Add or update a USS rule in a stylesheet file",
+        [UnitySkill("uitk_add_uss_rule", "Add or update a USS rule in a stylesheet file. USS is a CSS subset: display:grid, box-shadow, calc(), @media, ::before, z-index and gradients are not supported.",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "uss", "rule", "selector", "style" },
             Outputs = new[] { "path", "selector", "action" },

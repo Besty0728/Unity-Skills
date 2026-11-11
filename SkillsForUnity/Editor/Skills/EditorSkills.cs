@@ -38,7 +38,7 @@ namespace UnitySkills
         public static object EditorPlay()
         {
             if (EditorApplication.isPlaying)
-                return new { error = "Already in play mode" };
+                return new { error = "Already in play mode: call editor_stop first, or continue with the running session." };
 
             var job = AsyncJobService.CreateJob(
                 "playmode", "entering_play_mode", "Entering Play Mode.", false);
@@ -65,7 +65,7 @@ namespace UnitySkills
         public static object EditorStop()
         {
             if (!EditorApplication.isPlaying)
-                return new { error = "Not in play mode" };
+                return new { error = "Not in play mode: nothing to stop. Call editor_play to enter Play Mode." };
 
             EditorApplication.isPlaying = false;
             return new { success = true, mode = "stopped" };
@@ -104,7 +104,7 @@ namespace UnitySkills
                 job != null && string.Equals(job.kind, PlaymodeStepJobKind, StringComparison.OrdinalIgnoreCase) &&
                 job.status != "completed" && job.status != "failed" && job.status != "cancelled");
             if (activeJob != null)
-                return new { error = $"Another frame-step job is already active: {activeJob.jobId} ({activeJob.currentStage ?? activeJob.status})." };
+                return new { error = $"Another frame-step job is already active: {activeJob.jobId} ({activeJob.currentStage ?? activeJob.status}). Poll job_status with that jobId and wait for it to finish before stepping again." };
 
             var clampedFrames = Mathf.Clamp(frames, 1, 100);
             var startFrame = Time.frameCount;
@@ -369,7 +369,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("editor_get_changes", "Read the persistent editor-change journal instead of parsing .unity YAML. Use after the user edited the project while the AI was away, after external file changes, or after asking the user to make manual Editor changes. Returns scene structure/property summaries and imported/deleted/moved asset paths newer than 'since'. Omit since (or pass 0) for retained history, then pass the returned cursor on the next call. types: all/scene/file/undo/lifecycle (comma-separated). source: all/editor/manual/rest.",
+        [UnitySkill("editor_get_changes", "Read the persistent editor-change journal instead of parsing .unity YAML. Use after the user edited the project while the AI was away, after external file changes, or after asking the user to make manual Editor changes. Returns scene structure/property summaries and imported/deleted/moved asset paths newer than 'since'. Omit since (or pass 0) for retained history, then pass the returned cursor on the next call. types: all/scene/file/undo/lifecycle (comma-separated). source: all/editor/manual/rest. dropped is true when since is older than the retained window (500 entries); rebuild context with scene_context or scene_diff.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Query,
             Tags = new[] { "changes", "observe", "journal", "scene", "files", "cursor" },
             Outputs = new[] { "hasChanges", "cursor", "oldestSeq", "dropped", "truncated", "changes" },
@@ -396,7 +396,7 @@ namespace UnitySkills
         {
             var result = EditorApplication.ExecuteMenuItem(menuPath);
             if (!result)
-                return new { error = $"Menu item not found or failed: {menuPath}" };
+                return new { error = $"Menu item not found or failed: {menuPath}. Use the full menu path as shown in the Editor menu bar, e.g. 'File/Save'." };
 
             return new { success = true, executed = menuPath };
         }

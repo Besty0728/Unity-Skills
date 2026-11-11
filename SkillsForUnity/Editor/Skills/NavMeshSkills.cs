@@ -41,7 +41,7 @@ namespace UnitySkills
             return new { success = true, warning = "NavMesh cleared. This operation cannot be undone." };
         }
 
-        [UnitySkill("navmesh_calculate_path", "Calculate a path between two points. Returns: {status, distance, cornerCount, corners}",
+        [UnitySkill("navmesh_calculate_path", "Calculate a path between two points. Returns: {status, distance, cornerCount, corners}. valid is true only for PathComplete; a PathPartial result still returns corners with valid=false.",
             Category = SkillCategory.NavMesh, Operation = SkillOperation.Query,
             Tags = new[] { "navmesh", "path", "pathfinding", "navigation" },
             Outputs = new[] { "status", "valid", "distance", "cornerCount", "corners" },

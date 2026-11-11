@@ -54,7 +54,7 @@ namespace UnitySkills
             return EditorPrefs.GetBool(prefFallbackKey, false);
         }
 
-        [UnitySkill("console_start_capture", "Start capturing console logs",
+        [UnitySkill("console_start_capture", "Start capturing console logs. Only records a cursor and never clears retained history; console_clear is the only skill that deletes history.",
             Category = SkillCategory.Console, Operation = SkillOperation.Execute,
             Tags = new[] { "console", "capture", "logs", "start" },
             Outputs = new[] { "message" })]
@@ -76,7 +76,7 @@ namespace UnitySkills
             return new { success = true, message = "Console capture stopped", capturedCount = count };
         }
 
-        [UnitySkill("console_get_logs", "Get continuously captured Unity Console logs. Filter type/content/time, use stable cursors for fixed snapshots, and collapse duplicate full type/message/stack groups by default.",
+        [UnitySkill("console_get_logs", "Get continuously captured Unity Console logs. Filter type/content/time, use stable cursors for fixed snapshots, and collapse duplicate full type/message/stack groups by default. Follow nextCursor until hasMore is false; complete false means the result is incomplete evidence.",
             Category = SkillCategory.Console, Operation = SkillOperation.Query,
             Tags = new[] { "console", "logs", "filter", "errors" },
             Outputs = new[] { "count", "logs", "cursor", "nextCursor", "totalMatched", "hasMore", "complete", "dropped", "coverage" },
@@ -201,7 +201,7 @@ namespace UnitySkills
             return new { success = true, path = savePath, count = logs.Count, source = capturing ? "capture_session" : "history", complete, dropped, truncated = !complete };
         }
 
-        [UnitySkill("console_get_stats", "Get statistics for retained console log history, including bounded-retention completeness.",
+        [UnitySkill("console_get_stats", "Get statistics for retained console log history, including bounded-retention completeness. Check truncated first: a zero error count is not evidence of a clean run when truncated is true.",
             Category = SkillCategory.Console, Operation = SkillOperation.Query,
             Tags = new[] { "console", "stats", "count", "summary" },
             Outputs = new[] { "total", "logs", "warnings", "errors", "source", "complete", "dropped" },

@@ -1479,7 +1479,7 @@ namespace UnitySkills
 
             var pbMesh = go.GetComponent<ProBuilderMesh>();
             if (pbMesh == null)
-                return (null, new { error = $"GameObject '{go.name}' does not have a ProBuilderMesh component" });
+                return (null, new { error = $"GameObject '{go.name}' does not have a ProBuilderMesh component. Regular meshes are not converted; create the shape with probuilder_create_shape instead." });
 
             return (pbMesh, null);
         }

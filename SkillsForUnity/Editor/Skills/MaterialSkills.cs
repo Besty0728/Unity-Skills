@@ -15,7 +15,7 @@ namespace UnitySkills
     /// </summary>
     public static class MaterialSkills
     {
-        private const string MaterialPathNote = "'Assets/...' or '*.mat' = that material asset; any other value is a hierarchy path, targeting its Renderer's sharedMaterial (the shared asset).";
+        private const string MaterialPathNote = "'Assets/...' or '*.mat' = that material asset; any other value is a hierarchy path, targeting its Renderer's sharedMaterial (the shared asset); writes change every object that shares it.";
         private const string ShaderPropertyNote = "Shader property reference name (e.g. _Metallic, _Cutoff), not the Inspector label; material_get_properties lists them.";
         private const string MainTextureNote = "Shader texture property; default _BaseMap (URP), _BaseColorMap (HDRP) or _MainTex (Built-in).";
 

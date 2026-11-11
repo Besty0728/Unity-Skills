@@ -191,7 +191,7 @@ namespace UnitySkills
             public string parentEntityId { get; set; }
         }
 
-        [UnitySkill("prefab_apply", "Apply all overrides from prefab instance to the source prefab asset. Equivalent to prefab_apply_overrides.",
+        [UnitySkill("prefab_apply", "Apply all overrides from prefab instance to the source prefab asset. Equivalent to prefab_apply_overrides. Instance edits are not saved to the source prefab until this or prefab_apply_overrides runs.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             Tags = new[] { "prefab", "apply", "overrides", "save" },
             Outputs = new[] { "appliedTo" },
@@ -478,7 +478,7 @@ namespace UnitySkills
             return new { success = true, reverted = prefabRoot.name };
         }
 
-        [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset. Equivalent to prefab_apply.",
+        [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset. Equivalent to prefab_apply. Instance edits are not saved to the source prefab until this or prefab_apply runs.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             Tags = new[] { "prefab", "apply", "overrides", "save" },
             Outputs = new[] { "appliedTo" },
@@ -864,7 +864,7 @@ namespace UnitySkills
             string items) =>
             PrefabAssetEditor.Batch("prefab_set_sibling_index", items);
 
-        [UnitySkill("prefab_edit_batch", "Atomically edit one prefab asset. steps: JSON array of {skill, args}; only prefab asset edit operations are allowed, maximum 50 steps. Earlier-created paths are available to later steps.",
+        [UnitySkill("prefab_edit_batch", "Atomically edit one prefab asset. steps: JSON array of {skill, args}; only prefab asset edit operations are allowed, maximum 50 steps. Earlier-created paths are available to later steps. dryRun does not load prefab contents: it checks steps against the saved asset only, and a step that depends on an earlier step is checked only when it runs.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify | SkillOperation.Delete,
             RequiredParams = new[] { "prefabPath", "steps" },
             Tags = new[] { "prefab", "asset", "batch", "transaction" }, Outputs = new[] { "prefabPath", "results" },

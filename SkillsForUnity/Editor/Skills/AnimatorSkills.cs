@@ -271,7 +271,7 @@ namespace UnitySkills
             {
                 return new
                 {
-                    error = $"State '{stateName}' not found on layer {layer} of controller",
+                    error = $"State '{stateName}' not found on layer {layer} of controller. The state must already exist; add it with animator_add_state first.",
                     errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
                     availableStates = availableStates.ToArray()
                 };

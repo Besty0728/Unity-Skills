@@ -355,7 +355,7 @@ namespace UnitySkills
         // ==================================================================================
 
         [UnitySkill("netcode_set_transport_address",
-            "Configure UnityTransport direct connection (address, port, server listen address)",
+            "Configure UnityTransport direct connection (address, port, server listen address). On a client, address is the server to connect to; on a server, serverListenAddress is the bind address.",
             TracksWorkflow = true,
             Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
             Tags = new[] { "netcode", "ngo", "transport", "connection" },

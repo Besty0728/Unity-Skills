@@ -234,7 +234,7 @@ namespace UnitySkills
 
         // ===================== Configuration =====================
 
-        [UnitySkill("particle_configure", "Configure a built-in ParticleSystem (name/entityId/instanceId/path; Shuriken, not VFX Graph) with a partial configJson patch over system and modules (module ids and fields: particle_get_capabilities), applied atomically: omitted fields keep their value, false and 0 are applied, curves and gradients replace the property, any invalid field rejects the whole call. Needs Edit Mode and a stopped system; returns applied paths and the state read back from Unity.",
+        [UnitySkill("particle_configure", "Configure a built-in ParticleSystem (name/entityId/instanceId/path; Shuriken, not VFX Graph) with a partial configJson patch over system and modules (module ids and fields: particle_get_capabilities), applied atomically: omitted fields keep their value, false and 0 are applied, curves and gradients replace the property, any invalid field rejects the whole call. Needs Edit Mode and a stopped system; returns applied paths and the state read back from Unity. Writing values never enables a module: values of a disabled module are stored with a warning until \"enabled\": true.",
             Category = SkillCategory.Particle, Operation = SkillOperation.Modify,
             Tags = new[] { "particle", "particles", "configure", "modules", "main", "emission", "shape", "noise", "velocity", "force", "rotation", "drag", "orbital", "inherit", "customdata", "curve", "gradient", "shuriken" },
             Outputs = new[] { "name", "entityId", "instanceId", "path", "applied", "state", "warnings" },

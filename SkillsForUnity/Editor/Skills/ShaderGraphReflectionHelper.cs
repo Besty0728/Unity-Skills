@@ -156,7 +156,7 @@ namespace UnitySkills
             {
                 if (!TryResolveTemplateFilePath(templateNameOrPath, out var resolvedTemplateFilePath))
                 {
-                    error = $"Template not found: {templateNameOrPath}";
+                    error = $"Template not found: {templateNameOrPath}. Call shadergraph_list_templates for valid names.";
                     return null;
                 }
 
@@ -179,7 +179,7 @@ namespace UnitySkills
 
             if (templates.Length == 0)
             {
-                error = $"Template '{templateNameOrPath}' not found";
+                error = $"Template '{templateNameOrPath}' not found. Call shadergraph_list_templates for valid names.";
                 return null;
             }
 
@@ -891,7 +891,7 @@ namespace UnitySkills
             var node = FindGraphNode(graph, nodeId);
             if (node == null)
             {
-                error = $"Node '{nodeId}' was not found";
+                error = $"Node '{nodeId}' was not found. Node IDs come from shadergraph_get_structure; re-read it after topology edits.";
                 return false;
             }
 

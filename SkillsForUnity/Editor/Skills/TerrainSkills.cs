@@ -159,7 +159,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("terrain_set_heights_batch", "Set terrain heights in a rectangular region. Heights is a 2D array [z][x] with values 0-1.", TracksWorkflow = true,
+        [UnitySkill("terrain_set_heights_batch", "Set terrain heights in a rectangular region. Heights is a 2D array [z][x]; values outside 0-1 are clamped. startX/startZ are heightmap pixel indexes, not world units, clamped to the resolution, and the region is cut at the terrain edge.", TracksWorkflow = true,
             Category = SkillCategory.Terrain, Operation = SkillOperation.Modify,
             Tags = new[] { "terrain", "height", "batch", "heightmap", "region" },
             Outputs = new[] { "success", "startX", "startZ", "modifiedWidth", "modifiedLength", "totalPointsModified" },
@@ -592,7 +592,7 @@ namespace UnitySkills
             {
                 var any = Object.FindAnyObjectByType<Terrain>();
                 if (any == null)
-                    return (null, new { success = false, error = "Terrain not found" });
+                    return (null, new { success = false, error = "Terrain not found; create one with terrain_create first." });
                 return (any, null);
             }
 
@@ -602,7 +602,7 @@ namespace UnitySkills
 
             var terrain = go.GetComponent<Terrain>();
             if (terrain == null)
-                return (null, new { success = false, error = $"No Terrain component on {go.name}" });
+                return (null, new { success = false, error = $"No Terrain component on {go.name}; create one with terrain_create first." });
             return (terrain, null);
         }
     }

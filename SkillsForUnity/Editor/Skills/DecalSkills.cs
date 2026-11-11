@@ -103,7 +103,7 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
-        public static object DecalEnsureRendererFeature(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null) => RenderPipelineSkillsCommon.NoURP();
+        public static object DecalEnsureRendererFeature(string assetPath = null, int rendererIndex = -1, [SkillParam("Takes precedence over rendererIndex; must be a UniversalRendererData asset that belongs to the resolved URP asset.")] string rendererDataPath = null) => RenderPipelineSkillsCommon.NoURP();
 #else
         [UnitySkill("decal_create", "Create a URP Decal Projector",
             Category = SkillCategory.Decal, Operation = SkillOperation.Create,
@@ -317,7 +317,7 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
-        public static object DecalEnsureRendererFeature(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null)
+        public static object DecalEnsureRendererFeature(string assetPath = null, int rendererIndex = -1, [SkillParam("Takes precedence over rendererIndex; must be a UniversalRendererData asset that belongs to the resolved URP asset.")] string rendererDataPath = null)
         {
             var asset = URPSkills.LoadAssetOrError(assetPath, out var error);
             if (error != null) return error;
