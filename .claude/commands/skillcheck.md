@@ -12,6 +12,7 @@ allowed-tools: Bash(python3 .github/scripts/skill_inventory.py:*), Read, Grep, G
 1. `python3 .github/scripts/skill_inventory.py`（每个 finding code 默认列前 15 条；要全量用 `--all`，要结构化用 `--json`）。
 2. 读报告，按下文分级处理 finding。
 3. 计数有漂移（报告里 `count anchors: DRIFT`）：先确认实际数字合理，再 `python3 .github/scripts/skill_inventory.py --sync-counts`，重跑一次确认 `in sync`。
+3a. 参数表默认值漂移（`param-default` / `param-default-group`）：`python3 .github/scripts/skill_inventory.py --sync-tables` 只改 Default 单元格为 C# 规范化值，合并行仅在成员默认值一致时改；类型漂移（`param-type`）与 Description 不自动改，人工判断。
 4. 按"报告格式"向用户汇总。
 
 脚本在 PyYAML 缺失时跳过 frontmatter 检查并给出 `frontmatter-skipped` warning；此时提示用户 `pip install pyyaml` 后重跑，不要手写替代检查。

@@ -79,7 +79,7 @@ Write a custom log message.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `message` | string | Yes | - | Log message |
-| `type` | string | No | "Log" | Log/Warning/Error |
+| `type` | string | No | "log" | Log/Warning/Error |
 
 ### console_set_pause_on_error
 Enable or disable Error Pause in Play mode.

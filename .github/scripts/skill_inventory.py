@@ -21,7 +21,8 @@ import os
 import re
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass, field
 
 SKILLS_DIR = "SkillsForUnity/Editor/Skills"
@@ -55,6 +56,7 @@ class Param:
     name: str
     type: str
     optional: bool
+    default: str | None = None  # C# default expression as written, None when absent
 
 
 @dataclass
@@ -78,6 +80,7 @@ class CodeSkill:
     conditions: list[str]
     attribute_count: int = 1
     has_description: bool = True
+    requires_input: list[str] = field(default_factory=list)
 
     @property
     def never_in_semi(self) -> bool:
@@ -94,6 +97,16 @@ class DocEntry:
     params: list[tuple[str, str]] | None
     item_props: list[str] | None
     returns: list[str] | None
+    param_defaults: list["DocDefault"] | None = None
+
+
+@dataclass
+class DocDefault:
+    name: str
+    cell: str | None  # Default cell text, None when the table has no Default column
+    line: int
+    col: int | None  # 0-based cell index of the Default column
+    shared: bool  # the row lists several parameter names
 
 
 # --------------------------------------------------------------------------------------------- C# lexing
@@ -304,7 +317,8 @@ def parse_params(nc_params: str, sk_params: str) -> list[Param]:
         decl = (piece_sk if eq < 0 else piece_sk[:eq]).strip()
         m = re.match(r"(?:(?:this|params|ref|out|in)\s+)*(.+?)\s+(\w+)$", decl, re.S)
         if m:
-            params.append(Param(m.group(2), re.sub(r"\s+", " ", m.group(1)), eq >= 0))
+            default = piece_nc[eq + 1:].strip() if eq >= 0 else None
+            params.append(Param(m.group(2), re.sub(r"\s+", " ", m.group(1)), eq >= 0, default or None))
     return params
 
 
@@ -409,6 +423,7 @@ def parse_skill_file(path: str, rel: str, all_classes: dict[str, dict[str, str]]
             flags=flags, tags=string_list(named.get("Tags")) or [],
             outputs=string_list(named.get("Outputs")),
             required_params=string_list(named.get("RequiredParams")) or [],
+            requires_input=string_list(named.get("RequiresInput")) or [],
             method=method_m.group(1) if method_m else "", params=params, item_props=item_props,
             return_fields=return_field_sets(body_nc, body_sk) if body_sk else None,
             conditions=conds[line - 1][:] if line - 1 < len(conds) else [],
@@ -573,7 +588,7 @@ def parse_doc_entries(path: str, module: str, rel: str) -> list[DocEntry]:
         end = next((h for h in heading_idx if h > s), len(lines))
         section = lines[s + 1:end]
         name = re.match(r"###\s+`?([a-z][a-z0-9_]*)`?", lines[s][1]).group(1)
-        params = item_props = returns = None
+        params = item_props = returns = defaults = None
         i = 0
         while i < len(section):
             _, line, fenced = section[i]
@@ -582,12 +597,18 @@ def parse_doc_entries(path: str, module: str, rel: str) -> list[DocEntry]:
                 continue
             if params is None and line.lstrip().startswith("|") and "parameter" in line.split("|")[1].lower():
                 params = []
+                defaults = []
+                header = [c.strip().lower() for c in line.strip().strip("|").split("|")]
+                default_col = header.index("default") if "default" in header else None
                 i += 1
                 while i < len(section) and section[i][1].lstrip().startswith("|"):
                     cells = [c.strip() for c in section[i][1].strip().strip("|").split("|")]
                     if cells and not re.fullmatch(r"[-: ]+", cells[0]):
                         ctype = cells[1].lower() if len(cells) > 1 else ""
-                        params += [(n, ctype) for n in clean_names(cells[0])]
+                        names = clean_names(cells[0])
+                        params += [(n, ctype) for n in names]
+                        cell = cells[default_col] if default_col is not None and default_col < len(cells) else None
+                        defaults += [DocDefault(n, cell, section[i][0], default_col, len(names) > 1) for n in names]
                     i += 1
                 continue
             if re.match(r"\*\*Item properties\*\*", line):
@@ -610,7 +631,7 @@ def parse_doc_entries(path: str, module: str, rel: str) -> list[DocEntry]:
                     j += 1
                 returns = brace_fields(block)
             i += 1
-        entries.append(DocEntry(name, module, rel, lines[s][0], params, item_props, returns))
+        entries.append(DocEntry(name, module, rel, lines[s][0], params, item_props, returns, defaults))
     return entries
 
 
@@ -643,6 +664,127 @@ def do_not_names(path: str) -> list[tuple[int, str]]:
     return names
 
 
+# --------------------------------------------------------------------------------------------- param defaults
+
+NULL_WORDS = {"null", "-", "—", "–", "", "none"}
+NUMBER_RE = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?[fFdDlLmM]?")
+STRING_LIT_RE = re.compile(r'@?"((?:[^"\\]|\\.)*)"')
+ENUM_RE = re.compile(r"[A-Z]\w*\.([A-Z]\w*)")
+
+
+def canonical_number(text: str) -> str:
+    text = text.rstrip("fFdDlLmM") if text[-1:] in "fFdDlLmM" else text
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        return text
+    return "0" if value == 0 else format(value.normalize(), "f")
+
+
+def canonical_default(raw: str, is_code: bool) -> tuple[str, str] | None:
+    """Comparable (kind, value) of a default; None when a C# expression cannot be judged statically."""
+    s = raw.strip()
+    if not is_code:
+        s = s.strip("`").strip()
+    if s.lower() in NULL_WORDS:
+        return ("null", "")
+    if s.lower() in ("true", "false"):
+        return ("bool", s.lower())
+    m = STRING_LIT_RE.fullmatch(s)
+    if m:
+        return ("str", m.group(1))
+    if NUMBER_RE.fullmatch(s):
+        return ("num", canonical_number(s))
+    if not is_code:
+        return ("str", s)
+    if s == "string.Empty":
+        return ("str", "")
+    m = ENUM_RE.fullmatch(s)
+    return ("str", m.group(1)) if m else None
+
+
+def code_skip_reason(raw: str) -> str:
+    s = raw.strip()
+    if s == "default" or s.startswith("default("):
+        return "default 关键字"
+    if "(" in s:
+        return "调用或括号表达式"
+    if "." in s:
+        return "常量引用（如 int.MaxValue）"
+    if re.fullmatch(r"\w+", s):
+        return "标识符常量"
+    return "其它表达式"
+
+
+def render_code_default(raw: str) -> str | None:
+    """Table text for a C# default: quoted strings, bare numbers and enum member names."""
+    value = canonical_default(raw, True)
+    if value is None:
+        return None
+    kind, text = value
+    if kind == "null":
+        return "null"
+    if kind == "str":
+        return text if ENUM_RE.fullmatch(raw.strip()) else f'"{text}"'
+    return text
+
+
+def normalise_for(name: str, value: tuple[str, str]) -> tuple[str, str]:
+    """instanceId-like parameters use 0 as the 'not specified' sentinel, so 0 reads as null."""
+    if name.lower().endswith("instanceid") and value == ("num", "0"):
+        return ("null", "")
+    return value
+
+
+def effective_code_value(name: str, raw: str) -> tuple[str, str] | None:
+    value = canonical_default(raw, True)
+    return None if value is None else normalise_for(name, value)
+
+
+def is_literal_doc(raw: str) -> bool:
+    s = raw.strip().strip("`").strip()
+    return bool(STRING_LIT_RE.fullmatch(s) or NUMBER_RE.fullmatch(s) or s.lower() in NULL_WORDS
+                or s.lower() in ("true", "false"))
+
+
+def defaults_equal(name: str, code_value: tuple[str, str], doc_raw: str) -> bool:
+    """Compare an effective C# value with a doc cell; a descriptive (non-literal) cell stands for null."""
+    doc = canonical_default(doc_raw, False)
+    if code_value == ("null", ""):
+        return normalise_for(name, doc)[0] == "null" or (doc[0] == "str" and not is_literal_doc(doc_raw))
+    return doc == code_value
+
+
+def apply_table_fixes(fixes: list[tuple[str, int, int, str]]) -> tuple[int, int]:
+    """Rewrite single Default cells in place: other cells, separators and the cell's own padding are kept."""
+    by_path: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
+    for path, line, col, text in fixes:
+        by_path[path].append((line, col, text))
+    cells = 0
+    for path, edits in by_path.items():
+        with open(path, encoding="utf-8", newline="") as f:
+            lines = f.read().split("\n")
+        for line, col, text in edits:
+            parts = lines[line - 1].split("|")
+            idx = col + 1
+            if idx >= len(parts):
+                continue
+            orig = parts[idx]
+            inner = orig.strip()
+            if not inner:
+                parts[idx] = f" {text} "
+            else:
+                lead = orig[:len(orig) - len(orig.lstrip())]
+                trail = orig[len(orig.rstrip()):]
+                body = text.ljust(len(inner)) if len(text) < len(inner) else text
+                parts[idx] = lead + body + trail
+            lines[line - 1] = "|".join(parts)
+            cells += 1
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write("\n".join(lines))
+    return cells, len(by_path)
+
+
 # --------------------------------------------------------------------------------------------- checks
 
 class Audit:
@@ -652,6 +794,7 @@ class Audit:
         self.findings: list[Finding] = []
         self.counts: dict[str, int] = {}
         self.stats: dict = {}
+        self.table_fixes: list[tuple[str, int, int, str]] = []
 
     def add(self, severity: str, code: str, message: str, where: str = "") -> None:
         self.findings.append(Finding(severity, code, message, where))
@@ -679,6 +822,7 @@ class Audit:
         self.entries = self.load_entries(module_dirs)
         self.check_ghosts_and_duplicates()
         self.check_signatures()
+        self.check_param_defaults()
         self.check_returns()
         self.check_do_not()
         self.check_overview()
@@ -811,7 +955,77 @@ class Audit:
             for n, dtype in e.params:
                 p = code_names.get(n.lower())
                 if p and self.type_mismatch(dtype, p.type):
-                    self.add("info", "param-type", f"`{skill.name}` param `{n}` documented `{dtype}`, C# `{p.type}`", where)
+                    self.add("error", "param-type", f"`{skill.name}` param `{n}` documented `{dtype}`, C# `{p.type}`", where)
+
+    def check_param_defaults(self) -> None:
+        self.table_fixes = []
+        docs_root = os.path.join(self.root, DOCS_DIR)
+        skipped: Counter = Counter()
+        compared = 0
+        for e in self.entries:
+            skill = self.skills.get(e.name)
+            if skill is None or e.param_defaults is None:
+                continue
+            if skill.item_props is not None and {p.name for p in skill.params} <= {"items"}:
+                continue
+            required = {n.lower() for n in skill.required_params + skill.requires_input}
+            code = {p.name.lower(): p for p in skill.params}
+            by_line: dict[int, list[DocDefault]] = defaultdict(list)
+            for d in e.param_defaults:
+                by_line[d.line].append(d)
+            for line, members in sorted(by_line.items()):
+                where = f"{e.file}:{line}"
+                path = os.path.join(docs_root, e.file)
+                if members[0].cell is None:
+                    skipped["表无 Default 列"] += len(members)
+                    continue
+                judged = []
+                for d in members:
+                    p = code.get(d.name.lower())
+                    if p is None:
+                        skipped["C# 无此参数"] += 1
+                    elif d.name.lower() in required:
+                        skipped["必填参数"] += 1
+                    elif p.default is None:
+                        skipped["C# 无默认值"] += 1
+                    elif canonical_default(p.default, True) is None:
+                        skipped[code_skip_reason(p.default)] += 1
+                    else:
+                        judged.append((d, p, effective_code_value(d.name, p.default)))
+                shared = members[0].shared
+                if not judged or (shared and len(judged) != len(members)):
+                    continue
+                cells = [c.strip() for c in members[0].cell.split(",")]
+                if shared and len(cells) == len(members):
+                    compared += 1
+                    if all(defaults_equal(d.name, v, cell) for (d, _, v), cell in zip(judged, cells)):
+                        continue
+                    names = ", ".join(f"`{d.name}`" for d, _, _ in judged)
+                    listing = ", ".join(p.default for _, p, _ in judged)
+                    self.add("error", "param-default",
+                             f"`{skill.name}` 合并行 {names} 文档默认值 `{members[0].cell}`，C# 默认值 `{listing}`", where)
+                    rendered = [render_code_default(p.default) for _, p, _ in judged]
+                    if all(r is not None for r in rendered):
+                        self.table_fixes.append((path, line, members[0].col, ", ".join(rendered)))
+                    continue
+                values = {v for _, _, v in judged}
+                if len(values) > 1:
+                    listing = ", ".join(f"`{d.name}` = {p.default}" for d, p, _ in judged)
+                    self.add("error", "param-default-group",
+                             f"`{skill.name}` 合并行 {listing} 的 C# 默认值不一致，请拆成多行", where)
+                    continue
+                compared += 1
+                d0, p0, value = judged[0]
+                if defaults_equal(d0.name, value, members[0].cell):
+                    continue
+                names = ", ".join(f"`{d.name}`" for d, _, _ in judged)
+                self.add("error", "param-default",
+                         f"`{skill.name}` 参数 {names} 文档默认值 `{members[0].cell}`，C# 默认值 `{p0.default}`", where)
+                rendered = render_code_default(p0.default)
+                if rendered is not None:
+                    self.table_fixes.append((path, line, members[0].col, rendered))
+        self.stats["param_default"] = {"compared": compared, "skipped": sum(skipped.values()),
+                                       "skip_reasons": dict(skipped.most_common())}
 
     def compare_names(self, doc: list[str], code: set[str], skill: CodeSkill, kind: str, where: str,
                       locator_twin: bool = False) -> None:
@@ -1205,6 +1419,10 @@ def render_text(audit: Audit, drifts: list[dict], sync: bool, show_all: bool, li
         out.append(f"  root SKILL.md: {r['bytes']} / {r['budget']} bytes (margin {r['budget'] - r['bytes']})")
     for module, p in audit.stats.get("pilot_entry_bytes", {}).items():
         out.append(f"  pilot {module}: {p['bytes']} / {p['budget']} bytes")
+    if "param_default" in audit.stats:
+        pd = audit.stats["param_default"]
+        top = ", ".join(f"{k} {v}" for k, v in list(pd["skip_reasons"].items())[:5])
+        out.append(f"  param defaults: compared {pd['compared']}, skipped {pd['skipped']} ({top})")
     if audit.stats.get("entry_bytes"):
         eb = audit.stats["entry_bytes"]
         within = sum(1 for p in eb.values() if p["bytes"] <= p["budget"])
@@ -1254,10 +1472,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--all", action="store_true", help="list every finding instead of the first 15 per code")
     ap.add_argument("--sync-counts", action="store_true", help="rewrite the count anchors in AGENTS.md and the READMEs")
+    ap.add_argument("--sync-tables", action="store_true", help="rewrite drifting Default cells in module doc tables from C#")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    audit, drifts = build_audit(os.path.abspath(args.root), args.sync_counts)
+    root = os.path.abspath(args.root)
+    audit, drifts = build_audit(root, args.sync_counts)
+    if args.sync_tables:
+        cells, files = apply_table_fixes(audit.table_fixes)
+        print(f"--sync-tables: {cells} Default cells rewritten in {files} files", file=sys.stderr)
+        audit, drifts = build_audit(root, args.sync_counts)
     print(to_json(audit, drifts) if args.json else render_text(audit, drifts, args.sync_counts, args.all))
     failed = any(f.severity == "error" for f in audit.findings)
     if drifts and not args.sync_counts:

@@ -403,6 +403,198 @@ class CountSyncTests(unittest.TestCase):
         self.assertEqual(text, "-> 1 *Skills.cs / 2 SkillCategory / 3 skills`. 1 vs 2:\n")
 
 
+REF_FIND_DEFAULTS = """### foo_find
+Find foo.
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | No | null | the name |
+| `instanceId` | int | No | 1 | id |
+| `map` | json string | No | null | m |
+
+**Returns**: `{success, count, instanceId, entityId}`
+"""
+
+REF_FIND_GROUP = """### foo_find
+Find foo.
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `{group}` | string | No | {cell} | the names |
+| `instanceId` | int | No | 0 | id |
+
+**Returns**: `{success, count, instanceId, entityId}`
+"""
+
+
+class ParamDefaultNormalisationTests(unittest.TestCase):
+    def test_doc_cells_normalise_to_one_canonical_value(self):
+        cases = [
+            ("0.0", ("num", "0")), ("0f", ("num", "0")), ("0", ("num", "0")), ("1.50", ("num", "1.5")),
+            ("1.5", ("num", "1.5")), ("-1f", ("num", "-1")), ("-1", ("num", "-1")),
+            ("`null`", ("null", "")), ("—", ("null", "")), ("–", ("null", "")), ("-", ("null", "")),
+            ("", ("null", "")), ("NONE", ("null", "")), ("TRUE", ("bool", "true")), ("`false`", ("bool", "false")),
+            ('`"local"`', ("str", "local")), ("`local`", ("str", "local")), ('""', ("str", "")),
+        ]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(inv.canonical_default(raw, False), expected)
+
+    def test_code_literals_normalise_to_the_same_values(self):
+        cases = [
+            ("0f", ("num", "0")), ("1.50f", ("num", "1.5")), ("-1f", ("num", "-1")),
+            ("null", ("null", "")), ("true", ("bool", "true")), ("False", ("bool", "false")),
+            ('"local"', ("str", "local")), ('""', ("str", "")), ("string.Empty", ("str", "")),
+            ("SkillMode.Fast", ("str", "Fast")),
+        ]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(inv.canonical_default(raw, True), expected)
+
+    def test_undecidable_code_expressions_are_skipped(self):
+        cases = {
+            "default": "default 关键字", "default(float)": "default 关键字",
+            "(float)0": "调用或括号表达式", "new Vector3(0, 0, 0)": "调用或括号表达式",
+            "int.MaxValue": "常量引用（如 int.MaxValue）", "Vector3.zero": "常量引用（如 int.MaxValue）",
+            "DefaultMode": "标识符常量", "1 << 3": "其它表达式",
+        }
+        for raw, reason in cases.items():
+            with self.subTest(raw=raw):
+                self.assertIsNone(inv.canonical_default(raw, True))
+                self.assertEqual(inv.code_skip_reason(raw), reason)
+
+    def test_doc_free_text_is_compared_as_text(self):
+        self.assertEqual(inv.canonical_default("auto-detect", False), ("str", "auto-detect"))
+        self.assertNotEqual(inv.canonical_default("0 (auto)", False), inv.canonical_default("0", False))
+
+    def test_render_code_default_for_table_cells(self):
+        cases = {"0f": "0", "-1": "-1", "null": "null", "true": "true", '"log"': '"log"',
+                 'string.Empty': '""', "SkillMode.Fast": "Fast"}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(inv.render_code_default(raw), expected)
+        self.assertIsNone(inv.render_code_default("default"))
+
+
+class ParamDefaultTests(unittest.TestCase):
+    def test_drifting_default_is_error_with_location(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS
+        audit = f.audit()
+        found = [x for x in audit.findings if x.code == "param-default"]
+        self.assertEqual(len(found), 1, [x.message for x in audit.findings])
+        self.assertIn("foo_find", found[0].message)
+        self.assertIn("instanceId", found[0].message)
+        self.assertIn("reference/foo_find.md:7", found[0].where)
+
+    def test_matching_defaults_pass(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS.replace("| 1 |", "| 0f |")
+        self.assertNotIn("param-default", codes(f.audit(), "error"))
+
+    def test_merged_row_with_consistent_defaults_compares_one_cell(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_GROUP.replace("{group}", "name`, `map").replace("{cell}", "null")
+        self.assertNotIn("param-default", codes(f.audit(), "error"))
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_GROUP.replace("{group}", "name`, `map").replace("{cell}", "0")
+        self.assertIn("param-default", codes(f.audit(), "error"))
+
+    def test_merged_row_with_inconsistent_csharp_defaults_is_group_error(self):
+        f = Fixture()
+        f.files[inv.SKILLS_DIR + "/FooSkills.cs"] = FOO_SKILLS_CS.replace("int instanceId = 0,", "int instanceId = 5,")
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_GROUP.replace(
+            "{group}", "name`, `instanceId").replace("{cell}", "null").replace("| `instanceId` | int | No | 0 |", "| `instanceId` | int | No | 5 |")
+        audit = f.audit()
+        self.assertIn("param-default-group", codes(audit, "error"))
+        self.assertNotIn("param-default", codes(audit, "error"))
+
+    def test_per_member_cell_compares_each_member(self):
+        sized = FOO_SKILLS_CS.replace('[SkillParam("the name, with a comma")] string name = null, int instanceId = 0,',
+                                      "float sizeX = 10f, float sizeY = 1f,")
+        def fixture(cell: str) -> Fixture:
+            f = Fixture()
+            f.files[inv.SKILLS_DIR + "/FooSkills.cs"] = sized
+            f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_GROUP.replace(
+                "{group}", "sizeX`, `sizeY").replace("{cell}", cell).replace("| `instanceId` | int | No | 0 | id |\n", "")
+            return f
+        self.assertNotIn("param-default", codes(fixture("10, 1").audit(), "error"))
+        found = codes(fixture("10, 9").audit(), "error")
+        self.assertIn("param-default", found)
+        self.assertNotIn("param-default-group", found)
+
+    def test_per_member_cell_with_inconsistent_csharp_values_is_fine(self):
+        sized = FOO_SKILLS_CS.replace('[SkillParam("the name, with a comma")] string name = null, int instanceId = 0,',
+                                      "float sizeX = 10f, float sizeY = 1f,")
+        f = Fixture()
+        f.files[inv.SKILLS_DIR + "/FooSkills.cs"] = sized
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_GROUP.replace(
+            "{group}", "sizeX`, `sizeY").replace("{cell}", "10, 1").replace("| `instanceId` | int | No | 0 | id |\n", "")
+        self.assertNotIn("param-default-group", codes(f.audit(), "error"))
+
+    def test_descriptive_doc_text_stands_for_null(self):
+        def fixture(cell: str) -> Fixture:
+            f = Fixture()
+            f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS.replace(
+                "| `instanceId` | int | No | 1 |", "| `instanceId` | int | No | 0 |").replace(
+                "| `name` | string | No | null |", f"| `name` | string | No | {cell} |")
+            return f
+        self.assertNotIn("param-default", codes(fixture("auto-detect").audit(), "error"))
+        self.assertNotIn("param-default", codes(fixture("`prefab name`").audit(), "error"))
+        self.assertIn("param-default", codes(fixture('"auto"').audit(), "error"))
+
+    def test_instance_id_sentinel_zero_reads_as_null(self):
+        def fixture(cell: str) -> Fixture:
+            f = Fixture()
+            f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS.replace(
+                "| `instanceId` | int | No | 1 |", f"| `instanceId` | int | No | {cell} |")
+            return f
+        for cell in ("0", "-", "null"):
+            self.assertNotIn("param-default", codes(fixture(cell).audit(), "error"), cell)
+        self.assertIn("param-default", codes(fixture("1").audit(), "error"))
+
+    def test_required_parameters_are_skipped(self):
+        f = Fixture()
+        f.files[inv.SKILLS_DIR + "/FooSkills.cs"] = FOO_SKILLS_CS.replace(
+            'Tags = new[] { "foo" }, Outputs = new[] { "count", "entityId", "instanceId" },',
+            'Tags = new[] { "foo" }, Outputs = new[] { "count", "entityId", "instanceId" }, RequiredParams = new[] { "instanceId" },')
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS
+        self.assertNotIn("param-default", codes(f.audit(), "error"))
+
+    def test_requires_input_parameters_are_skipped(self):
+        f = Fixture()
+        f.files[inv.SKILLS_DIR + "/FooSkills.cs"] = FOO_SKILLS_CS.replace(
+            'Tags = new[] { "foo" }, Outputs = new[] { "count", "entityId", "instanceId" },',
+            'Tags = new[] { "foo" }, Outputs = new[] { "count", "entityId", "instanceId" }, RequiresInput = new[] { "map" },')
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS.replace(
+            "| `instanceId` | int | No | 1 |", "| `instanceId` | int | No | 0 |").replace(
+            "| `map` | json string | No | null |", "| `map` | json string | No | 7 |")
+        self.assertNotIn("param-default", codes(f.audit(), "error"))
+
+    def test_sync_tables_rewrites_only_the_default_cell(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/gameobject/reference/foo_find.md"] = REF_FIND_DEFAULTS
+        with tempfile.TemporaryDirectory() as root:
+            write_tree(root, f.files)
+            audit = inv.Audit(root, run_frontmatter=False)
+            audit.run()
+            cells, files = inv.apply_table_fixes(audit.table_fixes)
+            self.assertEqual((cells, files), (1, 1))
+            with open(os.path.join(root, inv.DOCS_DIR, "gameobject/reference/foo_find.md"), encoding="utf-8", newline="") as fh:
+                text = fh.read()
+        self.assertEqual(text, REF_FIND_DEFAULTS.replace("| `instanceId` | int | No | 1 | id |",
+                                                         "| `instanceId` | int | No | 0 | id |"))
+
+    def test_sync_tables_keeps_padding_width(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "t.md")
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write("| `a` | int | No | 10 | d |\n")
+            cells, files = inv.apply_table_fixes([(path, 1, 3, "2")])
+            with open(path, encoding="utf-8", newline="") as fh:
+                self.assertEqual(fh.read(), "| `a` | int | No | 2  | d |\n")
+            self.assertEqual((cells, files), (1, 1))
+
+
 class CliTests(unittest.TestCase):
     def test_json_output_and_exit_code(self):
         f = Fixture()
