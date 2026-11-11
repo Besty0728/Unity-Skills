@@ -2,18 +2,18 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [3.0.0] - 2026-11-10
+## [3.0.0] - 2026-11-11
 
 > **根 Skill 深度优化 + 用户侧评测集，Workflow 时光机与原生 entityId** —— 相对 `origin/main`（已发布 **v2.9.1**）这是一次跨大版本跃迁：Agent 入口文档与可复现评测第一次被当成产品主线一起抬高，而不是附属说明。(1) **根 `SKILL.md` / 模块文档**：按真实跑题结果收紧路由与硬协议，删掉不再需要的 `SKILL_FULL.md`，material / editor / cinemachine / particle / workflow 等改成「入口 + 按需 `reference/`」，入口带字节预算；description 同时覆盖 Editor 自动化与 Unity 设计问答。(2) **用户侧评测集**：面板 Evaluation 四步流程 + 随包纯标准库 Python 评测器 + `/unity-skills-eval`；公开题包 **1.2.0 / 41 题**（运维 21、开发 20；基础 / 标准 / 挑战），私有评分不随包分发；报告带 `grade` / `verdict`。(3) **Workflow 时光机**：只追加日志 + 内容寻址 blobs；空闲检查点、`workflow_restore`、冲突感知与属性三方合并、`scope` 部分回退；History 页按检查点手风琴。(4) **Particle 模块** 31 个技能。(5) **原生 `entityId`**：核心与可选包模块自声明定位参数，6000.4+ 同名物体也能精确命中；给定 id 找不到即报错，不再退回同名。(6) **按项目保存设置**。技能 **839 → 873（+34）**，不删除任何技能。
 
 ### 相对 origin/main（v2.9.1 → 当前 3.0）
 
-比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `2ff4b095`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
+比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `5bb1f55e`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
 
 | 维度 | main（v2.9.1） | 3.0.0（领先） |
 |---|---|---|
 | 包版本 | 2.9.1 | **3.0.0** |
-| 相对提交 | — | **155 个提交**领先 |
+| 相对提交 | — | **157 个提交**领先 |
 | 代码体量 | — | **1408 文件**，约 **+159.5k / −17.3k** 行 |
 | 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **436 文件 / +89.1k** 行 |
 | 其中 Editor | 2.9.1 能力面 | 约 **213 文件 / +33.3k / −5.2k**（Workflow、Particle、Evaluation、entityId、Console…） |
@@ -26,7 +26,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 设置作用域 | 本机全局偏好为主 | **按工程** `UserSettings/UnitySkills/settings.json` |
 | 面板 | 既有标签 | **石墨配色**；History 检查点手风琴；Evaluation 四步 |
 
-提交主题粗分（`v2.9.1..beta` 155 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 34 条为设置、UI、CI、回归与杂项。
+提交主题粗分（`v2.9.1..beta` 157 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 36 条为设置、UI、CI、回归与杂项。
 
 ### 公开题包 1.2.0 结构（41 题）
 
@@ -84,7 +84,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **题包验证（gate）**：每题用参考解（2 次）、反例与替代解在真实编辑器上跑，2022.3.62f2 URP 与 6000.3.9f1 URP 最终都是 **41/41**。中途修了 runner 的提交失败路径（`attempt.py` 计入所有题的 gate 哈希），T9、DC6 先在两个版本重新转绿，OC8 另在全新 Unity 6 URP 工程上验证首跑 teardown；这次改动使其余 39 题的 gate 过期，两个版本全部重跑，编辑器每 3–7 题重启一次，避开长会话里的重载变慢。Unity 6 的 DB6 在一段里跑到后半程，场景断言 F6 开始逐个失败（进入 Play Mode 的重载耗尽场景预算），换新编辑器重试通过；这个误报本身已修复（见 Fixed）。
 - **长会话域重载变慢（Unity / Mono 自身）**：同一编辑器进程里每次域重载都比上一次慢，与是否安装插件无关。空的 6000.3 工程连续 120 次编译重载，第 5–15 次中位 1.64 秒、第 110–120 次 3.08 秒，装上插件为 1.75 / 3.32 秒；评测负载下 6000.3 第 320 次约 17 秒，2022.3 第 308 次约 9 秒。采样显示时间耗在 Mono 共享泛型模板的线性查找上（`rgctx_template_get_other_slot`），这些表跨重载只增不减，只有重启编辑器能清零。插件修正了因此误报的场景超时，并在 `/health` 报告重载耗时（见 Added / Fixed）。
 - **临时 Workflow 回退题**（不入题包，2022.3 URP）：题目先以另一个 agent 的身份搭场景、打检查点并继续修改，再以模拟用户的身份在 Inspector 改一处；被测 Agent 要回退到检查点并保留用户的改动。Haiku、Sonnet、Opus 默认 effort 各 1 次，全部通过；Opus 用了 `agents:"all"`，把模拟用户的改动也回退了，随后自己改回，题目仍判通过。
-- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2752 个，0 失败，89 个按环境跳过；6000.3.9f1 URP 上 2763 个，1 个失败（`DryRunPolicyBatchTests` 中一项读审计日志时撞上后台落盘的时序，单独重跑 3 次均通过），77 个跳过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`2ff4b095`）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2752 个，0 失败，89 个按环境跳过；6000.3.9f1 URP 上 2763 个，0 失败，77 个跳过（`5bb1f55e`）。此前 6000.3 上 `DryRunPolicyBatchTests` 有一项偶发失败，原因是读审计日志时撞上后台落盘，已修复（见 Fixed）；修复后该测试类在两个版本各连跑 5 次均通过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`2ff4b095`，审计日志修复之前；候选提交的完整矩阵由发布流程再跑）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
 
@@ -186,6 +186,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **Unity 6000.4+ 兼容**（PR #66）— 活动场景没有出现在已加载场景列表里时，补回它的根物体（仅限确实已加载的场景，不会重复计数）；两个上游自测在新版本上恢复通过。
 - **面板窗口很矮时 Token 等级徽标被压成扁椭圆** — 徽标改为固定高度的胶囊。
 - **替换底部钉选语言后两个语言按钮都不高亮** — 当前语言被换出钉选位时跟随新选的语言。
+- **写完立刻读审计日志偶尔缺最新一条** — 后台线程已把记录取出、还没落盘时，`GET /permission/audit` 与审计面板的读取不等它，读不到刚写的那条（记录不丢，下次读取就有）。现在读取会等这次落盘结束。这个时序问题自审计日志引入起就存在。
 
 ### Docs
 
