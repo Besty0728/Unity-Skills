@@ -470,6 +470,8 @@ class Registries:
     exceptions: dict[str, list[str]] = field(default_factory=dict)
     pilot_owner: dict[str, tuple[str, str]] = field(default_factory=dict)  # module -> ("category"|"class", value)
     pilot_budgets: dict[str, int] = field(default_factory=dict)
+    module_default_budget: int | None = None
+    module_budget_exceptions: dict[str, int] | None = None
     known_dupes: set[str] = field(default_factory=set)
     known_broken_links: set[str] = field(default_factory=set)
     schema_only: set[str] = field(default_factory=set)
@@ -492,6 +494,13 @@ def load_registries(root: str, findings: list[Finding]) -> Registries:
         reg.exceptions[m.group(1).lower()] = re.findall(r"SkillCategory\.(\w+)", m.group(2))
     body = block_after(nc, sk, "PilotEntryByteBudgets") or ""
     reg.pilot_budgets = {m.group(1): int(m.group(2)) for m in re.finditer(r'\{\s*"([\w-]+)"\s*,\s*(-?\d+)\s*\}', body)}
+    m = re.search(r"\bModuleEntryDefaultByteBudget\b\s*=\s*(\d+)", sk)
+    reg.module_default_budget = int(m.group(1)) if m else None
+    body = block_after(nc, sk, "ModuleEntryByteBudgetExceptions")
+    if body is not None and reg.module_default_budget is not None:
+        reg.module_budget_exceptions = {m.group(1): int(m.group(2)) for m in re.finditer(r'\{\s*"([\w-]+)"\s*,\s*(-?\d+)\s*\}', body)}
+    else:
+        findings.append(Finding("error", "registry-unparsed", f"could not parse module entry budget registry from {TEST_FILE}"))
     body = block_after(nc, sk, "PilotModules") or ""
     for m in re.finditer(r'\(\s*"([\w-]+)"\s*,\s*skill\s*=>\s*([^\n]*)', body):
         cat = re.search(r"Category\s*==\s*SkillCategory\.(\w+)", m.group(2))
@@ -675,6 +684,7 @@ class Audit:
         self.check_overview()
         self.check_mode()
         self.check_pilots()
+        self.check_entry_budgets()
         self.check_undocumented()
         self.check_root_doc()
         self.check_links()
@@ -936,6 +946,27 @@ class Audit:
             elif size > budget:
                 self.add("error", "pilot-budget", f"{module}/{MODULE_DOC} is {size} bytes > budget {budget}")
 
+    def check_entry_budgets(self) -> None:
+        default = self.reg.module_default_budget
+        exceptions = self.reg.module_budget_exceptions
+        if default is None or exceptions is None:
+            return
+        docs_root = os.path.join(self.root, DOCS_DIR)
+        for module in sorted(exceptions):
+            if module in self.reg.pilot_budgets:
+                self.add("error", "entry-budget-registry",
+                         f"`{module}` is a pilot (PilotEntryByteBudgets) and must not also be in ModuleEntryByteBudgetExceptions")
+            elif module not in self.modules:
+                self.add("error", "entry-budget-registry", f"ModuleEntryByteBudgetExceptions lists `{module}`, which has no {MODULE_DOC}")
+        for module in self.modules:
+            if module in self.reg.pilot_budgets:
+                continue
+            size = len(read_text(os.path.join(docs_root, module, MODULE_DOC)).replace("\r", "").encode("utf-8"))
+            limit = exceptions.get(module, default)
+            self.stats.setdefault("entry_bytes", {})[module] = {"bytes": size, "budget": limit}
+            if size > limit:
+                self.add("error", "entry-budget", f"{module}/{MODULE_DOC} is {size} bytes > budget {limit}")
+
     def check_undocumented(self) -> None:
         tokens: set[str] = set()
         docs_root = os.path.join(self.root, DOCS_DIR)
@@ -1174,6 +1205,11 @@ def render_text(audit: Audit, drifts: list[dict], sync: bool, show_all: bool, li
         out.append(f"  root SKILL.md: {r['bytes']} / {r['budget']} bytes (margin {r['budget'] - r['bytes']})")
     for module, p in audit.stats.get("pilot_entry_bytes", {}).items():
         out.append(f"  pilot {module}: {p['bytes']} / {p['budget']} bytes")
+    if audit.stats.get("entry_bytes"):
+        eb = audit.stats["entry_bytes"]
+        within = sum(1 for p in eb.values() if p["bytes"] <= p["budget"])
+        big_name, big = max(eb.items(), key=lambda kv: kv[1]["bytes"])
+        out.append(f"  module entries (non-pilot): {within} / {len(eb)} within budget, largest {big_name} {big['bytes']} / {big['budget']} bytes")
     if "links_checked" in audit.stats:
         out.append(f"  relative doc links checked: {audit.stats['links_checked']}")
     out.extend("  frontmatter: " + line for line in audit.stats.get("frontmatter", []))

@@ -21,7 +21,7 @@ allowed-tools: Bash(python3 .github/scripts/skill_inventory.py:*), Read, Grep, G
 - 计数：唯一技能名（`#if/#else` 同名 stub 去重）、`*Skills.cs` 文件数、`SkillCategory` 数（不含 `Uncategorized`）、模块文档数、advisory 数；`AGENTS.md` / `README.md` / `README_CN.md` 的计数锚点与分类表逐行核对。
 - 元数据：缺 `Category` / `Operation`（error）、缺 `Tags` / `Outputs`（info）、手标 `SemiAuto` 却满足 NeverInSemi 规则（error）。
 - 文档 ↔ 代码：幽灵技能、模块内重复定义、跨模块重复（相对测试里登记的已知冗余）、文档多出/漏记的参数与 batch item 属性、Returns ↔ Outputs ↔ 方法体 `return new {}` 三边比对、`**DO NOT**` 否认了真实技能、Skills Overview 条目、文档声称 SemiAuto 而代码不是。
-- 试点模块（`gameobject` / `component` / `batch` / `script` / `material` / `editor` / `cinemachine` / `particle` / `workflow`，名单取自测试）：文档技能集与代码完全相等、`reference/<skill>.md` 一一对应、入口字节预算。
+- 试点模块（`gameobject` / `component` / `batch` / `script` / `material` / `editor` / `cinemachine` / `particle` / `workflow`，名单取自测试）：文档技能集与代码完全相等、`reference/<skill>.md` 一一对应、入口字节预算。全部非试点模块入口默认预算 8192 字节，超出的须在测试的 `ModuleEntryByteBudgetExceptions` 显式登记，不要为了变绿去抬预算。
 - 模块归属：目录是否映射到 `SkillCategory` 或登记为 advisory；无文档承载的 Category。
 - 文档卫生：根 `SKILL.md` ≤ 8,192 字节（LF 归一化）、`.gitattributes` 行尾锁定、CRLF、相对链接与锚点、`references/` 可达性、frontmatter（复用 `check_skill_frontmatter.py`）。
 

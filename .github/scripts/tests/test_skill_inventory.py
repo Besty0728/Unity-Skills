@@ -92,6 +92,11 @@ TEST_CS = """public class SkillDocumentationConsistencyTests
     {
         { "gameobject", 4000 }
     };
+    private const int ModuleEntryDefaultByteBudget = 8192;
+    private static readonly Dictionary<string, int> ModuleEntryByteBudgetExceptions = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        // @@EXCEPTIONS@@
+    };
 }
 """
 
@@ -336,6 +341,25 @@ class CrossCheckTests(unittest.TestCase):
         f = Fixture()
         f.files[f"{inv.PACKAGE_DIR}/SKILL.md"] += "x" * inv.ROOT_DOC_BYTE_BUDGET
         self.assertIn("root-doc-budget", codes(f.audit(), "error"))
+
+    def test_module_entry_over_default_budget_without_exception_is_error(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/architecture/MODULE.md"] = "x" * 8200
+        self.assertIn("entry-budget", codes(f.audit(), "error"))
+
+    def test_module_entry_within_default_budget_passes(self):
+        f = Fixture()
+        f.files[f"{inv.DOCS_DIR}/architecture/MODULE.md"] = "x" * 8000
+        self.assertNotIn("entry-budget", codes(f.audit()))
+
+    def test_module_entry_exception_budget_is_enforced(self):
+        def fixture(size: int) -> Fixture:
+            f = Fixture()
+            f.files[inv.TEST_FILE] = TEST_CS.replace("// @@EXCEPTIONS@@", '{ "architecture", 9000 },')
+            f.files[f"{inv.DOCS_DIR}/architecture/MODULE.md"] = "x" * size
+            return f
+        self.assertNotIn("entry-budget", codes(fixture(8500).audit()))
+        self.assertIn("entry-budget", codes(fixture(9100).audit(), "error"))
 
     def test_missing_gitattributes(self):
         f = Fixture()

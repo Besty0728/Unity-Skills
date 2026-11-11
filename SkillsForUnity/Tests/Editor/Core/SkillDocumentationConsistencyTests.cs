@@ -243,6 +243,22 @@ namespace UnitySkills.Tests.Core
             { "ui", 6272 }
         };
 
+        // Non-pilot module entries: default 8192 bytes, same measurement. Over-default entries are listed here with
+        // measured size plus ~4% headroom, rounded up to 64 bytes. New modules get the default; do not raise a value to go green.
+        private const int ModuleEntryDefaultByteBudget = 8192;
+
+        private static readonly Dictionary<string, int> ModuleEntryByteBudgetExceptions = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            { "addressables-design", 10496 },
+            { "animator", 9472 },
+            { "cleaner", 9024 },
+            { "console", 8832 },
+            { "dotween", 8640 },
+            { "scriptableobject", 11072 },
+            { "skill-creator", 8768 },
+            { "yooasset-design", 11904 }
+        };
+
         [Test]
         public void SkillDocumentation_ShouldMatchCodeDefinitions()
         {
@@ -868,6 +884,59 @@ namespace UnitySkills.Tests.Core
             }
 
             AssertNoIssues(issues, "试点模块入口超出字节预算（口径：LF 归一化 UTF-8，全文）");
+        }
+
+        /// <summary>
+        /// Byte budget for every non-pilot module entry: <see cref="ModuleEntryDefaultByteBudget"/> unless the module
+        /// is explicitly listed in <see cref="ModuleEntryByteBudgetExceptions"/>. Same measurement as
+        /// <see cref="PilotSkillDoc_ShouldStayWithinByteBudget"/>.
+        /// </summary>
+        [Test]
+        public void ModuleEntryDoc_ShouldStayWithinByteBudget()
+        {
+            var docsRoot = GetDocsRoot();
+            var issues = new List<string>();
+            var modules = Directory.GetDirectories(docsRoot)
+                .Where(dir => File.Exists(Path.Combine(dir, "MODULE.md")))
+                .Select(dir => Path.GetFileName(dir))
+                .ToList();
+
+            foreach (var exception in ModuleEntryByteBudgetExceptions.OrderBy(x => x.Key, StringComparer.Ordinal))
+            {
+                if (PilotEntryByteBudgets.ContainsKey(exception.Key))
+                {
+                    issues.Add($"{exception.Key} 同时登记在 PilotEntryByteBudgets 与 ModuleEntryByteBudgetExceptions，只能保留其一。");
+                }
+
+                if (!modules.Contains(exception.Key))
+                {
+                    issues.Add($"ModuleEntryByteBudgetExceptions 登记的模块不存在: {exception.Key}");
+                }
+            }
+
+            foreach (var module in modules.OrderBy(x => x, StringComparer.Ordinal))
+            {
+                if (PilotEntryByteBudgets.ContainsKey(module))
+                {
+                    continue;
+                }
+
+                var entryPath = Path.Combine(docsRoot, module, "MODULE.md");
+                var normalised = File.ReadAllText(entryPath).Replace("\r\n", "\n").Replace("\r", "\n");
+                var actual = Encoding.UTF8.GetByteCount(normalised);
+                var budget = ModuleEntryByteBudgetExceptions.TryGetValue(module, out var explicitBudget)
+                    ? explicitBudget
+                    : ModuleEntryDefaultByteBudget;
+
+                if (actual > budget)
+                {
+                    issues.Add($"{module}/MODULE.md 为 {actual} 字节，超出 {budget} 字节预算 {actual - budget} 字节。" +
+                               "默认预算 8192 字节；确需更大请在 ModuleEntryByteBudgetExceptions 显式登记实测值加约 4% 余量，" +
+                               "不要为了变绿而抬预算，把内容下沉到 reference/。");
+                }
+            }
+
+            AssertNoIssues(issues, "模块入口超出字节预算（口径：LF 归一化 UTF-8，全文）");
         }
 
         /// <summary>

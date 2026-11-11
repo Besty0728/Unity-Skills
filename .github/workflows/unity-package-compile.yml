@@ -49,6 +49,23 @@ jobs:
       - name: Check SKILL.md frontmatter
         run: python3 .github/scripts/check_skill_frontmatter.py .
 
+  skill-inventory-check:
+    name: Skill Inventory & Doc Consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Audit skill inventory and module doc consistency
+        run: python3 .github/scripts/skill_inventory.py .
+
   meta-guid-check:
     name: .meta Pairing & GUID Uniqueness
     runs-on: ubuntu-latest
@@ -120,6 +137,7 @@ jobs:
     needs:
       - project-version-check
       - skill-frontmatter-check
+      - skill-inventory-check
       - meta-guid-check
       - locale-check
     runs-on: ubuntu-latest
@@ -201,6 +219,7 @@ jobs:
     needs:
       - project-version-check
       - skill-frontmatter-check
+      - skill-inventory-check
       - meta-guid-check
       - editmode
     runs-on: ubuntu-latest
