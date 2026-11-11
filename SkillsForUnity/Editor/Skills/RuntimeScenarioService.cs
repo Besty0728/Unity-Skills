@@ -23,7 +23,9 @@ namespace UnitySkills
         internal static Func<long> LogSeqForTests;
         internal static Func<bool> BackgroundForTests;
         internal static Action<bool> SetBackgroundForTests;
+        internal static Func<bool> CompileFailedForTests;
         private static bool Playing => PlayingForTests?.Invoke() ?? EditorApplication.isPlaying;
+        private static bool CompileFailed => CompileFailedForTests?.Invoke() ?? EditorUtility.scriptCompilationFailed;
         private static bool Background => BackgroundForTests?.Invoke() ?? Application.runInBackground;
         private static void SetPlaying(bool value) { if (SetPlayingForTests != null) SetPlayingForTests(value); else EditorApplication.isPlaying = value; }
         private static void SetBackground(bool value) { if (SetBackgroundForTests != null) SetBackgroundForTests(value); else Application.runInBackground = value; }
@@ -61,6 +63,8 @@ namespace UnitySkills
             if (timeoutSeconds < 1 || timeoutSeconds > 600) return Error("timeoutSeconds must be between 1 and 600.");
             if (executionMode == "edit" && Playing) return Error("An edit scenario requires Edit Mode.");
             if (ServerAvailabilityHelper.IsCompilationInProgress()) return Error("Wait for compilation and asset updating to finish.");
+            // Unity refuses Play Mode while scripts have compile errors; without this the job would wait out the entry limit.
+            if (executionMode == "play" && !Playing && CompileFailed) return Error("Scripts have compile errors, so Play Mode cannot start; fix them first (GET /compile/status lists them).");
             if (BatchPersistence.ListJobs(int.MaxValue).Any(j => j.kind == "run_scenario" && !Terminal(j))) return Error("Another scenario is active; wait or cancel it before starting another.");
             bool startedPlay = executionMode == "play" && !Playing;
             var caller = SkillsAuditLog.CaptureRequestContext();

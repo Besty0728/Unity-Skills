@@ -27,6 +27,7 @@ namespace UnitySkills.Tests.Core
             RuntimeScenarioService.LogSeqForTests = () => 10;
             RuntimeScenarioService.ExecuteForTests = (skill, args) => { _dispatches++; return "{\"status\":\"success\",\"result\":{\"value\":12}}"; };
             ServerAvailabilityHelper.CompilationInProgressOverrideForTests = false;
+            RuntimeScenarioService.CompileFailedForTests = () => false;
         }
 
         [TearDown]
@@ -43,6 +44,7 @@ namespace UnitySkills.Tests.Core
             RuntimeScenarioService.LogSeqForTests = null;
             RuntimeScenarioService.ExecuteForTests = null;
             ServerAvailabilityHelper.CompilationInProgressOverrideForTests = null;
+            RuntimeScenarioService.CompileFailedForTests = null;
             BatchPersistence.FlushIfDirty();
         }
 
@@ -285,6 +287,19 @@ namespace UnitySkills.Tests.Core
             RuntimeScenarioService.Process(job);
             Assert.That(job.status, Is.EqualTo("failed"));
             Assert.That(job.resultData["error"], Is.EqualTo("Scenario timeout; steps will not be replayed."));
+        }
+
+        [Test]
+        public void PlayScenarioIsRejectedWhileScriptsHaveCompileErrors()
+        {
+            RuntimeScenarioService.CompileFailedForTests = () => true;
+            int count = BatchPersistence.ListJobs(int.MaxValue).Length;
+            var response = JObject.FromObject(RuntimeScenarioService.Start("[" + Assertion + "]", "play", 30));
+            Assert.That(response.Value<string>("error"), Does.Contain("compile errors"), response.ToString());
+            Assert.That(BatchPersistence.ListJobs(int.MaxValue).Length, Is.EqualTo(count));
+            Assert.That(_playing, Is.False);
+            Assert.That(_dispatches, Is.Zero);
+            Assert.That(Start("[" + Assertion + "]").status, Is.Not.EqualTo("failed"));
         }
 
         [TestCase(false, false)]
