@@ -15,18 +15,18 @@
 
 ## Exact signatures by name
 
-`GET /skills/schema?names=a,b&wire=v2` returns only the named skills (~2–3 KB for two or three). The answer says `filtered:true`; a server that predates the filter ignores `names=` and returns the whole schema, so check it. Selector-like keys the filter grammar does not have (`skill`, `skills`, `name`, `id`, …) answer 400 `UNKNOWN_PARAM` pointing at `names=` / `q=`.
+`GET /skills/schema?names=a,b&wire=v2` returns only the named skills (~4–7 KB for two or three). The answer says `filtered:true`; a server that predates the filter ignores `names=` and returns the whole schema, so check it. Selector-like keys the filter grammar does not have (`skill`, `skills`, `name`, `id`, …) answer 400 `UNKNOWN_PARAM` pointing at `names=` / `q=`.
 
 ## Wider layers
 
 | Layer | Endpoint | Size | Use when |
 |---|---|---|---|
-| directory | `GET /skills` | ~21 KB | Names by category only, to locate a module. `?full=1` is the complete listing (~707 KB). |
-| category | `GET /skills/schema?category=<Category>&wire=v2` | ~11–14 KB for GameObject / Component (v1 ~25–29 KB) | The task stays in one or two areas. |
-| summary | `GET /skills?summary=1` | ~180 KB | Exploratory or cross-module work, when the cheaper layers left you unsure. |
-| full schema | `GET /skills/schema` | ~707 KB (v2 ~523 KB) | Rare: many modules' signatures at once. |
+| directory | `GET /skills` | ~23 KB | Names by category only, to locate a module. `?full=1` is the complete listing (~853 KB). |
+| category | `GET /skills/schema?category=<Category>&wire=v2` | ~20–21 KB for GameObject / Component (v1 ~36–37 KB) | The task stays in one or two areas. |
+| summary | `GET /skills?summary=1` | ~220 KB | Exploratory or cross-module work, when the cheaper layers left you unsure. |
+| full schema | `GET /skills/schema` | ~853 KB (v2 ~658 KB) | Rare: many modules' signatures at once. |
 
-All layers are server-cached with ETag / `304`; send `Accept-Encoding: gzip`. The sizes were measured on the 805-skill build and grow with the skill count and parameter notes.
+All layers are server-cached with ETag / `304`; send `Accept-Encoding: gzip`. The sizes were measured on the 873-skill build and grow with the skill count and parameter notes.
 
 ## Wire format v2 (`?wire=v2`)
 
