@@ -25,7 +25,7 @@ Key files (`SkillsForUnity/Editor/`):
 - `Locales/{en,zh-CN,ru}.json`: all UI strings.
 - `Versioning/`: self-update. Only files here may name `LocalGitSync` / `GitCliRunner`; the UI uses `LocalSelfUpdateService` (`Check` / `Start`, `ShortSha`, `MaxListedEntries`, the `LocalUpdate*` result types), enforced by `SelfUpdateBoundaryTests`.
 - `UI/`: `UnitySkillsWindow.{cs,uxml,uss}`, `Controllers/*.cs`, `Tabs/*.uxml`, `EditorUiScheduler.cs`, `ShortcutActions.cs`, `UISkillsFontIncrementalUpdater.cs`, `AuditLogWindow`, `AllowlistPickerWindow`, `UnityCliWindow`.
-- `SkillsForUnity/unity-skills~/`: shipped template — `SKILL.md`, `scripts/unity_skills.py`, `skills/` (85 module docs: 55 REST + 30 advisory), `references/` (protocol docs, Unity manual URL indexes, `windows.md` PowerShell / Git Bash guide).
+- `SkillsForUnity/unity-skills~/`: shipped template — `SKILL.md`, `scripts/unity_skills.py`, `skills/` (85 module docs: 55 REST + 30 advisory), `references/` (protocol docs, `windows.md` PowerShell / Git Bash guide).
 
 ## Rules
 

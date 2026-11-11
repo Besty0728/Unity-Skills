@@ -1,6 +1,6 @@
 # references/ — what this directory actually is
 
-Two unrelated kinds of files live here, plus one shell guide. Check which kind you are opening before you read it.
+Protocol documents live here, plus one shell guide. Check which file you are opening before you read it.
 
 ## 1. Protocol documents — `protocol-*.md`
 
@@ -17,25 +17,10 @@ These are the sunk detail of the root `../SKILL.md`, not background reading. Ope
 
 `../SKILL.md` stays small by living off these six; treat them as its chapters.
 
-## 2. Unity manual URL indexes — everything else
-
-`index.md` plus 18 topic files (`other.md`, `shaders.md`, `xr.md`, `physics.md`, …) are a flat **URL index** into `docs.unity3d.com`: each entry is `## <page title>` followed by `**URL:** <link>` — no code, no method signatures, no parameter tables. Read one only when you need the **official doc URL** for a topic, to fetch it or hand the link to the user. Start from [index.md](index.md), which lists every category with its page count, then open the one file you need.
-
-**Size warning** — grep or fetch a specific `##` section rather than reading a whole file:
-
-| File | Size |
-|---|---|
-| `other.md` | ~214 KB (1755 pages — catch-all topic bucket, largest by far) |
-| `shaders.md` | ~90 KB |
-| `xr.md` | ~46 KB |
-| `3d.md` / `physics.md` | ~16 KB each |
-| `2d.md` | ~13 KB |
-| everything else | under 8 KB |
-
-## 3. Shell guide — `windows.md`
+## 2. Shell guide — `windows.md`
 
 [windows.md](windows.md): read it when your commands run in PowerShell (or Git Bash) on Windows: the root doc's calls rewritten for `Invoke-RestMethod`, and the quoting, encoding and `curl` alias traps that break them silently.
 
-## Neither kind answers "what are this skill's parameters?"
+## Neither answers "what are this skill's parameters?"
 
 For exact skill names, parameters, defaults and returns, use the root doc's quick reference or the schema endpoints (`GET /skills/recommend?intent=…&includeSchema=true`, `GET /skills/schema?names=…`) — see "Everything else: one discovery call" in `../SKILL.md` and `protocol-discovery.md`. Nothing in this directory is a substitute for the schema.

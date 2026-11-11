@@ -83,13 +83,16 @@ namespace UnitySkills.Tests.Core
             var target = Install("legacy");
             File.Delete(ManifestPath(target));
             var legacy = Path.Combine(target, "references", "SKILL_FULL.md");
+            var legacyIndex = Path.Combine(target, "references", "index.md");
             var unknown = Path.Combine(target, "references", "notes.md");
             File.WriteAllText(legacy, "a 2.9 template doc");
+            File.WriteAllText(legacyIndex, "a retired URL index");
             File.WriteAllText(unknown, "not ours");
 
             Reinstall(target);
 
             Assert.That(File.Exists(legacy), Is.False, "A copy made before manifests sheds the known retired names.");
+            Assert.That(File.Exists(legacyIndex), Is.False, "A copy made before manifests sheds the retired URL indexes.");
             Assert.That(File.Exists(unknown), Is.True, "Any other file is the user's.");
             Assert.That(File.Exists(ManifestPath(target)), Is.True, "The reinstall writes a manifest.");
         }

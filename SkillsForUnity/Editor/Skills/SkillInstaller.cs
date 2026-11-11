@@ -777,8 +777,8 @@ namespace UnitySkills
         internal const string InstallManifestFileName = "install_manifest.json";
 
         /// <summary>
-        /// Template files removed before install manifests existed; copies made by 2.9.x and earlier carry no manifest,
-        /// so these names are how such a copy sheds them. Frozen: from 3.0 on, the manifest finds removed files.
+        /// Template files removed before install manifests existed. Only copies without a manifest (2.9.x and earlier)
+        /// rely on this list; copies with a manifest find removed files through it.
         /// </summary>
         private static readonly string[] LegacyRetiredTemplatePaths =
         {
@@ -787,6 +787,25 @@ namespace UnitySkills
             "skills/detailed_report.txt",
             "test_cinemachine_deep.py",
             "test_cinemachine_v16.py",
+            "references/index.md",
+            "references/2d.md",
+            "references/3d.md",
+            "references/animation.md",
+            "references/assets.md",
+            "references/audio.md",
+            "references/editor.md",
+            "references/networking.md",
+            "references/optimization.md",
+            "references/other.md",
+            "references/physics.md",
+            "references/platform.md",
+            "references/rendering.md",
+            "references/scene_management.md",
+            "references/scripting.md",
+            "references/services.md",
+            "references/shaders.md",
+            "references/ui.md",
+            "references/xr.md",
         };
 
         /// <summary>What an install wrote: template paths (forward slashes) and the SHA256 of each installed file.</summary>

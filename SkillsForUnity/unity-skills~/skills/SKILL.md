@@ -5,7 +5,7 @@ description: Index of all Unity Skills modules with per-module mode labels (SA/F
 
 # Unity Skills: Module Index
 
-Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema-first rules.
+Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema-first rules. Protocol chapters (discovery layers, operating mode, error codes, observability): [references](../references/README.md).
 
 > **Multi-instance**: For version-specific projects, call `unity_skills.set_unity_version(...)` first.
 > **Schema-first**: Exact signatures come from `GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` (`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")`) or from `GET /skills/schema?names=a,b&wire=v2` when the name is known. The full `GET /skills/schema` is about 707 KB. Module docs add workflow guidance and guardrails.
@@ -76,8 +76,6 @@ Mode labels are guidance only: `SA` means the module's skills mostly run directl
 ## Advisory modules
 
 Documentation only. These modules define no REST skills. Each description matches the first lines of its doc.
-
-Official Unity manual URLs for a topic, to fetch or hand to the user: [references](../references/README.md). Grep one `##` section; never read a whole index file.
 
 | Module | Description |
 |--------|-------------|
