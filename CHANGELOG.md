@@ -2,23 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [3.0.0] - 2026-11-11
+## [3.0.0] - 2026-11-12
 
 > **根 Skill 深度优化 + 用户侧评测集，Workflow 时光机与原生 entityId** —— 相对 `origin/main`（已发布 **v2.9.1**）这是一次跨大版本跃迁：Agent 入口文档与可复现评测第一次被当成产品主线一起抬高，而不是附属说明。(1) **根 `SKILL.md` / 模块文档**：按真实跑题结果收紧路由与硬协议，删掉不再需要的 `SKILL_FULL.md`，material / editor / cinemachine / particle / workflow 等改成「入口 + 按需 `reference/`」，入口带字节预算；description 同时覆盖 Editor 自动化与 Unity 设计问答。(2) **用户侧评测集**：面板 Evaluation 四步流程 + 随包纯标准库 Python 评测器 + `/unity-skills-eval`；公开题包 **1.2.0 / 41 题**（运维 21、开发 20；基础 / 标准 / 挑战），私有评分不随包分发；报告带 `grade` / `verdict`。(3) **Workflow 时光机**：只追加日志 + 内容寻址 blobs；空闲检查点、`workflow_restore`、冲突感知与属性三方合并、`scope` 部分回退；History 页按检查点手风琴。(4) **Particle 模块** 31 个技能。(5) **原生 `entityId`**：核心与可选包模块自声明定位参数，6000.4+ 同名物体也能精确命中；给定 id 找不到即报错，不再退回同名。(6) **按项目保存设置**。技能 **839 → 873（+34）**，不删除任何技能。
 
+> **2026-11-12 重发**：首发（2026-11-11，`aa955d9d`）之后补了一批模块文档层的修复，仍用 3.0.0 版本号，`v3.0.0` tag 已移到新提交。已装首发 3.0.0 的用户不会收到更新提示，已装到 agent 目录的 Skill 文档也不会自动同步（自动同步只在版本号变化时触发），git clone 安装的本地自更新会拒绝被移动的 tag：需要重新拉包，并在面板 AI 配置页先卸载再安装一次 Skill（同版本号直接安装会被跳过），步骤见 Release 说明。
+
 ### 相对 origin/main（v2.9.1 → 当前 3.0）
 
-比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `5bb1f55e`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
+比对基准：tag `v2.9.1` @ `42cfcc5a`（package **2.9.1**）→ `beta` @ `256a8232`。体量为 `git diff --shortstat v2.9.1...beta` 口径（与 `origin/main...beta` 相同，main 之后只多了 Star History 图表提交）。
 
 | 维度 | main（v2.9.1） | 3.0.0（领先） |
 |---|---|---|
 | 包版本 | 2.9.1 | **3.0.0** |
-| 相对提交 | — | **157 个提交**领先 |
-| 代码体量 | — | **1408 文件**，约 **+159.5k / −17.3k** 行 |
+| 相对提交 | — | **169 个提交**领先 |
+| 代码体量 | — | **1501 文件**，约 **+162.5k / −40.1k** 行 |
 | 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **436 文件 / +89.1k** 行 |
-| 其中 Editor | 2.9.1 能力面 | 约 **213 文件 / +33.3k / −5.2k**（Workflow、Particle、Evaluation、entityId、Console…） |
-| 其中测试 | — | 约 **195 文件 / +23.2k / −0.4k** |
-| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7661 B**（7936 B 起步，评测补规则到 8188 B，逐句重写到 7433 B，再加 advisory 路由）；`SKILL_FULL` **删除**；85 个模块文档统一英文骨架，大模块拆出 `reference/`（约 532 文件 / +10.5k / −11.1k） |
+| 其中 Editor | 2.9.1 能力面 | 约 **222 文件 / +33.6k / −5.3k**（Workflow、Particle、Evaluation、entityId、Console…） |
+| 其中测试 | — | 约 **200 文件 / +23.5k / −0.4k** |
+| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7694 B**（7936 B 起步，评测补规则到 8188 B，逐句重写到 7433 B，再加 advisory 路由）；`SKILL_FULL` **删除**；85 个模块文档统一英文骨架，大模块拆出 `reference/`（约 611 文件 / +12.4k / −33.8k）；模块入口改名为 `MODULE.md`、索引改名为 `skills/INDEX.md`，`references/` 删掉 19 个 URL 索引文件 |
 | 技能数 | 839 | **873（+34）** |
 | 用户侧公开题 | 无 | **41 题 / pack 1.2.0** |
 | Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
@@ -26,7 +28,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 | 设置作用域 | 本机全局偏好为主 | **按工程** `UserSettings/UnitySkills/settings.json` |
 | 面板 | 既有标签 | **石墨配色**；History 检查点手风琴；Evaluation 四步 |
 
-提交主题粗分（`v2.9.1..beta` 157 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 36 条为设置、UI、CI、回归与杂项。
+提交主题粗分（首发时 `v2.9.1..beta` 的 157 条 oneline，按主题关键词归类）：评测相关约 62、Workflow 约 21、Particle 约 10、文档 / Skill 约 9、entityId / finder 约 8、Console 约 4、安装器约 4、可选包约 3，其余约 36 条为设置、UI、CI、回归与杂项。其后的 12 条（首发的版本提交 1 条、重发的 11 条）未归类，重发的 11 条都属于文档 / Skill。
 
 ### 公开题包 1.2.0 结构（41 题）
 
@@ -79,12 +81,21 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 合计通过 97 → 97，脚本题（dev）47 → 47；删除前不 dryRun、`scene_save` 的 dryRun 都是 0。xhigh 的失败调用上升来自 T7 一个会话：它逐个查 21 个本来就没有 BoxCollider 的箱子，每次都是 `TARGET_NOT_FOUND`，题目仍然通过，去掉这个会话为 0.32。auto 模式抽查（Haiku medium，不计分）：删除与建脚本拿到 `MODE_FORBIDDEN` 后如实转告用户、给出 Bypass / 允许列表两条路，没有绕路直接写文件；普通移动直接执行。
 
+**重发前的同日对照**（Claude Code 2.1.322 无头模式 + Haiku 5.5 · medium，Unity 2022.3.62f2 URP，ops / dev 的基础 + 标准共 25 题，每题 1 次；两组同一天、同一环境、同一编辑器）：
+
+| 被测代码 | 通过 | 处理 token/题 | 耗时/题 | 请求/题 | 失败调用/题 | 读过模块文档的题 |
+|---|---:|---:|---:|---:|---:|---:|
+| 首发 3.0.0（`aa955d9d`） | 24 + 1 部分通过 | 248K | 130 s | 8.08 | 0.28 | 0 |
+| 重发 3.0.0 | **25** | 246K | 100 s | 8.56 | 0.60 | 2 |
+
+逐题配对的 token 差均值 −2.5K（t = −0.13），没有可分辨的差别。失败调用的 15 次里有 9 次来自 T4 一个会话：agent 自己猜了不存在的 `component_get_serialized_property` 并在循环里连调，题目仍通过。读了模块文档的两题是 T2（ui）和 T5（prefab），都是 schema 条目带 `doc` 的模块。上面「根文档重写后的复测」表里 medium 的 213K 是 11 月 7 日用 Claude Code 2.1.312 跑的 D 版候选；首发代码今天在 2.1.322 下是 248K。这 35K 的差距出现在首发之前（宿主版本和首发前最后几处文档微调都变了，没有再拆开测），不是这次重发带来的。
+
 - **Unity 6 URP 正式评测**（Claude Code 2.1.312 无头模式 + Haiku 5.5 · max，Unity 6000.3.9f1 URP，插件 3.0.0，41 题每题 1 次）：通过 **39/41**，完全通过率 95.1%，平均完成度 97.5%，等级优秀；Agent 用时合计 352 分钟，处理 token 38.9M，费用 $3.22。没通过的两题：T9（42.5%）代码改对了，但 agent 提交前自己重载场景，判题器仍用旧 instanceId，属判题局限，已改为按路径定位；OC8（55%）Haiku 认定没有技能能定义 Layer 而放弃（当时确实只能用通用属性写入，文档还写着 Layer 只读），已补 `project_add_layer`。实例钉 100%，幻觉调用 0。OS2 首次因 API 连续重试判无效，重跑通过。
 - **Unity 6 评测中发现的插件问题**：scenario 计时（DS3 的 D10）被 `batch_state.json` 每步整份重写拖慢、日志证据撑大作业历史、Workflow 清掉 `ProjectSettings` 快照路径、回退 `ProjectSettings` 后不落盘，均已修复（见 Fixed）。起初怀疑是后台编辑器节流，实测窗口可见时 Play Mode 约 670 fps，排除。
 - **题包验证（gate）**：每题用参考解（2 次）、反例与替代解在真实编辑器上跑，2022.3.62f2 URP 与 6000.3.9f1 URP 最终都是 **41/41**。中途修了 runner 的提交失败路径（`attempt.py` 计入所有题的 gate 哈希），T9、DC6 先在两个版本重新转绿，OC8 另在全新 Unity 6 URP 工程上验证首跑 teardown；这次改动使其余 39 题的 gate 过期，两个版本全部重跑，编辑器每 3–7 题重启一次，避开长会话里的重载变慢。Unity 6 的 DB6 在一段里跑到后半程，场景断言 F6 开始逐个失败（进入 Play Mode 的重载耗尽场景预算），换新编辑器重试通过；这个误报本身已修复（见 Fixed）。
 - **长会话域重载变慢（Unity / Mono 自身）**：同一编辑器进程里每次域重载都比上一次慢，与是否安装插件无关。空的 6000.3 工程连续 120 次编译重载，第 5–15 次中位 1.64 秒、第 110–120 次 3.08 秒，装上插件为 1.75 / 3.32 秒；评测负载下 6000.3 第 320 次约 17 秒，2022.3 第 308 次约 9 秒。采样显示时间耗在 Mono 共享泛型模板的线性查找上（`rgctx_template_get_other_slot`），这些表跨重载只增不减，只有重启编辑器能清零。插件修正了因此误报的场景超时，并在 `/health` 报告重载耗时（见 Added / Fixed）。
 - **临时 Workflow 回退题**（不入题包，2022.3 URP）：题目先以另一个 agent 的身份搭场景、打检查点并继续修改，再以模拟用户的身份在 Inspector 改一处；被测 Agent 要回退到检查点并保留用户的改动。Haiku、Sonnet、Opus 默认 effort 各 1 次，全部通过；Opus 用了 `agents:"all"`，把模拟用户的改动也回退了，随后自己改回，题目仍判通过。
-- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2752 个，0 失败，89 个按环境跳过；6000.3.9f1 URP 上 2763 个，0 失败，77 个跳过（`5bb1f55e`）。此前 6000.3 上 `DryRunPolicyBatchTests` 有一项偶发失败，原因是读审计日志时撞上后台落盘，已修复（见 Fixed）；修复后该测试类在两个版本各连跑 5 次均通过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`2ff4b095`，审计日志修复之前；候选提交的完整矩阵由发布流程再跑）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+- **回归**：完整 EditMode 在 2022.3.62f2 URP 上 2752 个，0 失败，89 个按环境跳过；6000.3.9f1 URP 上 2763 个，0 失败，77 个跳过（`5bb1f55e`）。此前 6000.3 上 `DryRunPolicyBatchTests` 有一项偶发失败，原因是读审计日志时撞上后台落盘，已修复（见 Fixed）；修复后该测试类在两个版本各连跑 5 次均通过。CI 在 2022.3.62f1、6000.0.76f1、6000.2.11f1、6000.3.18f1、6000.4.12f1、6000.5.11f1 六个版本的 EditMode 与可选包作业全部通过（`2ff4b095`，审计日志修复之前；候选提交的完整矩阵由发布流程再跑）。真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。重发批次（`4d3d152f`，其后只有一个文档提交和一处提示文本）：本机 2022.3.62f2 开发工程 2761 个，0 失败，108 个跳过；6000.3.9f1 开发工程 2760 个，0 失败，99 个跳过，跳过的是这两个工程没装的 URP 与可选包对应的测试；候选提交的完整矩阵由发布流程再跑。
 
 ### Added
 
@@ -106,6 +117,9 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`project_add_layer` 定义 Layer** — 在 Tags & Layers 里定义一个命名 Layer，可选 `index` 指定槽位（8–31，省略则用第一个空的用户槽位），撤销与重做经 Workflow 回滚。此前没有专用技能，文档还写着 Layer 只读，所以补上。
 - **`domainReload` 重载耗时** — `/health` 与 `editor_get_state` 新增 `domainReload {count, lastMs, recentMs, baselineMs, restartRecommended}`，记录本次编辑器会话的域重载耗时（从旧域卸载前到新域第一次 update）。至少 10 次重载、最近 3 次的中位数达到前 5 次中位数的 3 倍且不少于 10 秒时，`restartRecommended` 为 true，文档要求 Agent 请用户保存后重启 Unity，不自行关闭编辑器。不输出日志。
 - **HybridCLR 9.x 支持** — 8.12+ 与 9.x 同时支持（9.0 起 Editor 类型从 `HybridCLR.Editor.*` 移到 `HybridCLR.*`）：类型按两种全名解析，`hybridclr_status` / `install_status` 输出 `apiLine`；设置统一经 `SettingsUtil.HybridCLRSettings` 读写，工作流快照只覆盖当前版本线存在的字段（9.x 含 `linkPreserveLevel`）。9.x 删除的 `patchAOTAssemblies` 等三个字段在 `settings_get` 里为 null 并列入 `unsupportedFields`，`settings_set` 拒绝写入并给出替代项；`generate_step` 的 `clean_il2cpp_cache` 仅 8.x、`method_bridge_empty` 仅 9.x；`copy_hotupdate_dlls(includeAotAssemblies)` 在 9.x 上按生成的 `PatchedAOTAssemblyList` 复制，没有列表就报错；`install_status` 输出 `supportedUnityVersions`，并区分「当前 Unity 不受支持」与「未安装」；数据目录按版本线解析（9.x 为 `Library/HybridCLR`）。模块文档说明上游包自带的 AI 技能只作参考。实测：6000.3 与 2022.3 上的 8.15.0、9.0.3，以及 8.x 写的设置资产被 9.x 读取；两条线都装好 il2cpp_plus 后跑通 `generate_all` → `aot_generic_refs` → `copy_hotupdate_dlls(includeAotAssemblies)`（9.x 按生成的列表、8.x 按 `patchAOTAssemblies` 拷出 mscorlib / System.Core），`validate_setup` 全部通过。
+- **v2 schema 条目带 `doc`**：UI、UIToolkit、Prefab、Animator、ShaderGraph、Particle 六个模块有参数说明和报错都装不下的多技能流程规则，它们的 v2 schema 条目（`/skills/schema?wire=v2`、带 `includeSchema` 的 recommend）现在带 `doc` 指向模块文档，共 164 个技能；v1 不变。v2 全量 schema 因此增大约 11 KB（约 1.7%）。
+- **`SKILL_NOT_FOUND` 先给出正确技能**：登记了 120 个 agent 常编出来、编辑距离又对不上的名字（`SkillMisnomers`）。例如 `gameobject_move` 以前得到 `gameobject_find` / `gameobject_rename`，现在第一条建议是 `gameobject_set_transform`。
+- **文档一致性检查扩大**：`skill_inventory.py` 核对模块文档参数表的类型、必填、默认值与 C# 签名（1184 个参数，实际漂移 1 处），`--sync-tables` 可回写；85 个模块入口都有字节预算（默认 8192，8 个登记例外）；CI 新增 `skill-inventory-check`。
 
 ### Changed
 
@@ -135,7 +149,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`MODE_FORBIDDEN` 写明谁能解除** — 执行与 dryRun 授权预览共用同一句 hint：只有用户能解除，切到 Bypass 或把该技能加入面板的允许列表；不再建议「换一个技能」。
 - **dryRun v2 的 `note` 说明 `valid:true`** — v2 响应写明 `valid:true` 只表示没有校验错误、警告不拦截；技能没有规划器且校验通过时追加「target was not looked up」，免得把 `valid:true` 当成目标存在。v1 响应逐字节不变。
 - **`waitUrl` 带实例钉** — `script_*`、`asset_refresh` 等返回的 `waitUrl` 变为 `/jobs/<id>?wait=90&expectInstance=<instanceId>`，端口换人后照原样 GET 会得到 409 `INSTANCE_MISMATCH` 而不是别的编辑器的 404。Python 客户端自己拼查询串，不受影响。
-- **Unity CLI 对齐 `1.0.0-beta.17`** — `skills/unity-cli/SKILL.md`、`references/protocol-unity-cli.md` 从 beta.9 对齐到 beta.17：
+- **Unity CLI 对齐 `1.0.0-beta.17`** — `skills/unity-cli/MODULE.md`、`references/protocol-unity-cli.md` 从 beta.9 对齐到 beta.17：
   - `--args` 改为一个带引号的字符串（照旧写法 beta.17 直接报 `INVALID_COMMAND_ARGS`）；`run` 示例去掉 `-quit`，列出 CLI 自管的保留参数；
   - 「不要做」清单改为**白名单**，只列允许的只读命令与受 `features` 开关约束的 `open` / `test` / `run` / `build`；
   - beta16 起 `build --target` 会借用已打开的 Editor 并切换其构建目标，build 前必须先做存活检查；
@@ -149,6 +163,10 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **YooAsset 每条版本线锁到一个小版本** — 2.x 为 `[2.3.15,2.4.0-0)`，3.x 为 `[3.0.4,3.1.0-0)`。原来的 `[2.3.15,3.0)` 会把 openupm 上的 `3.0.0-beta` 算进 2.x（预发布版排在正式版之前），用 2.x 代码编译 3.x API 会让整个插件编译失败；上界写成 `-0`，下一个小版本的预发布版也不会进入区间。YooAsset 在小版本之间也改 Editor API（如 2.2 → 2.3），新小版本出来时如实报不支持，而不是编译失败。
 - **可选包 CI** — 6000.3 作业改钉 YooAsset 3.0.7；2022.3 作业新装 YooAsset 2.3.19（floor 6）。NGO 仍钉 2.13.3；HybridCLR 不能在 CI 分发，靠本地实测。编译矩阵的 6000.5 改用 6000.5.11f1（6000.5.0f1 的 CI 镜像已下架）；Workflow 回退测试显式切到 Bypass（新安装默认 Auto，CI 上删除与 `scene_save` 会被拦截），导入工作进程门禁测试跳过 NGO 的 IL 后处理器注入的 `NetworkVariableSerializationHelper`。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
+- **模块入口改名**：`skills/<module>/SKILL.md` → `skills/<module>/MODULE.md`，`skills/SKILL.md` → `skills/INDEX.md`，去掉 frontmatter。原因：发现器把每个名为 `SKILL.md` 的文件都注册成独立 skill，Codex CLI 0.163.0 实测根 + 索引 + 85 个模块共注册 87 条，改名后只剩根 1 条。安装器会清掉旧副本里的旧文件名。
+- **只写在模块文档里的规则搬进 schema**：55 个 REST 模块逐条审计，46 条「违反时结果错误却没有报错」或「报错但缺修复信息」的规则写进了技能描述、参数说明和报错文本（29 个 `*Skills.cs`）。
+- **根 `SKILL.md`**：只在 schema 条目带 `doc`、或响应点名某份文档时才打开模块文档；7661 B → 7694 B。
+- **删除 `references/` 下 19 个 URL 索引文件**（18 个主题文件 + `index.md`）；安装器会从旧副本里清掉。
 
 ### Fixed
 
@@ -187,6 +205,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **面板窗口很矮时 Token 等级徽标被压成扁椭圆** — 徽标改为固定高度的胶囊。
 - **替换底部钉选语言后两个语言按钮都不高亮** — 当前语言被换出钉选位时跟随新选的语言。
 - **写完立刻读审计日志偶尔缺最新一条** — 后台线程已把记录取出、还没落盘时，`GET /permission/audit` 与审计面板的读取不等它，读不到刚写的那条（记录不丢，下次读取就有）。现在读取会等这次落盘结束。这个时序问题自审计日志引入起就存在。
+- **文档与代码不符的几处**：`SKILL_GUIDE.md` 不再说默认是 Approval 模式（以 `/health` 的 `currentMode` 为准）；`references/windows.md` 示例端口改为 `<port>`；console 文档的默认值 `"Log"` 改为 `"log"`；importer、validation、prefab 模块文档按代码订正；schema 各层体积按 873 技能重测（全量约 853 KB、v2 约 658 KB），`briefHint` 同步。
 
 ### Docs
 
