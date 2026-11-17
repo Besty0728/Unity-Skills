@@ -2,6 +2,23 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [3.0.1] - 2026-11-17
+
+> **修复 Play Mode 下挂起脚本重编译导致 `editor_stop` 被拦截的死锁（#68）** —— 在默认 `Recompile After Finished Playing` 下，Play 期间修改脚本会使 `EditorApplication.isCompiling` 持续为 `true` 并等待退出 Play Mode 后再完成编译与重载；现在传输层编译守卫对 `POST /skill/editor_stop`（含 `dryRun`）放行，同时保留模式 / 白名单权限门控与 `beforeAssemblyReload` 域卸载保护，普通技能在 Play 期间命中 `503 COMPILING` 时也会提示调用 `editor_stop` 解锁。873 个技能不变。
+
+### Fixed
+
+- **Play Mode 下编译守卫拦截 `editor_stop` 导致死锁（#68）** — 在未进入 `AssemblyReloadEvents.beforeAssemblyReload` 同步卸载阶段（`!_domainReloadPending`）时，允许 `POST /skill/editor_stop`（忽略大小写，含 `?mode=dryRun`）穿过 `503 COMPILING` 编译守卫执行 `EditorApplication.isPlaying = false`，从而释放被 Play Mode 挂起的脚本编译与 Domain Reload；请求仍完整经过 Surface Profile 与 Operating Mode / Allowlist 权限门控，`_domainReloadPending` 域卸载阶段、其他普通技能及 `POST /skills/batch` 继续返回 `503 COMPILING`。
+
+### Changed
+
+- **Play Mode 期间 `503 COMPILING` 诊断提示增强** — `RejectIfCompiling` 返回的 `details` 新增 `isPlaying` 字段，并在 `isPlaying == true` 时于 `suggestion` 明确指引调用 `POST /skill/editor_stop` 退出 Play Mode 以完成挂起的编译与重载。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.1`。
+
+### Docs
+
+- **编译守卫与 Play Mode 协议说明** — `references/protocol-error-codes.md`（`COMPILING` 条目）与 `skills/editor/MODULE.md` 补充 Play Mode 挂起编译时 `editor_stop` 豁免说明。
+
 ## [3.0.0] - 2026-11-12
 
 > **根 Skill 深度优化 + 用户侧评测集，Workflow 时光机与原生 entityId** —— 相对 `origin/main`（已发布 **v2.9.1**）这是一次跨大版本跃迁：Agent 入口文档与可复现评测第一次被当成产品主线一起抬高，而不是附属说明。(1) **根 `SKILL.md` / 模块文档**：按真实跑题结果收紧路由与硬协议，删掉不再需要的 `SKILL_FULL.md`，material / editor / cinemachine / particle / workflow 等改成「入口 + 按需 `reference/`」，入口带字节预算；description 同时覆盖 Editor 自动化与 Unity 设计问答。(2) **用户侧评测集**：面板 Evaluation 四步流程 + 随包纯标准库 Python 评测器 + `/unity-skills-eval`；公开题包 **1.2.0 / 41 题**（运维 21、开发 20；基础 / 标准 / 挑战），私有评分不随包分发；报告带 `grade` / `verdict`。(3) **Workflow 时光机**：只追加日志 + 内容寻址 blobs；空闲检查点、`workflow_restore`、冲突感知与属性三方合并、`scope` 部分回退；History 页按检查点手风琴。(4) **Particle 模块** 31 个技能。(5) **原生 `entityId`**：核心与可选包模块自声明定位参数，6000.4+ 同名物体也能精确命中；给定 id 找不到即报错，不再退回同名。(6) **按项目保存设置**。技能 **839 → 873（+34）**，不删除任何技能。
