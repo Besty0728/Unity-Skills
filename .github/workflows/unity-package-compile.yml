@@ -109,6 +109,14 @@ jobs:
           # 3.12 inlines comprehensions (PEP 709): a name a comprehension shadows behaves differently there.
           - '3.12'
           - '3.x'
+        exclude:
+          # ubuntu-latest migrated to Ubuntu 26.04, which actions/python-versions does not build Python 3.9 for;
+          # pin the Linux 3.9 leg to ubuntu-24.04 so the Python 3.9+ POSIX contract stays tested.
+          - os: ubuntu-latest
+            python-version: '3.9'
+        include:
+          - os: ubuntu-24.04
+            python-version: '3.9'
     steps:
       - uses: actions/checkout@v4
 

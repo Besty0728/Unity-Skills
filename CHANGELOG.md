@@ -9,6 +9,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Fixed
 
 - **Play Mode 下编译守卫拦截 `editor_stop` 导致死锁（#68）** — 在未进入 `AssemblyReloadEvents.beforeAssemblyReload` 同步卸载阶段（`!_domainReloadPending`）时，允许 `POST /skill/editor_stop`（忽略大小写，含 `?mode=dryRun`）穿过 `503 COMPILING` 编译守卫执行 `EditorApplication.isPlaying = false`，从而释放被 Play Mode 挂起的脚本编译与 Domain Reload；请求仍完整经过 Surface Profile 与 Operating Mode / Allowlist 权限门控，`_domainReloadPending` 域卸载阶段、其他普通技能及 `POST /skills/batch` 继续返回 `503 COMPILING`。
+- **CI 矩阵 Python 3.9 Linux 运行器适配** — `ubuntu-latest` 升级到 Ubuntu 26.04 后官方 `actions/python-versions` 不再提供 26.04 的 Python 3.9 预编译包；将 Linux Python 3.9 测试矩阵固定到 `ubuntu-24.04`，继续保障评测运行器的 Python 3.9+ POSIX 兼容契约。
 
 ### Changed
 
