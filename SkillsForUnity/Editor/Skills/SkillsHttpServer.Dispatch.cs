@@ -333,11 +333,12 @@ namespace UnitySkills
             // Execute / DryRun / Plan a skill
             if (path.StartsWith("/skill/", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
             {
-                if (RejectIfCompiling(job))
+                // Extract the skill name (preserving original casing) before the compile guard so editor_stop
+                // can still exit Play Mode when compilation is deferred during Play Mode.
+                string skillName = job.Path.Substring(7);
+                if (RejectIfCompiling(job, skillName))
                     return;
 
-                // Extract the skill name (preserving original casing) and validate it
-                string skillName = job.Path.Substring(7);
                 if (skillName.Contains("/") || skillName.Contains("\\") || skillName.Contains(".."))
                 {
                     job.StatusCode = 400;
@@ -481,24 +482,35 @@ namespace UnitySkills
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
         }
 
+        private static bool IsAllowedWhileCompiling(string skillName) =>
+            string.Equals(skillName, "editor_stop", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>
         /// Writes a 503 COMPILING response when Unity is compiling or a domain reload is pending; returns true if the
         /// request was rejected. Shared by POST /skill/{name} and POST /skills/batch (which misses the "/skill/" prefix check).
         /// </summary>
-        private static bool RejectIfCompiling(RequestJob job)
+        private static bool RejectIfCompiling(RequestJob job, string skillName = null)
         {
             if (!_domainReloadPending && !ServerAvailabilityHelper.IsCompilationInProgress())
                 return false;
+            if (!_domainReloadPending && IsAllowedWhileCompiling(skillName))
+                return false;
+
+            bool isPlaying = EditorSkills.IsPlaying;
+            string suggestion = isPlaying && !_domainReloadPending
+                ? "Unity is compiling while Play Mode is active. If Unity is waiting for Play Mode to exit before finishing compilation or domain reload, call POST /skill/editor_stop (allowed during compilation) and then retry."
+                : "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.";
 
             job.StatusCode = 503;
             job.ResponseJson = SkillErrorResponse.Build(
                 SkillErrorCode.Compiling,
                 "Unity is compiling or reloading scripts",
                 details: new {
-                    isCompiling = EditorApplication.isCompiling,
+                    isCompiling = ServerAvailabilityHelper.CompilationInProgressOverrideForTests ?? EditorApplication.isCompiling,
                     isUpdating = EditorApplication.isUpdating,
+                    isPlaying = isPlaying,
                     domainReloadPending = _domainReloadPending,
-                    suggestion = "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.",
+                    suggestion = suggestion,
                     manualAction = "If this persists, check Unity Editor for compilation errors or stuck dialogs.",
                 },
                 retryStrategy: SkillErrorResponse.RetryWaitAndRetry,

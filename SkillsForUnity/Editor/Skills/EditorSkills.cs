@@ -14,6 +14,16 @@ namespace UnitySkills
     [InitializeOnLoad]
     public static class EditorSkills
     {
+        internal static Func<bool> PlayingForTests;
+        internal static Action<bool> SetPlayingForTests;
+        internal static bool IsPlaying => PlayingForTests?.Invoke() ?? EditorApplication.isPlaying;
+
+        private static void SetPlaying(bool value)
+        {
+            if (SetPlayingForTests != null) SetPlayingForTests(value);
+            else EditorApplication.isPlaying = value;
+        }
+
         static EditorSkills()
         {
             if (ImportWorkerGate.IsWorkerProcess) return;
@@ -64,10 +74,10 @@ namespace UnitySkills
             MayEnterPlayMode = true, SupportsDryRun = false)]
         public static object EditorStop()
         {
-            if (!EditorApplication.isPlaying)
+            if (!IsPlaying)
                 return new { error = "Not in play mode: nothing to stop. Call editor_play to enter Play Mode." };
 
-            EditorApplication.isPlaying = false;
+            SetPlaying(false);
             return new { success = true, mode = "stopped" };
         }
 

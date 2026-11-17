@@ -9,7 +9,7 @@ Observe and control the Unity Editor without parsing scene YAML: play mode, sele
 - Executing menu items
 
 ## Rules
-- Play-mode skills are NeverInSemi: `editor_play`, `editor_play_capture`, `editor_stop`, `editor_pause` and `editor_run_scenario` (`MayEnterPlayMode`). `editor_execute_menu` is also NeverInSemi because reload-triggering items (`Assets/Refresh`, `Assets/Reimport All`) reload the domain. Under Approval and Auto they return `MODE_FORBIDDEN`, and the grant flow does not apply.
+- Play-mode skills are NeverInSemi: `editor_play`, `editor_play_capture`, `editor_stop`, `editor_pause` and `editor_run_scenario` (`MayEnterPlayMode`). `editor_execute_menu` is also NeverInSemi because reload-triggering items (`Assets/Refresh`, `Assets/Reimport All`) reload the domain. Under Approval and Auto they return `MODE_FORBIDDEN`, and the grant flow does not apply. `editor_stop` is exempt from `503 COMPILING` while compilation is deferred during Play Mode (still subject to mode/allowlist gates).
 - Resume or file watching: when changes are reported, or the AI resumes after the user edited Unity, call `editor_get_changes` before reading `.unity` YAML. `dropped=true` means `since` is older than the 500-entry window (`retention`); rebuild context with `scene_context` or `scene_diff`.
 - Check `editor_get_state` before play-mode work. Changes made during Play Mode are lost on exit.
 - `editor_play`, `editor_play_capture`, `editor_playmode_step` and `editor_run_scenario` return jobs; poll `job_status`. Never `job_wait` on a job that depends on `EditorApplication.update` ticks: it blocks the main thread those ticks need.

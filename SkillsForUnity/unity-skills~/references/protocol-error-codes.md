@@ -19,7 +19,7 @@ Every error response carries a top-level `errorCode` (plus `retryStrategy` / `re
 
 | `errorCode` | HTTP | Meaning | Action |
 |---|---|---|---|
-| `COMPILING` | 503 | Unity is compiling or mid-Domain-Reload — expected right after script/define/package edits. Nothing ran (with `details.executed:false` when a reload began while the request was queued) | Wait `retryAfterSeconds` (5s, 8s if a reload is pending) and retry, writes included. Auto-retried by the Python client |
+| `COMPILING` | 503 | Unity is compiling or mid-Domain-Reload — expected right after script/define/package edits. Nothing ran (with `details.executed:false` when a reload began while the request was queued) | Wait `retryAfterSeconds` (5s, 8s if a reload is pending) and retry, writes included. Auto-retried by the Python client. When Play Mode holds compilation (`details.isPlaying:true`), `POST /skill/editor_stop` remains callable through `COMPILING` so exiting Play Mode can let the reload finish. |
 | `RATE_LIMIT` | 429 | Too many requests/sec against the admission limiter | Wait `retryAfterSeconds` (1s) and retry. Auto-retried by the Python client |
 | `QUEUE_FULL` | 503 | Too many requests already pending on the main-thread queue | Wait `retryAfterSeconds` (2s) and retry. Auto-retried by the Python client |
 | `SERVER_STOPPED` | 503 | Server is stopping (manual stop, Editor quit, watchdog restart); the request never ran (`details.executed:false`) | Wait `retryAfterSeconds` (5s) for it to come back and retry, writes included. Auto-retried by the Python client |
