@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -37,9 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -57,9 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -74,9 +74,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -88,9 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -121,9 +121,9 @@ jobs:
           - os: ubuntu-24.04
             python-version: '3.9'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -155,6 +155,8 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      # Cap concurrent Unity containers to reduce license-activation contention and API bursts.
+      max-parallel: 3
       matrix:
         include:
           - unityVersion: 2022.3.62f1
@@ -171,7 +173,7 @@ jobs:
             uguiVersion: 2.5.0
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -183,7 +185,6 @@ jobs:
           {
             "dependencies": {
               "com.unity.test-framework": "1.4.5",
-              "com.unity.testtools.codecoverage": "1.3.0",
               "com.unity.ugui": "${{ matrix.uguiVersion }}",
               "com.besty.unity-skills": "file:../../SkillsForUnity"
             },
@@ -198,7 +199,7 @@ jobs:
           cat TempUnityProject/Packages/manifest.json
 
       - name: Cache Unity Library
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: TempUnityProject/Library
           key: Library-${{ runner.os }}-${{ matrix.unityVersion }}-${{ hashFiles('TempUnityProject/Packages/manifest.json') }}
@@ -215,12 +216,14 @@ jobs:
           packageMode: false
           projectPath: TempUnityProject
           unityVersion: ${{ matrix.unityVersion }}
+          cliVersion: v0.1.76
           testMode: EditMode
+          coverageEnabled: false
           artifactsPath: artifacts/${{ matrix.unityVersion }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.tests.outputs.artifactsPath != ''
         with:
           name: unity-test-results-${{ matrix.unityVersion }}
           path: ${{ steps.tests.outputs.artifactsPath }}
@@ -232,12 +235,14 @@ jobs:
       - skill-frontmatter-check
       - skill-inventory-check
       - meta-guid-check
+      - locale-check
+      - python-tests
       - editmode
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: test-results
 
@@ -367,6 +372,8 @@ jobs:
           VERSION_RESULT: ${{ needs.project-version-check.result }}
           FRONTMATTER_RESULT: ${{ needs.skill-frontmatter-check.result }}
           META_RESULT: ${{ needs.meta-guid-check.result }}
+          LOCALE_RESULT: ${{ needs.locale-check.result }}
+          PYTHON_RESULT: ${{ needs.python-tests.result }}
           EDITMODE_RESULT: ${{ needs.editmode.result }}
         shell: bash
         run: |
@@ -376,6 +383,8 @@ jobs:
             "project-version-check=${VERSION_RESULT}" \
             "skill-frontmatter-check=${FRONTMATTER_RESULT}" \
             "meta-guid-check=${META_RESULT}" \
+            "locale-check=${LOCALE_RESULT}" \
+            "python-tests=${PYTHON_RESULT}" \
             "editmode=${EDITMODE_RESULT}"; do
             name="${entry%%=*}"
             result="${entry#*=}"
