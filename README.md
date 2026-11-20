@@ -165,6 +165,8 @@ In Unity, open menu: `Window > UnitySkills` (or press <kbd>Alt</kbd>+<kbd>Shift<
 > 🔄 **Auto-sync on update**: after you upgrade the package, tools you already installed are refreshed to the new version automatically (nothing new is ever installed for you); turn it off in ⚙ Settings ▸ **AI Tools**.
 >
 > **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — installing once makes the skill available to both; no `AGENTS.md` declaration needed for Codex.
+>
+> **Antigravity Note**: global installs use `~/.gemini/config/skills/`, shared by Antigravity App, CLI and IDE. Updates migrate a legacy `~/.gemini/antigravity/skills/` install together with its evaluation sibling. Old template files are cleaned only when a valid canonical copy is present; a newer canonical copy is kept untouched and only the legacy copy is removed.
 
 📘 For complete installation and usage instructions, see: [Setup Guide](docs/SETUP_GUIDE.md) | [安装指南](docs/SETUP_GUIDE_CN.md)
 
@@ -198,7 +200,7 @@ If one-click installation is not supported or preferred, follow this **standard 
 The following are verified default directories (if the tool has a custom path configured, use that instead):
 
 - Claude Code: `~/.claude/skills/`
-- Antigravity: `~/.gemini/antigravity/skills/` (global) or `.agents/skills/` (workspace)
+- Antigravity: `~/.gemini/config/skills/` (global, shared by App / CLI / IDE) or `.agents/skills/` (workspace, shared with Codex)
 - OpenAI Codex: `~/.agents/skills/` (global) or `.agents/skills/` (workspace, shared with Antigravity)
 - Cursor: `~/.cursor/skills/` (global) or `.cursor/skills/` (workspace); also auto-discovers `.agents/skills/`
 - OpenCode: `~/.config/opencode/skills/` (global) or `.opencode/skills/` (workspace)

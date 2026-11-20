@@ -14,7 +14,7 @@ namespace UnitySkills
         /// Single source of truth for the version number; update it on release.
         /// Referenced by SkillsHttpServer (/health), SkillRouter (/skills manifest), and doc tooling.
         /// </summary>
-        public const string Version = "3.0.1";
+        public const string Version = "3.0.2";
 
         public const string PREFIX_INFO = "<color=#4A9EFF>[UnitySkills]</color>";
         public const string PREFIX_SUCCESS = "<color=#5EE05E>[UnitySkills]</color>";

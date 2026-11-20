@@ -4,7 +4,7 @@ Audience: agents editing this repository. Agents *calling* the REST API read `Sk
 
 | Field | Value |
 |------|----|
-| Version | 3.0.1 |
+| Version | 3.0.2 |
 | Stack | C# Unity Editor plugin (UPM `com.besty.unity-skills`) + Python client |
 | Unity | 2022.3+, verified on 6000.x |
 | License | MIT |
@@ -93,9 +93,9 @@ public static object SkillName(string name, float x = 0f) { ... }
 - Every script ends with a blank line then `// Producer:Betsy` (`# Producer:Betsy` in Python) and a newline.
 
 ## Workflow and commands
-Commands are prompt files under `.claude/commands/`; agents without slash commands read the file and follow it.
-- `/skillcheck` (`.claude/commands/skillcheck.md`) — C# ↔ `skills/*/MODULE.md` consistency audit driven by `.github/scripts/skill_inventory.py`, plus skill-count sync (`--sync-counts`) across `AGENTS.md` and README×2 (the root `SKILL.md` carries no counts). Run after adding, renaming or removing any skill.
-- `/metacheck` (`.claude/commands/metacheck.md`) — `.meta` GUID audit; run after adding assets or `.meta` files.
-- `/updateversion <MAJOR.MINOR.PATCH>` (`.claude/commands/updateversion.md`) — bumps the declared version anchors (plus `.github/SECURITY.md` supported-versions table on minor/major bumps) and writes the CHANGELOG entry; verifies with `.github/scripts/check_project_version.py`. Never search-and-replace version numbers globally.
-- `/release [version]` (`.claude/commands/release.md`) — candidate matrix → beta/main sync → tag → stable GitHub Release. Develop on `beta`; `main` is linear, no merge commits. `beta` and `main` run parallel: Star History chart commits land on `main` only, never sync them into `beta`; `/release` drops them when it moves `main`. Never move or re-publish a released tag: users install by `#vX.Y.Z`, so fix forward with a new number.
+Maintainer workflows are project skills under `.claude/skills/<name>/SKILL.md`, with complete Antigravity/Codex mirrors under `.agents/skills/<name>/SKILL.md`. Edit the `.claude` source, then run `python3 .github/scripts/sync_project_skills.py . --write`; the default check mode and CI reject missing or stale mirrors. Agents without skill invocation read the `.claude` file and follow it.
+- `/skillcheck` (`.claude/skills/skillcheck/SKILL.md`) — C# ↔ `skills/*/MODULE.md` consistency audit driven by `.github/scripts/skill_inventory.py`, plus skill-count sync (`--sync-counts`) across `AGENTS.md` and README×2 (the root `SKILL.md` carries no counts). Run after adding, renaming or removing any skill.
+- `/metacheck` (`.claude/skills/metacheck/SKILL.md`) — `.meta` GUID audit; run after adding assets or `.meta` files.
+- `/updateversion <MAJOR.MINOR.PATCH>` (`.claude/skills/updateversion/SKILL.md`) — bumps the declared version anchors (plus `.github/SECURITY.md` supported-versions table on minor/major bumps) and writes the CHANGELOG entry; verifies with `.github/scripts/check_project_version.py`. Never search-and-replace version numbers globally.
+- `/release [version]` (`.claude/skills/release/SKILL.md`) — candidate matrix → beta/main sync → tag → stable GitHub Release. Develop on `beta`; `main` is linear, no merge commits. `beta` and `main` run parallel: Star History chart commits land on `main` only, never sync them into `beta`; `/release` drops them when it moves `main`. Never move or re-publish a released tag: users install by `#vX.Y.Z`, so fix forward with a new number.
 - Domain reload makes the REST server briefly unreachable (503/504 with diagnostics); clients retrying is expected. Do not modify the server to hide it.

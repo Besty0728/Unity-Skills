@@ -2,6 +2,26 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [3.0.2] - 2026-11-20
+
+> **Antigravity 全系列全局 Skill 路径修正与安全迁移，维护指令升级为跨工具项目 Skill，并修复本地自更新被 Git 脏工作区/暂存阻挡的问题** —— 将 Antigravity 全局安装目录调整为官方 App / CLI / IDE 共用的 `~/.gemini/config/skills/`，并为 `~/.gemini/antigravity/skills/` 老用户补齐向后兼容识别、主/评测双 Skill 安全迁移与新版防降级保护；将仓库维护斜杠命令迁移为 `.claude/skills/` 与 `.agents/skills/` 双目录项目 Skill 并接入 CI 镜像一致性校验；同时调整本地自更新机制，在用户修改不与更新文件重叠时直接升级并保留改动，冲突或旧版 ZIP 覆盖遗留时给出清晰路径提示与 `git stash` / 备份确认，不再一刀切阻挡二次升级。873 个技能不变。
+
+### Fixed
+
+- **Antigravity 全局 Skill 在 App / CLI 中不显示** — `SkillInstaller.AntigravityGlobalPath` 从旧版 `~/.gemini/antigravity/skills/unity-skills` 修正为 Antigravity App / CLI / 独立 IDE 官方共用的 `~/.gemini/config/skills/unity-skills`，工作区路径继续经 `.agents/skills/` 与 Codex 共享。
+- **Antigravity 新旧全局副本状态判断与防降级边界** — 新旧目录任一存在即在 AI Config 面板显示为已安装并参与自动同步；旧副本存在时强制走迁移而不被当前版本检查误跳过；仅在新目录完整写入 `unity-skills` 与 `unity-skills-eval` 后再按模板/manifest 清理旧目录，保留用户自建文件；若新目录已有更高版本则仅清理旧副本不重装、不降级；写入失败时旧副本保持原样；全局卸载同时清理新旧两处。
+- **本地克隆与源码包二次自更新被 Git 暂存/未提交改动阻挡** — Track A（官方 `git clone`）不再因无关未提交或已暂存修改直接拒绝升级：与本次更新不重叠的修改/暂存/未跟踪文件会随快进或 tag 切换直接保留；若与更新文件存在重叠，针对老版本 ZIP 覆盖导致的 `HEAD` 滞后场景提供确认后先 `git stash push -u` 再同步更新（不自动 pop 防冲突），针对真实自定义冲突则列出具体冲突文件请用户先自行处理；Track B（受外部 Git 仓库跟踪的源码目录）不再阻止检查更新，通过 `Library/UnitySkills/selfupdate/vendored_fingerprint.json` 识别上次自更新未改动的残留并直接更新，存在手工修改时弹窗确认备份到 `previous` 后覆盖。
+
+### Changed
+
+- **维护者斜杠命令升级为跨工具项目 Skill** — 将 `skillcheck`、`metacheck`、`updateversion`、`release` 从 `.claude/commands/` 迁移为 `.claude/skills/<name>/SKILL.md`，并在 `.agents/skills/<name>/SKILL.md` 生成精简 frontmatter 的完整镜像，供 Antigravity 与 Codex 共同发现和使用；新增 `.github/scripts/sync_project_skills.py` 并在 `check_skill_frontmatter.py` 与 CI 矩阵中强制校验镜像一致性。
+- **评测环境 Skill 扫描兼容新版 Antigravity 路径** — `SkillsForUnity/Evaluation~/usk_eval/environment.py` 新增 `~/.gemini/config/skills/unity-skills` 扫描路径并保留旧路径识别与真实路径去重。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.2`。
+
+### Docs
+
+- **安装与维护文档同步** — 更新 `README.md`、`README_CN.md`、`docs/SETUP_GUIDE.md`、`docs/SETUP_GUIDE_CN.md`、`eval/docs/design/v3-contracts.md`、`AGENTS.md` 与 `.github/CONTRIBUTING.md` 中的 Antigravity 全局共享路径、自动迁移规则及项目 Skill 镜像同步说明。
+
 ## [3.0.1] - 2026-11-17
 
 > **修复 Play Mode 下挂起脚本重编译导致 `editor_stop` 被拦截的死锁（#68）** —— 在默认 `Recompile After Finished Playing` 下，Play 期间修改脚本会使 `EditorApplication.isCompiling` 持续为 `true` 并等待退出 Play Mode 后再完成编译与重载；现在传输层编译守卫对 `POST /skill/editor_stop`（含 `dryRun`）放行，同时保留模式 / 白名单权限门控与 `beforeAssemblyReload` 域卸载保护，普通技能在 Play 期间命中 `503 COMPILING` 时也会提示调用 `editor_stop` 解锁。873 个技能不变。

@@ -1,7 +1,6 @@
 ---
+name: metacheck
 description: Meta Check — .meta GUID 健康度审计（伪随机 GUID + 第三方黑名单）
-argument-hint: "[--fix]"
-allowed-tools: Bash(python3 .github/scripts/check_meta_files.py:*), Bash(git grep:*), Read, Grep, Edit
 ---
 
 # Meta Check

@@ -165,6 +165,8 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 > 🔄 **更新自动同步**：升级插件后，已安装过的 AI 工具会自动同步到新版本（不会自动安装新目标）；可在 ⚙ 设置抽屉的 **AI 工具** 区关闭。
 >
 > **Codex 特别说明**：Antigravity 和 Codex 工作区共享 `.agents/skills/`——装一次即两边可用，Codex 无需在 `AGENTS.md` 中声明。
+>
+> **Antigravity 特别说明**：全局安装使用 App / CLI / IDE 共用的 `~/.gemini/config/skills/`。更新时会将旧 `~/.gemini/antigravity/skills/` 安装及评测 Skill 一并迁移；只有新目录中已有有效副本后才清理旧模板文件，较新的新目录副本会原样保留，仅清理旧副本。
 
 📘 需要更完整的安装与使用说明，请查看：[安装指南](docs/SETUP_GUIDE_CN.md) | [Setup Guide](docs/SETUP_GUIDE.md)
 
@@ -198,7 +200,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 以下为已验证的默认目录（若工具配置过自定义路径，请以自定义为准）：
 
 - Claude Code：`~/.claude/skills/`
-- Antigravity：`~/.gemini/antigravity/skills/`（全局）或 `.agents/skills/`（工作区）
+- Antigravity：`~/.gemini/config/skills/`（全局，App / CLI / IDE 共用）或 `.agents/skills/`（工作区，与 Codex 共享）
 - OpenAI Codex：`~/.agents/skills/`（全局）或 `.agents/skills/`（工作区，与 Antigravity 共享）
 - Cursor：`~/.cursor/skills/`（全局）或 `.cursor/skills/`（工作区）；也会自动扫描 `.agents/skills/`
 - OpenCode：`~/.config/opencode/skills/`（全局）或 `.opencode/skills/`（工作区）

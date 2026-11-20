@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
-__version__ = "3.0.1"
+__version__ = "3.0.2"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090

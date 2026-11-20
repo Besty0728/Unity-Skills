@@ -269,6 +269,47 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void AntigravityGlobalStatusAndVersion_LegacyMigratesWithoutDowngradingNewerCopy()
+        {
+            var target = Path.Combine(_tempRoot, "new", "unity-skills");
+            var legacy = Path.Combine(_tempRoot, "legacy", "unity-skills");
+            Assert.That(SkillInstaller.InstallCustom(target, "TestAgent").success, Is.True);
+            Assert.That(SkillInstaller.InstallCustom(legacy, "TestAgent").success, Is.True);
+
+            Assert.That(SkillInstaller.IsAntigravityGlobalInstalledAt(target, legacy), Is.True);
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy), Is.Null,
+                "A current canonical copy must still be refreshed when legacy cleanup is pending.");
+
+            File.WriteAllText(Path.Combine(target, "scripts", "agent_config.json"),
+                "{\"agentId\": \"TestAgent\", \"version\": \"99.0.0\"}");
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy), Is.Null,
+                "A newer canonical copy must still enter the migration path, which cleans legacy without reinstalling.");
+
+            Directory.Delete(target, true);
+            Assert.That(SkillInstaller.IsAntigravityGlobalInstalledAt(target, legacy), Is.True,
+                "A legacy-only install must remain visible to the panel and auto-sync.");
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy), Is.Null);
+        }
+
+        [Test]
+        public void AntigravityGlobalStatusAndVersion_NewOnlyUsesNormalInstallRules()
+        {
+            var target = Path.Combine(_tempRoot, "new", "unity-skills");
+            var legacy = Path.Combine(_tempRoot, "legacy", "unity-skills");
+            Assert.That(SkillInstaller.IsAntigravityGlobalInstalledAt(target, legacy), Is.False);
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy), Is.Null);
+
+            Assert.That(SkillInstaller.InstallCustom(target, "TestAgent").success, Is.True);
+            Assert.That(SkillInstaller.IsAntigravityGlobalInstalledAt(target, legacy), Is.True);
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy),
+                Is.EqualTo(SkillsLogger.Version));
+
+            File.WriteAllText(Path.Combine(target, "scripts", "agent_config.json"),
+                "{\"agentId\": \"TestAgent\", \"version\": \"99.0.0\"}");
+            Assert.That(SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy), Is.EqualTo("99.0.0"));
+        }
+
+        [Test]
         public void SyncTargets_SkipsTargetWithNewerInstalledVersion()
         {
             var path = Path.Combine(_tempRoot, "newer");
@@ -425,6 +466,46 @@ namespace UnitySkills.Tests.Core
             Assert.That(File.ReadAllText(evalSkillMd), Does.Not.Contain("stale evaluation copy"));
         }
 
+        [TestCase(null)]
+        [TestCase("current")]
+        [TestCase("newer")]
+        public void SyncTargets_MigratesLegacyAntigravityGlobalInstall(string canonicalState)
+        {
+            var target = Path.Combine(_tempRoot, "new", "skills", SkillInstaller.SkillFolderName);
+            var legacy = Path.Combine(_tempRoot, "legacy", "skills", SkillInstaller.SkillFolderName);
+            var seed = SkillInstaller.InstallSkill(legacy, "Test", "TestAgent");
+            Assert.That(seed.success, Is.True, seed.message);
+            if (canonicalState != null)
+            {
+                Assert.That(SkillInstaller.InstallSkill(target, "Test", "TestAgent").success, Is.True);
+                if (canonicalState == "newer")
+                    File.WriteAllText(Path.Combine(target, "scripts", "agent_config.json"),
+                        "{\"agentId\": \"TestAgent\", \"version\": \"99.0.0\"}");
+            }
+            var installTarget = new SkillInstaller.InstallTarget
+            {
+                DisplayName = "Antigravity (Global)",
+                Path = target,
+                IsInstalled = () => SkillInstaller.IsAntigravityGlobalInstalledAt(target, legacy),
+                InstalledVersion = () => SkillInstaller.ReadAntigravityGlobalInstalledVersionAt(target, legacy),
+                Install = () => SkillInstaller.MigrateLegacyAntigravityGlobal(target, legacy,
+                    () => SkillInstaller.InstallSkill(target, "Test", "TestAgent"))
+            };
+
+            var report = SkillInstallSyncService.SyncTargets(new[] { installTarget });
+
+            Assert.That(report.Failed, Is.Empty);
+            Assert.That(report.Updated, Is.EqualTo(new[] { "Antigravity (Global)" }));
+            Assert.That(File.Exists(Path.Combine(target, "SKILL.md")), Is.True);
+            Assert.That(File.Exists(Path.Combine(legacy, "SKILL.md")), Is.False);
+            string targetEval = Path.Combine(Path.GetDirectoryName(target), SkillInstaller.EvalSkillFolderName, "SKILL.md");
+            string legacyEval = Path.Combine(Path.GetDirectoryName(legacy), SkillInstaller.EvalSkillFolderName, "SKILL.md");
+            Assert.That(File.Exists(targetEval), Is.True);
+            Assert.That(File.Exists(legacyEval), Is.False);
+            if (canonicalState == "newer")
+                Assert.That(SkillInstaller.ReadInstalledVersion(target), Is.EqualTo("99.0.0"));
+        }
+
         [Test]
         public void SyncTargets_DeduplicatesTargetsSharingOnePath()
         {
@@ -480,6 +561,16 @@ namespace UnitySkills.Tests.Core
         }
 
         // ===== Target table =====
+
+        [Test]
+        public void AntigravityGlobalPath_UsesOfficialSharedConfigDirectory()
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            Assert.That(SkillInstaller.AntigravityGlobalPath,
+                Is.EqualTo(Path.Combine(home, ".gemini", "config", "skills", "unity-skills")));
+            Assert.That(SkillInstaller.LegacyAntigravityGlobalPath,
+                Is.EqualTo(Path.Combine(home, ".gemini", "antigravity", "skills", "unity-skills")));
+        }
 
         [Test]
         public void EnumerateTargets_CoversEveryToolAndScope()

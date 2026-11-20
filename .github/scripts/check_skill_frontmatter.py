@@ -9,7 +9,8 @@ to invalid SKILL.md files"）。v2.3.0 发布曾因超限 skill 被发现器拒�
 调用它，不另写一套。
 
 校验范围：
-  - SkillsForUnity/unity-skills~/SKILL.md（唯一的顶层入口，唯一会被注册的文档）
+  - SkillsForUnity/unity-skills~/SKILL.md（随包顶层入口）
+  - .claude/skills/*/SKILL.md 与 .agents/skills/*/SKILL.md（仓库维护者项目 Skill）
 
 校验规则（任一违规即失败）：
   1. description 长度 ≤ 1024 字符（按字符数，非字节数，含中文）
@@ -46,6 +47,13 @@ def find_misnamed_skill_docs(repo_root: str) -> list[str]:
     """skills/ 下任意深度的 SKILL.md；只有根 SKILL.md 允许存在。"""
     pattern = os.path.join(repo_root, PACKAGE_DIR, "skills", "**", ROOT_DOC)
     return sorted(glob.glob(pattern, recursive=True))
+
+
+def find_project_skill_docs(repo_root: str) -> list[str]:
+    paths = []
+    for root in (os.path.join(".claude", "skills"), os.path.join(".agents", "skills")):
+        paths.extend(glob.glob(os.path.join(repo_root, root, "*", ROOT_DOC)))
+    return sorted(paths)
 
 
 def parse_frontmatter(raw_bytes: bytes) -> tuple[bool, dict | None, str | None]:
@@ -126,6 +134,11 @@ def main() -> int:
 
     rel_root = os.path.relpath(root_doc, repo_root).replace(os.sep, "/")
     violations, desc_len = check_root_doc(root_doc, rel_root)
+    project_docs = find_project_skill_docs(repo_root)
+    for path in project_docs:
+        rel_path = os.path.relpath(path, repo_root).replace(os.sep, "/")
+        doc_violations, _ = check_root_doc(path, rel_path)
+        violations.extend(doc_violations)
     for path in find_misnamed_skill_docs(repo_root):
         rel_path = os.path.relpath(path, repo_root).replace(os.sep, "/")
         violations.append(
@@ -137,6 +150,7 @@ def main() -> int:
     print("━" * 30)
     print(f"根文档：{rel_root}")
     print(f"description: {desc_len} 字符（上限 {MAX_DESCRIPTION_CHARS}）")
+    print(f"项目 Skill 文档：{len(project_docs)}")
 
     if violations:
         print(f"\n🔴 发现 {len(violations)} 项违规")

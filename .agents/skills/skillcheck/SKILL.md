@@ -1,6 +1,6 @@
 ---
+name: skillcheck
 description: C# [UnitySkill] 与模块文档一致性审计 + 技能数量同步（脚本驱动）
-allowed-tools: Bash(python3 .github/scripts/skill_inventory.py:*), Read, Grep, Glob
 ---
 
 # Skill Check — 脚本跑机械比对，你只做判断

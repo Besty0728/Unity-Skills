@@ -75,6 +75,27 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void UninstallAntigravityGlobal_RemovesNewAndLegacyCopies()
+        {
+            var target = Path.Combine(_tempRoot, "new", "skills", SkillInstaller.SkillFolderName);
+            var legacy = Path.Combine(_tempRoot, "legacy", "skills", SkillInstaller.SkillFolderName);
+            Assert.That(SkillInstaller.InstallSkill(target, "Test", "TestAgent").success, Is.True);
+            Assert.That(SkillInstaller.InstallSkill(legacy, "Test", "TestAgent").success, Is.True);
+            string userFile = Path.Combine(legacy, "notes.md");
+            File.WriteAllText(userFile, "keep me");
+            string EvalSkill(string path) => Path.Combine(Path.GetDirectoryName(path), SkillInstaller.EvalSkillFolderName, "SKILL.md");
+
+            var result = SkillInstaller.UninstallAntigravityGlobal(target, legacy);
+
+            Assert.That(result.success, Is.True, result.message);
+            Assert.That(File.Exists(Path.Combine(target, "SKILL.md")), Is.False);
+            Assert.That(File.Exists(Path.Combine(legacy, "SKILL.md")), Is.False);
+            Assert.That(File.Exists(EvalSkill(target)), Is.False);
+            Assert.That(File.Exists(EvalSkill(legacy)), Is.False);
+            Assert.That(File.Exists(userFile), Is.True);
+        }
+
+        [Test]
         public void Uninstall_NotInstalled_ReturnsFalse()
         {
             // Drive the internal seam against a guaranteed-missing temp dir so the test never touches a

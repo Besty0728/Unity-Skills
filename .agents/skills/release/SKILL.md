@@ -1,7 +1,6 @@
 ---
+name: release
 description: 正式发布：候选矩阵 → beta/main 同步 → annotated tag → 稳定 GitHub Release
-argument-hint: "[version]"
-allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git branch --show-current:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git tag -l:*), Bash(git ls-remote:*), Bash(git merge-base:*), Bash(gh run list:*), Bash(gh run view:*), Bash(gh run watch:*), Bash(gh api:*), Bash(gh release view:*), Bash(gh repo view:*), Bash(python3 .github/scripts/check_project_version.py:*), Bash(test:*), Read, Grep, Glob, Edit, Write
 ---
 
 # Release Workflow — 候选矩阵 → main/tag → 正式 Release

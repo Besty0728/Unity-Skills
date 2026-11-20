@@ -132,6 +132,36 @@ namespace UnitySkills
                 SkillsLocalization.Get("dialog_cancel"));
         }
 
+        /// <summary>
+        /// Asks before stashing the working tree of a clone whose HEAD stayed behind after a legacy ZIP overwrite.
+        /// </summary>
+        internal static bool ConfirmLegacyCloneStashSync(LocalUpdateResult result)
+        {
+            var probe = result?.Probe ?? new LocalUpdateProbe();
+            var repo = probe.RepoRoot ?? probe.MarkerRoot ?? probe.PackageDir;
+            return EditorUtility.DisplayDialog(
+                SkillsLocalization.Get("update_legacy_stash_title"),
+                SkillsLocalization.Get("update_legacy_stash_body_fmt",
+                    repo,
+                    result?.HeadPackageVersion ?? LocalSelfUpdateService.ShortSha(result?.FromSha),
+                    result?.DiskPackageVersion ?? string.Empty,
+                    result?.EntryCount ?? 0),
+                SkillsLocalization.Get("update_legacy_stash_continue"),
+                SkillsLocalization.Get("dialog_cancel"));
+        }
+
+        /// <summary>
+        /// Asks before replacing a vendored package folder that has manual edits beyond the last self-update.
+        /// </summary>
+        internal static bool ConfirmVendoredOverwrite(string packageDir, IReadOnlyList<string> entries, int count)
+        {
+            return EditorUtility.DisplayDialog(
+                SkillsLocalization.Get("update_vendored_overwrite_title"),
+                SkillsLocalization.Get("update_vendored_overwrite_body_fmt", packageDir, FormatEntries(entries, count)),
+                SkillsLocalization.Get("update_vendored_overwrite_continue"),
+                SkillsLocalization.Get("dialog_cancel"));
+        }
+
         /// <summary>At most <see cref="LocalSelfUpdateService.MaxListedEntries"/> lines, then "...and N more" for the rest.</summary>
         internal static string FormatEntries(IReadOnlyList<string> entries, int count)
         {

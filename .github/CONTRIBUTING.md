@@ -27,12 +27,13 @@ Matrix green is the bar. Live-editor testing is **welcome but no longer required
 
 ### 1. Local static checks | 本地静态检查
 
-These three scripts are exactly what the matrix runs first, and they need no Unity license: | 下面三个脚本就是矩阵最先跑的三个静态任务，不需要 Unity 许可证：
+These checks are exactly what the matrix's three static jobs run first, and they need no Unity license: | 这些检查对应矩阵最先运行的三个静态任务，不需要 Unity 许可证：
 
 ```bash
 pip install pyyaml   # only needed by the frontmatter check | 仅 frontmatter 检查需要
 python3 .github/scripts/check_project_version.py .   # version anchors agree | 版本锚点一致
 python3 .github/scripts/check_skill_frontmatter.py . # SKILL.md frontmatter | 文档 frontmatter
+python3 .github/scripts/sync_project_skills.py .     # Claude/.agents skill mirrors | 项目 Skill 镜像一致
 python3 .github/scripts/check_meta_files.py .        # .meta pairing & GUIDs | .meta 配对与 GUID
 ```
 
@@ -155,9 +156,9 @@ python3 .github/scripts/check_project_version.py .
 
 The Unity update banner compares `SkillsLogger.Version` with GitHub's latest stable Release. Updating files or creating a tag does not notify users by itself; the maintainer-only `/release` workflow runs a candidate matrix, synchronizes `main`/`beta`, runs the tag matrix, and only then creates and verifies the stable GitHub Release. | Unity 更新横幅会比较 `SkillsLogger.Version` 与 GitHub 最新稳定 Release。仅更新文件或创建 tag 不会通知用户；维护者专用 `/release` 会先运行候选矩阵、同步 `main`/`beta`、运行 tag 矩阵，最后才创建并核验稳定 GitHub Release。
 
-## Custom commands (Claude Code) | 自定义命令（Claude Code）
+## Maintainer project skills | 维护者项目 Skill
 
-This repo ships maintainer slash-commands under `.claude/commands/`: `updateversion`, `metacheck`, `skillcheck` (consistency audit + skill-count sync), and `release`. | 本仓库在 `.claude/commands/` 下内置了维护者用的斜杠命令：`updateversion`、`metacheck`、`skillcheck`（一致性审计 + 技能数量同步）与 `release`。
+This repo ships `updateversion`, `metacheck`, `skillcheck` (consistency audit + skill-count sync), and `release` as full project skills under `.claude/skills/<name>/SKILL.md`, with Antigravity/Codex mirrors under `.agents/skills/<name>/SKILL.md`. Edit the `.claude` source, then regenerate and check the mirrors with `python3 .github/scripts/sync_project_skills.py . --write` and `python3 .github/scripts/sync_project_skills.py .`; do not hand-edit only the mirror. | 本仓库将 `updateversion`、`metacheck`、`skillcheck`（一致性审计 + 技能数量同步）与 `release` 作为完整项目 Skill 放在 `.claude/skills/<name>/SKILL.md`，并在 `.agents/skills/<name>/SKILL.md` 提供 Antigravity/Codex 镜像。请修改 `.claude` 源文件，再运行 `python3 .github/scripts/sync_project_skills.py . --write` 生成镜像，并用 `python3 .github/scripts/sync_project_skills.py .` 检查；不要只手改镜像。
 
 > Please use them responsibly | 请合理使用：
 > - `metacheck` / `skillcheck` may be used to self-check your changes | 这两个可用于自检你的改动

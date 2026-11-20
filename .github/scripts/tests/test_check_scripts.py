@@ -16,11 +16,11 @@ import unittest
 SCRIPTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def run_script(name: str, repo: str) -> subprocess.CompletedProcess:
+def run_script(name: str, repo: str, *args: str) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
-        [sys.executable, "-B", os.path.join(SCRIPTS, name), repo],
+        [sys.executable, "-B", os.path.join(SCRIPTS, name), repo, *args],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -242,6 +242,78 @@ class FrontmatterCheckTests(unittest.TestCase):
             write(repo, "SkillsForUnity/unity-skills~/skills/x/MODULE.md", "# x\n")
             result = run_script("check_skill_frontmatter.py", repo)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_project_skill_docs_are_validated(self):
+        for root in (".claude", ".agents"):
+            with self.subTest(root=root), tempfile.TemporaryDirectory() as repo:
+                write(repo, "SkillsForUnity/unity-skills~/SKILL.md", "---\nname: x\ndescription: short\n---\nbody\n")
+                write(repo, f"{root}/skills/x/SKILL.md", "---\nname: x\ndescription: " + "d" * 1025 + "\n---\nbody\n")
+                result = run_script("check_skill_frontmatter.py", repo)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"{root}/skills/x/SKILL.md", result.stdout)
+
+
+class ProjectSkillSyncTests(unittest.TestCase):
+    NAMES = ("skillcheck", "metacheck", "updateversion", "release")
+
+    @classmethod
+    def write_sources(cls, repo: str) -> None:
+        for name in cls.NAMES:
+            write(repo, f".claude/skills/{name}/SKILL.md",
+                  f"---\nname: {name}\ndescription: Test {name}\nargument-hint: \"[--fix]\"\n"
+                  "allowed-tools: Bash(git status:*), Read\n---\n\n"
+                  f"# {name}\n\nBody for {name}.\n")
+
+    @classmethod
+    def generate(cls, repo: str) -> None:
+        cls.write_sources(repo)
+        result = run_script("sync_project_skills.py", repo, "--write")
+        if result.returncode != 0:
+            raise AssertionError(result.stdout + result.stderr)
+
+    def test_write_generates_minimal_frontmatter_and_check_passes(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.write_sources(repo)
+            result = run_script("sync_project_skills.py", repo, "--write")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for name in self.NAMES:
+                with open(os.path.join(repo, ".agents", "skills", name, "SKILL.md"), encoding="utf-8") as handle:
+                    content = handle.read()
+                self.assertIn(f"name: {name}\ndescription: Test {name}", content)
+                self.assertIn(f"# {name}\n\nBody for {name}.", content)
+                self.assertNotIn("argument-hint", content)
+                self.assertNotIn("allowed-tools", content)
+            result = run_script("sync_project_skills.py", repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_missing_sources_fail(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.assertNotEqual(run_script("sync_project_skills.py", repo).returncode, 0)
+
+    def test_missing_mirror_fails(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.generate(repo)
+            os.remove(os.path.join(repo, ".agents", "skills", "release", "SKILL.md"))
+            result = run_script("sync_project_skills.py", repo)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(".agents/skills/release/SKILL.md", result.stderr)
+
+    def test_body_drift_fails(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.generate(repo)
+            with open(os.path.join(repo, ".agents", "skills", "metacheck", "SKILL.md"), "a", encoding="utf-8") as handle:
+                handle.write("drift\n")
+            result = run_script("sync_project_skills.py", repo)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("stale mirror", result.stderr)
+
+    def test_invalid_source_frontmatter_fails(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.write_sources(repo)
+            write(repo, ".claude/skills/skillcheck/SKILL.md", "---\nname: skillcheck\n---\nbody\n")
+            result = run_script("sync_project_skills.py", repo, "--write")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("description", result.stderr)
 
 
 class ProjectVersionCheckTests(unittest.TestCase):

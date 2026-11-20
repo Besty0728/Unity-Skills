@@ -32,7 +32,8 @@ namespace UnitySkills
             public string nameDisplay;
             public Func<bool> isProjInstalled;
             public Func<bool> isGlobInstalled;
-            public Func<bool, string> getPath;   // global → install directory, used for the version stamp check
+            public Func<bool, string> getPath;   // global → install directory, used for the default version stamp check
+            public Func<bool, string> getInstalledVersion; // optional override for installs with a legacy migration
             public Func<bool, (bool success, string message)> installFunc;
             public Func<bool, (bool success, string message)> uninstallFunc;
             public Func<bool, string, string> getInstallSuccessMsg;
@@ -100,6 +101,9 @@ namespace UnitySkills
                     isProjInstalled = () => SkillInstaller.IsAntigravityProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsAntigravityGlobalInstalled,
                     getPath = global => global ? SkillInstaller.AntigravityGlobalPath : SkillInstaller.AntigravityProjectPath,
+                    getInstalledVersion = global => global
+                        ? SkillInstaller.ReadAntigravityGlobalInstalledVersion()
+                        : SkillInstaller.ReadInstalledVersion(SkillInstaller.AntigravityProjectPath),
                     installFunc = SkillInstaller.InstallAntigravity,
                     uninstallFunc = SkillInstaller.UninstallAntigravity
                 },
@@ -472,7 +476,7 @@ namespace UnitySkills
 
         private void OnRememberedInstallClick(SkillInstaller.CustomTarget target, bool installed)
         {
-            if (installed && ShowSkipIfInstalledCopyIsCurrentOrNewer(target.path))
+            if (installed && ShowSkipIfInstalledCopyIsCurrentOrNewer(SkillInstaller.ReadInstalledVersion(target.path)))
                 return;
             var result = SkillInstaller.InstallCustom(target.path, target.name);
             if (result.success)
@@ -513,9 +517,8 @@ namespace UnitySkills
         /// by another project on a newer package) is left alone. Returns true when the install should be skipped;
         /// forcing a reinstall means Uninstall first. Only consulted when a copy is already present.
         /// </summary>
-        private static bool ShowSkipIfInstalledCopyIsCurrentOrNewer(string targetPath)
+        private static bool ShowSkipIfInstalledCopyIsCurrentOrNewer(string installedVersion)
         {
-            var installedVersion = SkillInstaller.ReadInstalledVersion(targetPath);
             switch (SkillInstaller.CompareInstalledVersion(installedVersion, SkillsLogger.Version))
             {
                 case SkillInstaller.InstalledVersionState.Current:
@@ -535,8 +538,14 @@ namespace UnitySkills
 
         private void OnInstallClick(AgentConfig cfg, bool isGlobal, bool isUpdate)
         {
-            if (isUpdate && cfg.getPath != null && ShowSkipIfInstalledCopyIsCurrentOrNewer(cfg.getPath(isGlobal)))
-                return;
+            if (isUpdate)
+            {
+                string installedVersion = cfg.getInstalledVersion != null
+                    ? cfg.getInstalledVersion(isGlobal)
+                    : cfg.getPath != null ? SkillInstaller.ReadInstalledVersion(cfg.getPath(isGlobal)) : null;
+                if (ShowSkipIfInstalledCopyIsCurrentOrNewer(installedVersion))
+                    return;
+            }
 
             var result = cfg.installFunc(isGlobal);
             if (result.success)
@@ -586,7 +595,8 @@ namespace UnitySkills
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), msg, SkillsLocalization.Get("dialog_ok"));
                 return;
             }
-            if (File.Exists(Path.Combine(_customPath, "SKILL.md")) && ShowSkipIfInstalledCopyIsCurrentOrNewer(_customPath))
+            if (File.Exists(Path.Combine(_customPath, "SKILL.md")) &&
+                ShowSkipIfInstalledCopyIsCurrentOrNewer(SkillInstaller.ReadInstalledVersion(_customPath)))
                 return;
 
             var result = SkillInstaller.InstallCustom(_customPath, _customName);

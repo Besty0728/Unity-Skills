@@ -466,7 +466,7 @@ pid_alive(pid):
 
 **漂移键**（S6 比较 `env.atIssue` 与 `env.atSubmit`；沿用 v1 `env.py:19-21`，去掉 `pluginHash`、加 `pid`）：`version, instanceId, currentMode, tokenLevel, surfaceProfile, dryRunPolicy, summaryAutoTruncate, summaryPageSize, panelApprovalRequired, allowlistCount, pipelineType, pid`。`pid` 变化单独记 reason `editor_restarted`。
 
-**技能文档扫描**（check 与 start 的 `skillDocs`）：工程级 `.claude`、`.agents`、`.cursor`、`.opencode`、`.kimi-code` 下的 `skills/unity-skills`；全局 `~/.claude/skills`、`~/.gemini/antigravity/skills`、`~/.agents/skills`、`~/.cursor/skills`、`~/.config/opencode/skills`、`$KIMI_CODE_HOME`（缺省 `~/.kimi-code`）`/skills` 下的 `unity-skills`（`SkillInstaller.cs:19-47`）。版本取 `scripts/agent_config.json` 的 `version`（`SkillInstaller.cs:498`）；treeHash 用 v1 规则并排除 `scripts/agent_config.json`（其中有 `installedAt`）。版本与 pluginVersion 不同 → notice `SKILL_DOCS_OUTDATED`；一份都没有 → notice `SKILL_DOCS_MISSING`。
+**技能文档扫描**（check 与 start 的 `skillDocs`）：工程级 `.claude`、`.agents`、`.cursor`、`.opencode`、`.kimi-code` 下的 `skills/unity-skills`；全局 `~/.claude/skills`、`~/.gemini/config/skills`、legacy `~/.gemini/antigravity/skills`、`~/.agents/skills`、`~/.cursor/skills`、`~/.config/opencode/skills`、`$KIMI_CODE_HOME`（缺省 `~/.kimi-code`）`/skills` 下的 `unity-skills`（`SkillInstaller.cs:19-47`）。版本取 `scripts/agent_config.json` 的 `version`（`SkillInstaller.cs:498`）；treeHash 用 v1 规则并排除 `scripts/agent_config.json`（其中有 `installedAt`）。版本与 pluginVersion 不同 → notice `SKILL_DOCS_OUTDATED`；一份都没有 → notice `SKILL_DOCS_MISSING`。
 
 ### 2.9 分类（first match wins）
 

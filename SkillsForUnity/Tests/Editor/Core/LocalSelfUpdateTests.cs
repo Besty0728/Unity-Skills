@@ -449,6 +449,47 @@ namespace UnitySkills.Tests.Core
             Assert.That(arg, Is.EqualTo("/p/previous"));
         }
 
+        [Test]
+        public void VendoredFingerprint_MatchesUnmodifiedTreeAndDetectsEdits()
+        {
+            var pkg = Path.Combine(_tempDir, "pkg");
+            Directory.CreateDirectory(Path.Combine(pkg, "scripts"));
+            File.WriteAllText(Path.Combine(pkg, "package.json"), "{ \"version\": \"3.0.1\" }");
+            File.WriteAllText(Path.Combine(pkg, "scripts", "unity_skills.py"), "print(1)\n");
+            var fp = Path.Combine(_tempDir, "Library", "selfupdate", "vendored_fingerprint.json");
+
+            LocalSelfUpdateService.WriteVendoredFingerprint(pkg, "3.0.1", fp);
+            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.True);
+
+            Directory.CreateDirectory(Path.Combine(pkg, "scripts", "__pycache__"));
+            File.WriteAllText(Path.Combine(pkg, "scripts", "__pycache__", "unity_skills.cpython-312.pyc"), "bytecode");
+            File.WriteAllText(Path.Combine(pkg, ".DS_Store"), "finder");
+            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.True,
+                "Bytecode and .DS_Store must not invalidate the self-update baseline.");
+
+            File.WriteAllText(Path.Combine(pkg, "scripts", "unity_skills.py"), "print(2)\n");
+            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.False,
+                "Manual edits to package files must be detected.");
+        }
+
+        [Test]
+        public void DescribeDoneMarker_IncludesStashNoticeWhenLegacySyncStashed()
+        {
+            var marker = new JObject
+            {
+                ["mode"] = "git",
+                ["version"] = "3.0.2",
+                ["from"] = "1111111",
+                ["to"] = "2222222",
+                ["branch"] = "main",
+                ["stashed"] = true
+            };
+
+            var text = LocalSelfUpdateService.DescribeDoneMarker(marker);
+            Assert.That(text, Does.Contain("git stash"));
+            Assert.That(text, Does.Contain("3.0.2"));
+        }
+
         private string BackupDir => Path.Combine(_tempDir, "Library", "selfupdate", "previous");
 
         private (string target, string staging) PrepareSwap()

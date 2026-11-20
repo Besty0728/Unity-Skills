@@ -193,6 +193,7 @@ def skill_doc_dirs(project, environ):
     kimi = environ.get("KIMI_CODE_HOME") or os.path.join(home, ".kimi-code")
     dirs = [os.path.join(project, root, "skills", "unity-skills") for root in PROJECT_DOC_ROOTS]
     dirs += [os.path.join(home, ".claude", "skills", "unity-skills"),
+             os.path.join(home, ".gemini", "config", "skills", "unity-skills"),
              os.path.join(home, ".gemini", "antigravity", "skills", "unity-skills"),
              os.path.join(home, ".agents", "skills", "unity-skills"),
              os.path.join(home, ".cursor", "skills", "unity-skills"),

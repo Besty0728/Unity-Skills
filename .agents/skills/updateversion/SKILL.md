@@ -1,7 +1,6 @@
 ---
+name: updateversion
 description: 安全更新项目版本锚点并生成 CHANGELOG（只准备候选，不发布）
-argument-hint: "<MAJOR.MINOR.PATCH>"
-allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git branch --show-current:*), Bash(git rev-parse:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git tag -l:*), Bash(git ls-remote:*), Bash(git merge-base:*), Bash(gh api:*), Bash(gh release view:*), Bash(python3 .github/scripts/check_project_version.py:*), Bash(python3 .github/scripts/check_meta_files.py:*), Bash(python3 .github/scripts/check_locales.py:*), Bash(python3 -m json.tool:*), Read, Grep, Glob, Edit
 ---
 
 # Update Version — 安全更新项目版本 + 生成 CHANGELOG
@@ -38,12 +37,12 @@ Unity 内的更新提醒使用 `SkillsLogger.Version` 与 GitHub `releases/lates
    ```bash
    git log beta..origin/beta --oneline
    ```
-   有输出即停止：本地 `beta` 落后于远端，必须先同步或处理分歧。`origin/main` 相对 `beta` 的检查与 `/release` 完全相同：执行 `.claude/commands/release.md`「共享规则」第 2 条的两条 Star History 豁免检查，均须无输出。
+   有输出即停止：本地 `beta` 落后于远端，必须先同步或处理分歧。`origin/main` 相对 `beta` 的检查与 `/release` 完全相同：执行 `.claude/skills/release/SKILL.md`「共享规则」第 2 条的两条 Star History 豁免检查，均须无输出。
 6. 从 `origin/main` 的 `SkillsLogger.Version` 读取当前稳定版本 `{OLD_VER}`，不要依赖可能过期的本地 `main`：
    ```bash
    git show origin/main:SkillsForUnity/Editor/Skills/SkillsLogger.cs
    ```
-7. 按 `release.md`「共享规则」第 3 条查询 GitHub 当前最新稳定 Release：
+7. 按 `.claude/skills/release/SKILL.md`「共享规则」第 3 条查询 GitHub 当前最新稳定 Release：
    - 正常情况下其版本应等于 `{OLD_VER}`；若不一致，停止并报告“main 当前版本与 latest Release 已错位”，不要猜测基准版本。
 8. 验证当前工作树内的所有项目版本锚点仍等于 `{OLD_VER}`：
    ```bash
@@ -70,7 +69,7 @@ gh release view "v{NEW_VER}"
 ```
 
 - `gh release view` 返回“未找到”才表示该检查通过。
-- tag 规则见 `release.md`「共享规则」第 1 条（含“已创建 tag 但无 Release 同样视为占用”）。
+- tag 规则见 `.claude/skills/release/SKILL.md`「共享规则」第 1 条（含“已创建 tag 但无 Release 同样视为占用”）。
 
 ## 步骤 3：分析 beta 相对稳定版的变更
 

@@ -554,16 +554,77 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void DirtyTracked_Refuses_ListsPath()
+        public void NonOverlappingTrackedEdit_UpdatesAndPreservesLocalEdit()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my edit");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(head));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs")), Is.EqualTo("my edit"));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void NonOverlappingStagedChange_UpdatesAndPreservesStagedEdit()
+        {
+            BuildOfficial();
+            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            File.WriteAllText(Path.Combine(_clone, "README.md"), "staged");
+            G(_clone, "add", "README.md");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(head));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "README.md")), Is.EqualTo("staged"));
+            StringAssert.Contains("M  README.md", Status(_clone));
+        }
+
+        [Test]
+        public void NonOverlappingUntrackedFile_UpdatesAndPreservesFile()
+        {
+            BuildOfficial();
+            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(head));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs")), Is.EqualTo("untracked"));
+        }
+
+        [Test]
+        public void NonOverlappingUntrackedHiddenByConfig_UpdatesAndPreservesFile()
+        {
+            BuildOfficial();
+            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            G(_clone, "config", "status.showUntrackedFiles", "no");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(head));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs")), Is.EqualTo("untracked"));
+        }
+
+        [Test]
+        public void OverlappingTrackedEdit_RefusesWithWouldOverwrite_PreservesLocalEdit()
+        {
+            BuildOfficial();
+            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my edit");
             var before = Snapshot(_clone);
 
             var result = Update(ClonePackage);
 
-            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.DirtyWorktree));
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.IsLegacyArchiveClone, Is.False);
             Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/a.cs"));
             Assert.That(result.EntryCount, Is.EqualTo(1));
             Assert.That(Snapshot(_clone), Is.EqualTo(before));
@@ -571,38 +632,59 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void StagedChange_Refuses()
+        public void OverlappingStagedEdit_RefusesWithWouldOverwrite_PreservesStagedEdit()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
-            File.WriteAllText(Path.Combine(_clone, "README.md"), "staged");
-            G(_clone, "add", "README.md");
-
-            Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.DirtyWorktree),
-                "The whole repository counts, not just the package folder.");
-        }
-
-        [Test]
-        public void UntrackedFile_Refuses()
-        {
-            BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
-            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
+            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my staged edit");
+            G(_clone, "add", "SkillsForUnity/Editor/a.cs");
+            var before = Snapshot(_clone);
 
             var result = Update(ClonePackage);
-            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.DirtyWorktree));
-            Assert.That(result.Entries, Has.Some.StartsWith("??"));
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/a.cs"));
+            Assert.That(Snapshot(_clone), Is.EqualTo(before));
         }
 
         [Test]
-        public void UntrackedHiddenByUserConfig_StillRefuses()
+        public void OverlappingUntrackedFile_RefusesWithWouldOverwrite_PreservesLocalFile()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
-            G(_clone, "config", "status.showUntrackedFiles", "no");
-            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
+            CommitUpstream("main", "SkillsForUnity/Editor/Scratch.cs", "upstream scratch");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "local scratch");
+            var before = Snapshot(_clone);
 
-            Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.DirtyWorktree));
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/Scratch.cs"));
+            Assert.That(Snapshot(_clone), Is.EqualTo(before));
+        }
+
+        [Test]
+        public void LegacyArchiveOverwrittenClone_DetectedAndStashAndApply_SucceedsAndKeepsStash()
+        {
+            BuildOfficial();
+            var upstream = CommitUpstream("main", "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"2.0.0\"}");
+            WriteFile(_clone, "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"1.5.0\"}");
+            WriteFile(_clone, "SkillsForUnity/Editor/CustomNote.txt", "keep in stash");
+
+            var ctx = Context(ClonePackage);
+            var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
+
+            Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(prepared.IsLegacyArchiveClone, Is.True);
+            Assert.That(prepared.HeadPackageVersion, Is.EqualTo("1.0.0"));
+            Assert.That(prepared.DiskPackageVersion, Is.EqualTo("1.5.0"));
+
+            var applied = LocalGitSync.StashAndApply(ctx, prepared);
+
+            Assert.That(applied.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(upstream));
+            Assert.That(Status(_clone), Is.Empty);
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "package.json")), Does.Contain("2.0.0"));
+            StringAssert.Contains("unity-skills-selfupdate-legacy-sync", G(_clone, "stash", "list").StdOut);
         }
 
         [Test]
@@ -821,12 +903,12 @@ namespace UnitySkills.Tests.Core
         public void ApplyRechecks_EditedAfterPrepare_Refuses()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
             var ctx = Context(ClonePackage);
             var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "edited meanwhile");
 
-            Assert.That(LocalGitSync.Apply(ctx, prepared).Outcome, Is.EqualTo(LocalUpdateOutcome.DirtyWorktree));
+            Assert.That(LocalGitSync.Apply(ctx, prepared).Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(Head(_clone), Is.EqualTo(_rootCommit));
         }
 
@@ -850,7 +932,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void Vendored_DirtySubtree_Blocks_WithEntries()
+        public void Vendored_DirtySubtree_AllowsProbeAndReportsChanges()
         {
             BuildOfficial();
             var game = NewRepo("game");
@@ -860,10 +942,13 @@ namespace UnitySkills.Tests.Core
             WriteFile(game, "Packages/com.besty.unity-skills/Editor/New.cs", "untracked");
             WriteFile(game, "Assets/Unrelated.cs", "outside the package");
 
-            var probe = LocalGitSync.Probe(Context(Path.Combine(game, "Packages", "com.besty.unity-skills")));
+            var ctx = Context(Path.Combine(game, "Packages", "com.besty.unity-skills"));
+            var probe = LocalGitSync.Probe(ctx);
 
-            Assert.That(probe.Blocker, Is.EqualTo(LocalUpdateOutcome.VendoredSubtreeModified));
+            Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.ArchiveInRepository));
+            Assert.That(probe.HasVendoredChanges, Is.True);
             Assert.That(probe.EntryCount, Is.EqualTo(2), "Only the package subtree counts; untracked files inside it do.");
+            Assert.That(LocalGitSync.CheckRemote(ctx, probe).Outcome, Is.EqualTo(LocalUpdateOutcome.ReleaseCheckRequired));
         }
 
         [Test]

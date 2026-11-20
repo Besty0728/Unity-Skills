@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -42,6 +45,7 @@ namespace UnitySkills
         private static string StagingDir => Path.Combine(WorkDir, "staging");
         // Survives CleanupWorkDir on purpose: the package folder this update replaced.
         private static string BackupDir => Path.Combine(WorkDir, BackupDirName);
+        private static string VendoredFingerprintPath => Path.Combine(WorkDir, "vendored_fingerprint.json");
         private static string DoneFilePath => Path.Combine(UnitySkillsLibraryDir, DoneFileName);
 
         private static UnityWebRequest _activeRequest;
@@ -113,14 +117,17 @@ namespace UnitySkills
                 var span = string.IsNullOrEmpty(tag)
                     ? $"{marker.Value<string>("branch")} {marker.Value<string>("from")}..{marker.Value<string>("to")}"
                     : $"{marker.Value<string>("from")}..{tag}";
-                return $"Self-update via local Git sync ({span}{versionSuffix}) completed successfully.";
+                var line = $"Self-update via local Git sync ({span}{versionSuffix}) completed successfully.";
+                return marker.Value<bool?>("stashed") == true
+                    ? line + " Previous working-tree changes were saved in git stash (unity-skills-selfupdate-legacy-sync)."
+                    : line;
             }
 
-            var line = string.IsNullOrEmpty(version)
+            var archiveLine = string.IsNullOrEmpty(version)
                 ? "Self-update completed successfully."
                 : $"Self-update to {version} completed successfully.";
             var backup = marker?.Value<string>("backup");
-            return string.IsNullOrEmpty(backup) ? line : line + " The previous version was kept at " + backup + ".";
+            return string.IsNullOrEmpty(backup) ? archiveLine : archiveLine + " The previous version was kept at " + backup + ".";
         }
 
         // With Check / Start and the LocalUpdate* result types, the UI's whole surface: SelfUpdateFeedback formats
@@ -223,7 +230,17 @@ namespace UnitySkills
             if (prepared.Outcome == LocalUpdateOutcome.UpdateAvailable &&
                 (track == LocalUpdateTrack.GitSync || track == LocalUpdateTrack.GitTag))
             {
-                ApplyGitUpdate(prepared);
+                ApplyGitUpdate(prepared, stashFirst: false);
+                return;
+            }
+            if (prepared.Outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles && prepared.IsLegacyArchiveClone)
+            {
+                if (SelfUpdateFeedback.ConfirmLegacyCloneStashSync(prepared))
+                {
+                    ApplyGitUpdate(prepared, stashFirst: true);
+                    return;
+                }
+                Finish(Outcome(LocalUpdateOutcome.Cancelled));
                 return;
             }
             if (prepared.Outcome == LocalUpdateOutcome.ReleaseCheckRequired)
@@ -309,7 +326,7 @@ namespace UnitySkills
 
         // ===== Track A: the one write, on the main thread =====
 
-        private static void ApplyGitUpdate(LocalUpdateResult prepared)
+        private static void ApplyGitUpdate(LocalUpdateResult prepared, bool stashFirst)
         {
             var isTag = prepared.Probe.Track == LocalUpdateTrack.GitTag;
             var oldDependencies = ReadDependencies(_targetDir);
@@ -325,7 +342,7 @@ namespace UnitySkills
                         ? SkillsLocalization.Get("update_git_switching_fmt", prepared.TargetLabel)
                         : SkillsLocalization.Get("update_git_merging_fmt", prepared.Probe.Branch),
                     1f);
-                result = LocalGitSync.Apply(_git, prepared);
+                result = stashFirst ? LocalGitSync.StashAndApply(_git, prepared) : LocalGitSync.Apply(_git, prepared);
                 FlushGitLog();
                 if (result.Outcome == LocalUpdateOutcome.Updated)
                 {
@@ -345,6 +362,19 @@ namespace UnitySkills
                 EditorApplication.UnlockReloadAssemblies();
             }
 
+            if (!stashFirst &&
+                result.Outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles &&
+                result.IsLegacyArchiveClone)
+            {
+                if (SelfUpdateFeedback.ConfirmLegacyCloneStashSync(result))
+                {
+                    ApplyGitUpdate(result, stashFirst: true);
+                    return;
+                }
+                Finish(Outcome(LocalUpdateOutcome.Cancelled));
+                return;
+            }
+
             if (result.Outcome == LocalUpdateOutcome.Updated)
             {
                 var marker = new JObject
@@ -356,6 +386,7 @@ namespace UnitySkills
                 };
                 if (isTag) marker["tag"] = prepared.TargetLabel;
                 else marker["branch"] = prepared.Probe.Branch;
+                if (stashFirst) marker["stashed"] = true;
                 WriteDoneMarker(marker);
             }
             Finish(result);
@@ -507,7 +538,16 @@ namespace UnitySkills
             {
                 var verdict = LocalGitSync.CheckVendoredSubtree(_git, out var entries, out var count);
                 FlushGitLog();
-                if (verdict != null)
+                if (verdict == LocalUpdateOutcome.VendoredSubtreeModified)
+                {
+                    if (!MatchesVendoredFingerprint(_targetDir, VendoredFingerprintPath) &&
+                        !SelfUpdateFeedback.ConfirmVendoredOverwrite(_targetDir, entries, count))
+                    {
+                        Finish(Outcome(LocalUpdateOutcome.Cancelled));
+                        return;
+                    }
+                }
+                else if (verdict != null)
                 {
                     _probe.Entries = entries;
                     _probe.EntryCount = count;
@@ -537,6 +577,7 @@ namespace UnitySkills
                 }
                 foreach (var warning in report.Warnings)
                     SkillsLogger.LogWarning(warning);
+                WriteVendoredFingerprint(_targetDir, _targetVersion, VendoredFingerprintPath);
                 AfterPackageChanged(oldDependencies);
             }
             finally
@@ -859,6 +900,87 @@ namespace UnitySkills
                 return true;
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        internal static string ComputeDirectoryFingerprint(string rootDir)
+        {
+            var root = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+                .Select(path => (full: path, rel: path.Substring(root.Length + 1).Replace('\\', '/')))
+                .Where(item => !IsIgnoredFingerprintEntry(item.rel))
+                .OrderBy(item => item.rel, StringComparer.Ordinal);
+
+            using (var sha = SHA256.Create())
+            {
+                var nl = new[] { (byte)'\n' };
+                foreach (var item in files)
+                {
+                    var nameBytes = Encoding.UTF8.GetBytes(item.rel + "\0");
+                    sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
+                    var content = File.ReadAllBytes(item.full);
+                    sha.TransformBlock(content, 0, content.Length, null, 0);
+                    sha.TransformBlock(nl, 0, nl.Length, null, 0);
+                }
+                sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                return BitConverter.ToString(sha.Hash).Replace("-", string.Empty).ToLowerInvariant();
+            }
+        }
+
+        private static bool IsIgnoredFingerprintEntry(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath)) return true;
+            var parts = relativePath.Split('/');
+            foreach (var part in parts)
+            {
+                if (string.Equals(part, "__pycache__", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(part, ".DS_Store", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return relativePath.EndsWith(".pyc", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static void WriteVendoredFingerprint(string packageDir, string version, string fingerprintPath)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(fingerprintPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                var payload = new JObject
+                {
+                    ["packageDir"] = Path.GetFullPath(packageDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    ["version"] = version ?? string.Empty,
+                    ["treeHash"] = ComputeDirectoryFingerprint(packageDir),
+                };
+                File.WriteAllText(fingerprintPath, payload.ToString(Newtonsoft.Json.Formatting.None));
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning("Failed to write vendored self-update fingerprint: " + ex.Message);
+            }
+        }
+
+        internal static bool MatchesVendoredFingerprint(string packageDir, string fingerprintPath)
+        {
+            try
+            {
+                if (!File.Exists(fingerprintPath)) return false;
+                var json = JObject.Parse(File.ReadAllText(fingerprintPath));
+                var savedDir = json.Value<string>("packageDir");
+                var savedHash = json.Value<string>("treeHash");
+                if (string.IsNullOrEmpty(savedDir) || string.IsNullOrEmpty(savedHash)) return false;
+
+                var currentDir = Path.GetFullPath(packageDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var comparison = GitCliRunner.IsWindows || GitCliRunner.IsMac
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+                if (!string.Equals(savedDir, currentDir, comparison)) return false;
+
+                return string.Equals(savedHash, ComputeDirectoryFingerprint(packageDir), StringComparison.OrdinalIgnoreCase);
+            }
+            catch
             {
                 return false;
             }

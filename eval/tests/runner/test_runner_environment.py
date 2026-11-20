@@ -118,6 +118,22 @@ class MarkerAndDocsTests(unittest.TestCase):
         self.assertEqual((docs[0]["agentId"], docs[0]["version"]), ("codex", "3.0.0"))
         self.assertEqual(len(docs[0]["treeHash"]), 64)
 
+    def test_skill_docs_include_antigravity_shared_and_legacy_global_dirs(self):
+        project = os.path.join(self.tmp, "Proj")
+        home = os.path.join(self.tmp, "home")
+        expected = {
+            os.path.join(home, ".gemini", "config", "skills", "unity-skills"),
+            os.path.join(home, ".gemini", "antigravity", "skills", "unity-skills"),
+        }
+        for path in expected:
+            os.makedirs(path)
+            with open(os.path.join(path, "SKILL.md"), "w", encoding="utf-8") as handle:
+                handle.write("---\nname: unity-skills\ndescription: test\n---\n")
+
+        docs = E.skill_docs(project, {"HOME": home})
+
+        self.assertEqual({doc["path"] for doc in docs}, expected)
+
 
 class DriftTests(unittest.TestCase):
     def test_drift_lists_changed_keys_only(self):

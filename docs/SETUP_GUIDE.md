@@ -81,6 +81,8 @@ references/                 # Unity development references
 > **Guide Line in Agent Instruction Files (opt-in, off by default)**: under ⚙ Settings ▸ AI Tools, "Write guide line to agent instruction files" makes Install and auto-sync also append one line — `When working on a Unity project, use Unity Skills.` — to each installed tool's root instruction file, so the AI proactively prefers Unity Skills. Project scope: `CLAUDE.md` for Claude Code, `AGENTS.md` shared by Codex / Antigravity / Cursor / OpenCode / Kimi Code. Global scope: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.kimi-code/AGENTS.md` (Cursor has no reliable global mechanism and is skipped). Enabling the toggle writes to every installed tool immediately; disabling it removes the marked line again — a file that held nothing but the line is deleted.
 
 > **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — install once for either makes it available to both. Codex auto-discovers skills; no `AGENTS.md` declaration needed.
+>
+> **Antigravity migration**: the shared global directory for Antigravity App, CLI and IDE is `~/.gemini/config/skills/`. A legacy-only install under `~/.gemini/antigravity/skills/` still counts as installed, so Update and package auto-sync migrate both `unity-skills` and `unity-skills-eval` to the new directory before removing the old template files. User-added files are preserved. When both locations exist, a current or older canonical copy is refreshed before legacy cleanup; a newer canonical copy is left untouched and only the legacy copy is removed. A failed new install leaves the legacy copy intact. Global Uninstall cleans both locations.
 
 > **Per-Scope Uninstall (v1.9.0+)**: Each agent card has a smart Uninstall button that adapts to install state — disabled when nothing's installed, single-button (with scope label) when only one scope is installed, or `Uninstall ▾` dropdown listing Project / Global when both are. Lets you remove just our skill from one scope without touching the other.
 
@@ -93,7 +95,7 @@ If one-click installation is not available for your tool, manually copy the cont
 | Tool | Workspace | Global |
 |------|-----------|--------|
 | Claude Code | `.claude/skills/` | `~/.claude/skills/` |
-| Antigravity | `.agents/skills/` | `~/.gemini/antigravity/skills/` |
+| Antigravity | `.agents/skills/` (shared with Codex) | `~/.gemini/config/skills/` (shared by App / CLI / IDE) |
 | Codex | `.agents/skills/` (shared with Antigravity) | `~/.agents/skills/` |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` |
 | OpenCode | `.opencode/skills/` | `~/.config/opencode/skills/` |

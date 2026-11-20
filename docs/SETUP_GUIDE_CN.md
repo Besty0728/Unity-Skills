@@ -81,6 +81,8 @@ references/                 # Unity 开发参考文档
 > **向 Agent 指令文件写入引导语（可选，默认关闭）**：在 ⚙ 设置抽屉的 **AI 工具** 区打开「向 AI 工具的指令文件写入引导语」后，Install 与自动同步会同时往每个已安装工具的根指令文件追加一行引导语（`When working on a Unity project, use Unity Skills.`），提示 AI 优先使用 Unity Skills。项目级：Claude Code 写 `CLAUDE.md`，Codex / Antigravity / Cursor / OpenCode / Kimi Code 共用 `AGENTS.md`；全局级：`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、`~/.gemini/GEMINI.md`、`~/.config/opencode/AGENTS.md`、`~/.kimi-code/AGENTS.md`（Cursor 无可靠全局机制，跳过）。打开开关会立即对所有已安装工具补写；关闭开关则精确移除该行——若文件只剩这一行则删除该文件。
 
 > **Codex 说明**：Antigravity 和 Codex 工作区共享 `.agents/skills/`，装一次即两边可用。Codex 自动扫描发现 skills，无需在 `AGENTS.md` 中声明。
+>
+> **Antigravity 迁移说明**：App / CLI / IDE 共用的全局目录为 `~/.gemini/config/skills/`。仅在旧 `~/.gemini/antigravity/skills/` 安装时，面板仍会识别为已安装；Update 与包升级自动同步会先把 `unity-skills` 和 `unity-skills-eval` 写入新目录，再清理旧模板文件，用户额外添加的文件保留。新旧目录同时存在时，当前或较旧的新目录副本会先更新再清旧；较新的新目录副本不会被重装或降级，只清理旧副本。新目录安装失败时旧副本保持不动。全局卸载会清理新旧两处。
 
 > **按 scope 卸载（v1.9.0+）**：每个 Agent 卡片的"卸载"按钮按当前安装状态智能形变 —— 未安装为灰态；仅一处装则按钮自带 scope 标签直接卸载该 scope；两处都装则显示 `Uninstall ▾` 下拉，分别选择 Project / Global。允许只移除一个 scope 的 skill，不动另一个。
 
@@ -93,7 +95,7 @@ references/                 # Unity 开发参考文档
 | 工具 | 工作区 | 全局 |
 |------|--------|------|
 | Claude Code | `.claude/skills/` | `~/.claude/skills/` |
-| Antigravity | `.agents/skills/` | `~/.gemini/antigravity/skills/` |
+| Antigravity | `.agents/skills/`（与 Codex 共享） | `~/.gemini/config/skills/`（App / CLI / IDE 共用） |
 | Codex | `.agents/skills/`（与 Antigravity 共享） | `~/.agents/skills/` |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` |
 | OpenCode | `.opencode/skills/` | `~/.config/opencode/skills/` |

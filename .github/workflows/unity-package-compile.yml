@@ -49,6 +49,9 @@ jobs:
       - name: Check SKILL.md frontmatter
         run: python3 .github/scripts/check_skill_frontmatter.py .
 
+      - name: Check Claude and .agents project skill mirrors
+        run: python3 .github/scripts/sync_project_skills.py .
+
   skill-inventory-check:
     name: Skill Inventory & Doc Consistency
     runs-on: ubuntu-latest

@@ -26,10 +26,13 @@ namespace UnitySkills
         public static string ClaudeProjectPath => Path.Combine(Application.dataPath, "..", ".claude", "skills", "unity-skills");
         public static string ClaudeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "unity-skills");
 
-        // Antigravity path - https://antigravity.google/docs/skills
-        // The workspace path is shared with Codex via .agents/skills (the open Agent Skills standard)
+        // Antigravity paths - https://antigravity.google/docs/skills
+        // The workspace path is shared with Codex via .agents/skills (the open Agent Skills standard).
+        // ~/.gemini/config/skills is shared by Antigravity App, CLI and IDE. The legacy global path is
+        // still discovered by the standalone IDE, but not by the App or CLI.
         public static string AntigravityProjectPath => Path.Combine(Application.dataPath, "..", ".agents", "skills", "unity-skills");
-        public static string AntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity", "skills", "unity-skills");
+        public static string AntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "config", "skills", "unity-skills");
+        internal static string LegacyAntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity", "skills", "unity-skills");
 
         // Codex path - https://developers.openai.com/codex/skills
         // The workspace path is shared with Antigravity via .agents/skills (the open Agent Skills standard)
@@ -82,7 +85,7 @@ namespace UnitySkills
         public static bool IsClaudeProjectInstalled => Directory.Exists(ClaudeProjectPath) && File.Exists(Path.Combine(ClaudeProjectPath, "SKILL.md"));
         public static bool IsClaudeGlobalInstalled => Directory.Exists(ClaudeGlobalPath) && File.Exists(Path.Combine(ClaudeGlobalPath, "SKILL.md"));
         public static bool IsAntigravityProjectInstalled => Directory.Exists(AntigravityProjectPath) && File.Exists(Path.Combine(AntigravityProjectPath, "SKILL.md"));
-        public static bool IsAntigravityGlobalInstalled => Directory.Exists(AntigravityGlobalPath) && File.Exists(Path.Combine(AntigravityGlobalPath, "SKILL.md"));
+        public static bool IsAntigravityGlobalInstalled => IsAntigravityGlobalInstalledAt(AntigravityGlobalPath, LegacyAntigravityGlobalPath);
         public static bool IsCodexProjectInstalled => Directory.Exists(CodexProjectPath) && File.Exists(Path.Combine(CodexProjectPath, "SKILL.md"));
         public static bool IsCodexGlobalInstalled => Directory.Exists(CodexGlobalPath) && File.Exists(Path.Combine(CodexGlobalPath, "SKILL.md"));
         public static bool IsCursorProjectInstalled => Directory.Exists(CursorProjectPath) && File.Exists(Path.Combine(CursorProjectPath, "SKILL.md"));
@@ -91,6 +94,22 @@ namespace UnitySkills
         public static bool IsOpenCodeGlobalInstalled => Directory.Exists(OpenCodeGlobalPath) && File.Exists(Path.Combine(OpenCodeGlobalPath, "SKILL.md"));
         public static bool IsKimiCodeProjectInstalled => Directory.Exists(KimiCodeProjectPath) && File.Exists(Path.Combine(KimiCodeProjectPath, "SKILL.md"));
         public static bool IsKimiCodeGlobalInstalled => Directory.Exists(KimiCodeGlobalPath) && File.Exists(Path.Combine(KimiCodeGlobalPath, "SKILL.md"));
+
+        private static bool HasSkill(string targetPath) =>
+            Directory.Exists(targetPath) && File.Exists(Path.Combine(targetPath, "SKILL.md"));
+
+        internal static bool IsAntigravityGlobalInstalledAt(string targetPath, string legacyPath) =>
+            HasSkill(targetPath) || HasSkill(legacyPath);
+
+        internal static string ReadAntigravityGlobalInstalledVersion() =>
+            ReadAntigravityGlobalInstalledVersionAt(AntigravityGlobalPath, LegacyAntigravityGlobalPath);
+
+        internal static string ReadAntigravityGlobalInstalledVersionAt(string targetPath, string legacyPath)
+        {
+            if (!HasSkill(targetPath) || HasSkill(legacyPath))
+                return null;
+            return ReadInstalledVersion(targetPath);
+        }
 
         public static (bool success, string message) InstallClaude(bool global)
         {
@@ -111,13 +130,41 @@ namespace UnitySkills
             try
             {
                 var targetPath = global ? AntigravityGlobalPath : AntigravityProjectPath;
-                return InstallSkill(targetPath, "Antigravity", AgentInstructionService.AgentAntigravity,
+                (bool success, string message) Install() => InstallSkill(targetPath, "Antigravity", AgentInstructionService.AgentAntigravity,
                     AgentInstructionService.GetInstructionFilePath(AgentInstructionService.AgentAntigravity, global));
+                return global
+                    ? MigrateLegacyAntigravityGlobal(targetPath, LegacyAntigravityGlobalPath, Install)
+                    : Install();
             }
             catch (Exception ex)
             {
                 return (false, ex.Message);
             }
+        }
+
+        internal static (bool success, string message) MigrateLegacyAntigravityGlobal(
+            string targetPath, string legacyPath, Func<(bool success, string message)> install)
+        {
+            if (!Directory.Exists(legacyPath) || SamePath(targetPath, legacyPath))
+                return install();
+
+            if (HasSkill(targetPath) &&
+                CompareInstalledVersion(ReadInstalledVersion(targetPath), SkillsLogger.Version) == InstalledVersionState.Newer)
+            {
+                var cleanupOnly = UninstallSkill(legacyPath, "Antigravity (legacy)");
+                return cleanupOnly.success
+                    ? (true, targetPath)
+                    : (false, $"Kept newer copy at {targetPath}, but legacy cleanup failed: {cleanupOnly.message}");
+            }
+
+            var result = install();
+            if (!result.success)
+                return result;
+
+            var cleanup = UninstallSkill(legacyPath, "Antigravity (legacy)");
+            return cleanup.success
+                ? result
+                : (false, $"Installed to {targetPath}, but legacy cleanup failed: {cleanup.message}");
         }
 
         public static (bool success, string message) UninstallClaude(bool global)
@@ -138,12 +185,33 @@ namespace UnitySkills
             try
             {
                 var targetPath = global ? AntigravityGlobalPath : AntigravityProjectPath;
-                return UninstallSkill(targetPath, "Antigravity");
+                return global
+                    ? UninstallAntigravityGlobal(targetPath, LegacyAntigravityGlobalPath)
+                    : UninstallSkill(targetPath, "Antigravity");
             }
             catch (Exception ex)
             {
                 return (false, ex.Message);
             }
+        }
+
+        internal static (bool success, string message) UninstallAntigravityGlobal(string targetPath, string legacyPath)
+        {
+            bool removed = false;
+            string removedPath = null;
+            foreach (var path in new[] { targetPath, legacyPath })
+            {
+                if (!Directory.Exists(path))
+                    continue;
+                var result = UninstallSkill(path, "Antigravity");
+                if (!result.success)
+                    return result;
+                removed = true;
+                removedPath = path;
+            }
+            return removed
+                ? (true, removedPath)
+                : (false, "Antigravity skill not installed at this location");
         }
 
         public static (bool success, string message) InstallCodex(bool global)
@@ -284,7 +352,7 @@ namespace UnitySkills
             yield return MakeTarget(AgentInstructionService.AgentCodex, false, "Codex (Project)", CodexProjectPath, () => IsCodexProjectInstalled, () => InstallCodex(false));
             yield return MakeTarget(AgentInstructionService.AgentCodex, true, "Codex (Global)", CodexGlobalPath, () => IsCodexGlobalInstalled, () => InstallCodex(true));
             yield return MakeTarget(AgentInstructionService.AgentAntigravity, false, "Antigravity (Project)", AntigravityProjectPath, () => IsAntigravityProjectInstalled, () => InstallAntigravity(false));
-            yield return MakeTarget(AgentInstructionService.AgentAntigravity, true, "Antigravity (Global)", AntigravityGlobalPath, () => IsAntigravityGlobalInstalled, () => InstallAntigravity(true));
+            yield return MakeTarget(AgentInstructionService.AgentAntigravity, true, "Antigravity (Global)", AntigravityGlobalPath, () => IsAntigravityGlobalInstalled, () => InstallAntigravity(true), ReadAntigravityGlobalInstalledVersion);
             yield return MakeTarget(AgentInstructionService.AgentCursor, false, "Cursor (Project)", CursorProjectPath, () => IsCursorProjectInstalled, () => InstallCursor(false));
             yield return MakeTarget(AgentInstructionService.AgentCursor, true, "Cursor (Global)", CursorGlobalPath, () => IsCursorGlobalInstalled, () => InstallCursor(true));
             yield return MakeTarget(AgentInstructionService.AgentOpenCode, false, "OpenCode (Project)", OpenCodeProjectPath, () => IsOpenCodeProjectInstalled, () => InstallOpenCode(false));
@@ -293,7 +361,7 @@ namespace UnitySkills
             yield return MakeTarget(AgentInstructionService.AgentKimiCode, true, "Kimi Code (Global)", KimiCodeGlobalPath, () => IsKimiCodeGlobalInstalled, () => InstallKimiCode(true));
         }
 
-        private static InstallTarget MakeTarget(string agentId, bool isGlobal, string displayName, string path, Func<bool> isInstalled, Func<(bool, string)> install)
+        private static InstallTarget MakeTarget(string agentId, bool isGlobal, string displayName, string path, Func<bool> isInstalled, Func<(bool, string)> install, Func<string> installedVersion = null)
         {
             return new InstallTarget
             {
@@ -302,7 +370,7 @@ namespace UnitySkills
                 AgentId = agentId,
                 IsGlobal = isGlobal,
                 IsInstalled = isInstalled,
-                InstalledVersion = () => ReadInstalledVersion(path),
+                InstalledVersion = installedVersion ?? (() => ReadInstalledVersion(path)),
                 Install = install
             };
         }

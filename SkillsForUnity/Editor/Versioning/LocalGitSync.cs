@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 using UnitySkills.Internal;
 
 namespace UnitySkills
@@ -64,6 +65,8 @@ namespace UnitySkills
         public bool IsShallow;
         /// <summary>Detached with a local vX.Y.Z tag at HEAD; whether it is an official release is only known after ls-remote.</summary>
         public bool HeadAtReleaseTag;
+        /// <summary>ArchiveInRepository: the package subtree has uncommitted changes in the host repository.</summary>
+        public bool HasVendoredChanges;
         public IReadOnlyList<string> Entries = Array.Empty<string>();
         public int EntryCount;
 
@@ -82,6 +85,9 @@ namespace UnitySkills
         public string TargetLabel;
         /// <summary>GitTag: the verified local tag ref the switch checks out.</summary>
         public string TargetRef;
+        /// <summary>True when a legacy ZIP update overwrote an official clone and left HEAD on an older version.</summary>
+        public bool IsLegacyArchiveClone;
+        public string HeadPackageVersion, DiskPackageVersion;
         public IReadOnlyList<string> Entries = Array.Empty<string>();
         public int EntryCount;
     }
@@ -370,6 +376,13 @@ namespace UnitySkills
             {
                 probe.Entries = entries.Take(MaxListedEntries).ToList();
                 probe.EntryCount = count;
+                if (verdict == LocalUpdateOutcome.VendoredSubtreeModified)
+                {
+                    // Allow update checks (and unmodified previous self-update swaps) to proceed; Track B verifies
+                    // fingerprint / asks before overwriting manual edits.
+                    probe.HasVendoredChanges = true;
+                    return ArchiveTrack(probe, LocalUpdateTrack.ArchiveInRepository);
+                }
                 return Block(probe, verdict.Value);
             }
             return ArchiveTrack(probe, LocalUpdateTrack.ArchiveInRepository);
@@ -453,8 +466,8 @@ namespace UnitySkills
 
         private static LocalUpdateResult PrepareBranch(GitSyncContext ctx, LocalUpdateProbe probe)
         {
-            var dirty = CheckWorktreeClean(ctx, probe);
-            if (dirty != null) return dirty;
+            if (HasUnmergedEntries(ctx, out var conflictOutcome))
+                return Result(conflictOutcome, probe);
 
             var remote = LsRemoteBranch(ctx, probe.Branch, out var target);
             if (remote != null) return Result(remote.Value, probe);
@@ -482,17 +495,21 @@ namespace UnitySkills
             }
             if (forward != 0) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
 
+            var targetLabel = BranchTargetLabel(probe.Branch, target);
+            var overlap = CheckOverlappingChanges(ctx, probe, probe.HeadSha, target, targetLabel, null);
+            if (overlap != null) return overlap;
+
             var ready = Result(LocalUpdateOutcome.UpdateAvailable, probe);
             ready.FromSha = probe.HeadSha;
             ready.ToSha = target;
-            ready.TargetLabel = BranchTargetLabel(probe.Branch, target);
+            ready.TargetLabel = targetLabel;
             return ready;
         }
 
         private static LocalUpdateResult PrepareTag(GitSyncContext ctx, LocalUpdateProbe probe)
         {
-            var dirty = CheckWorktreeClean(ctx, probe);
-            if (dirty != null) return dirty;
+            if (HasUnmergedEntries(ctx, out var conflictOutcome))
+                return Result(conflictOutcome, probe);
 
             var resolved = ResolveReleaseTags(ctx, probe, out var newest);
             if (resolved.Outcome != LocalUpdateOutcome.UpdateAvailable) return resolved;
@@ -507,6 +524,9 @@ namespace UnitySkills
             var local = Git(ctx, ReadTimeoutMs, false, "rev-parse", "--verify", "-q", tagRef + "^{commit}");
             if (local.Succeeded && local.StdOut.Trim() == newest.Commit)
             {
+                var overlap = CheckOverlappingChanges(ctx, probe, probe.HeadSha, newest.Commit, newest.Name, tagRef);
+                if (overlap != null) return overlap;
+
                 resolved.TargetRef = tagRef;
                 return resolved;
             }
@@ -601,8 +621,15 @@ namespace UnitySkills
                 }
             }
 
-            var dirty = CheckWorktreeClean(ctx, probe);
-            if (dirty != null) return dirty;
+            if (HasUnmergedEntries(ctx, out var conflictOutcome))
+                return Result(conflictOutcome, probe);
+
+            var preStatus = Git(ctx, StatusTimeoutMs, false, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal");
+            if (!preStatus.Succeeded)
+            {
+                LogFailure(ctx, "status", preStatus);
+                return Result(preStatus.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.GitCommandFailed, probe);
+            }
 
             ProcessRunResult write;
             if (probe.Track == LocalUpdateTrack.GitTag)
@@ -616,18 +643,51 @@ namespace UnitySkills
                 write = Git(ctx, WriteTimeoutMs, true, "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", target);
             }
 
-            var outcome = ClassifyWrite(ctx, probe, write, target, out var entries, out var count);
+            var outcome = ClassifyWrite(ctx, probe, write, target, preStatus.StdOut, out var entries, out var count);
             var result = Result(outcome, probe);
             result.FromSha = headNow;
             result.ToSha = target;
             result.TargetLabel = prepared.TargetLabel;
+            result.TargetRef = prepared.TargetRef;
             result.Entries = entries;
             result.EntryCount = count;
+            if (outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles &&
+                TryDetectLegacyOverwrittenClone(ctx, probe.PackageDir, out var headVer, out var diskVer))
+            {
+                result.IsLegacyArchiveClone = true;
+                result.HeadPackageVersion = headVer;
+                result.DiskPackageVersion = diskVer;
+            }
             return result;
         }
 
+        /// <summary>
+        /// Saves the entire dirty tree (tracked, staged and untracked) to git stash before running <see cref="Apply"/>.
+        /// Only called after explicit user confirmation for a legacy archive-overwritten clone; never pops afterwards.
+        /// </summary>
+        internal static LocalUpdateResult StashAndApply(GitSyncContext ctx, LocalUpdateResult prepared)
+        {
+            var probe = prepared.Probe;
+            var stash = Git(ctx, WriteTimeoutMs, true,
+                "-c", "user.name=UnitySkills",
+                "-c", "user.email=unity-skills@local",
+                "stash", "push", "-u", "-m", "unity-skills-selfupdate-legacy-sync");
+            if (!stash.Succeeded)
+            {
+                if (stash.Cancelled) return Result(LocalUpdateOutcome.Cancelled, probe);
+                LogFailure(ctx, "stash push", stash);
+                return Result(Contains(stash.StdErr, "index.lock")
+                    ? LocalUpdateOutcome.GitRepositoryLocked
+                    : LocalUpdateOutcome.GitCommandFailed, probe);
+            }
+
+            ctx.Add(GitLogLevel.Warning,
+                "Self-update: saved the previous working tree to git stash (unity-skills-selfupdate-legacy-sync) before syncing.");
+            return Apply(ctx, prepared);
+        }
+
         private static LocalUpdateOutcome ClassifyWrite(GitSyncContext ctx, LocalUpdateProbe probe, ProcessRunResult write,
-            string target, out IReadOnlyList<string> entries, out int count)
+            string target, string preWriteStatus, out IReadOnlyList<string> entries, out int count)
         {
             entries = Array.Empty<string>();
             count = 0;
@@ -656,7 +716,7 @@ namespace UnitySkills
 
             LogFailure(ctx, "fast-forward", write);
             var status = Git(ctx, StatusTimeoutMs, false, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal");
-            if (status.Succeeded && ParsePorcelainZ(status.StdOut, out _).Count == 0)
+            if (status.Succeeded && string.Equals(status.StdOut, preWriteStatus, StringComparison.Ordinal))
                 return LocalUpdateOutcome.GitCommandFailed;
             ctx.Add(GitLogLevel.Error,
                 $"Self-update: the working tree of {probe.RepoRoot} may hold part of the update. If git still has an index.lock there after the editor is idle, remove it; then run git status.");
@@ -665,23 +725,145 @@ namespace UnitySkills
 
         // ===== Shared steps =====
 
-        private static LocalUpdateResult CheckWorktreeClean(GitSyncContext ctx, LocalUpdateProbe probe)
+        private static bool HasUnmergedEntries(GitSyncContext ctx, out LocalUpdateOutcome outcome)
         {
-            // Whole repository, untracked included, ignored excluded; explicit mode overrides status.showUntrackedFiles=no.
+            outcome = LocalUpdateOutcome.GitCommandFailed;
+            var unmerged = Git(ctx, ReadTimeoutMs, false, "diff", "--name-only", "-z", "--diff-filter=U");
+            if (!unmerged.Succeeded)
+            {
+                LogFailure(ctx, "diff --diff-filter=U", unmerged);
+                outcome = unmerged.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.GitCommandFailed;
+                return true;
+            }
+            if (!string.IsNullOrEmpty(unmerged.StdOut))
+            {
+                outcome = LocalUpdateOutcome.MergeInterrupted;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Allows non-conflicting local changes (modified, staged or untracked files untouched by <paramref name="headSha"/>..<paramref name="targetSha"/>)
+        /// to stay in place across the fast-forward or tag switch. Only files overlapping with the update block and list themselves.
+        /// </summary>
+        private static LocalUpdateResult CheckOverlappingChanges(GitSyncContext ctx, LocalUpdateProbe probe,
+            string headSha, string targetSha, string targetLabel, string targetRef)
+        {
             var status = Git(ctx, StatusTimeoutMs, false, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal");
             if (!status.Succeeded)
             {
                 LogFailure(ctx, "status", status);
                 return Result(status.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.GitCommandFailed, probe);
             }
-            var entries = ParsePorcelainZ(status.StdOut, out var count);
-            if (count == 0) return null;
+            var dirtyEntries = ParseStatusEntriesZ(status.StdOut);
+            if (dirtyEntries.Count == 0) return null;
 
-            var dirty = Result(LocalUpdateOutcome.DirtyWorktree, probe);
-            dirty.Entries = entries.Take(MaxListedEntries).ToList();
-            dirty.EntryCount = count;
-            return dirty;
+            var diff = Git(ctx, ReadTimeoutMs, false, "diff", "--name-only", "-z", headSha, targetSha);
+            if (!diff.Succeeded)
+            {
+                LogFailure(ctx, "diff --name-only", diff);
+                return Result(diff.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.GitCommandFailed, probe);
+            }
+            var upstreamPaths = diff.StdOut.Split('\0')
+                .Where(p => p.Length > 0)
+                .Select(NormalizeGitPath)
+                .ToList();
+            if (upstreamPaths.Count == 0) return null;
+
+            var overlapping = new List<string>();
+            foreach (var entry in dirtyEntries)
+            {
+                if (upstreamPaths.Any(u => PathsOverlap(entry.Path1, u) ||
+                                           (!string.IsNullOrEmpty(entry.Path2) && PathsOverlap(entry.Path2, u))))
+                {
+                    overlapping.Add(entry.Raw);
+                }
+            }
+            if (overlapping.Count == 0) return null;
+
+            var blocked = Result(LocalUpdateOutcome.WouldOverwriteLocalFiles, probe);
+            blocked.FromSha = headSha;
+            blocked.ToSha = targetSha;
+            blocked.TargetLabel = targetLabel;
+            blocked.TargetRef = targetRef;
+            blocked.Entries = overlapping.Take(MaxListedEntries).ToList();
+            blocked.EntryCount = overlapping.Count;
+            if (TryDetectLegacyOverwrittenClone(ctx, probe.PackageDir, out var headVer, out var diskVer))
+            {
+                blocked.IsLegacyArchiveClone = true;
+                blocked.HeadPackageVersion = headVer;
+                blocked.DiskPackageVersion = diskVer;
+            }
+            return blocked;
         }
+
+        private static bool TryDetectLegacyOverwrittenClone(GitSyncContext ctx, string packageDir, out string headVersion, out string diskVersion)
+        {
+            headVersion = null;
+            diskVersion = null;
+            var headPkg = Git(ctx, ReadTimeoutMs, false, "show", $"HEAD:{ClonePackageFolder}/package.json");
+            if (!headPkg.Succeeded) return false;
+            try
+            {
+                headVersion = JObject.Parse(headPkg.StdOut).Value<string>("version")?.Trim();
+                var diskPath = Path.Combine(packageDir, "package.json");
+                if (!File.Exists(diskPath)) return false;
+                diskVersion = JObject.Parse(File.ReadAllText(diskPath)).Value<string>("version")?.Trim();
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!Version.TryParse(headVersion, out var headSemver) || !Version.TryParse(diskVersion, out var diskSemver))
+                return false;
+            return headSemver < diskSemver;
+        }
+
+        private readonly struct StatusEntry
+        {
+            public readonly string Raw;
+            public readonly string Path1;
+            public readonly string Path2;
+            public StatusEntry(string raw, string path1, string path2) { Raw = raw; Path1 = path1; Path2 = path2; }
+        }
+
+        private static List<StatusEntry> ParseStatusEntriesZ(string output)
+        {
+            var entries = new List<StatusEntry>();
+            if (string.IsNullOrEmpty(output)) return entries;
+            var fields = output.Split('\0');
+            for (var i = 0; i < fields.Length; i++)
+            {
+                var field = fields[i];
+                if (field.Length < 4) continue;
+                var path1 = NormalizeGitPath(field.Substring(3));
+                string path2 = null;
+                if (field[0] == 'R' || field[0] == 'C' || field[1] == 'R' || field[1] == 'C')
+                {
+                    if (i + 1 < fields.Length) path2 = NormalizeGitPath(fields[++i]);
+                }
+                entries.Add(new StatusEntry(field, path1, path2));
+            }
+            return entries;
+        }
+
+        private static string NormalizeGitPath(string path) =>
+            (path ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+
+        internal static bool PathsOverlap(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            var na = NormalizeGitPath(a);
+            var nb = NormalizeGitPath(b);
+            return PathEquals(na, nb) || IsFolderPrefix(na, nb) || IsFolderPrefix(nb, na);
+        }
+
+        private static bool IsFolderPrefix(string folder, string path) =>
+            path.Length > folder.Length &&
+            path[folder.Length] == '/' &&
+            PathEquals(path.Substring(0, folder.Length), folder);
 
         /// <summary>Null on success with the official head in <paramref name="sha"/>; otherwise the failure outcome.</summary>
         private static LocalUpdateOutcome? LsRemoteBranch(GitSyncContext ctx, string branch, out string sha)
