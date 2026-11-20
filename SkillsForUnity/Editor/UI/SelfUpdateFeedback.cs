@@ -162,6 +162,32 @@ namespace UnitySkills
                 SkillsLocalization.Get("dialog_cancel"));
         }
 
+        /// <summary>
+        /// Asks after a real merge conflict in an official clone whether to save local edits to git stash and sync.
+        /// </summary>
+        internal static bool ConfirmConflictStashSync(LocalUpdateResult result)
+        {
+            var probe = result?.Probe ?? new LocalUpdateProbe();
+            var repo = probe.RepoRoot ?? probe.MarkerRoot ?? probe.PackageDir;
+            return EditorUtility.DisplayDialog(
+                SkillsLocalization.Get("update_conflict_stash_title"),
+                SkillsLocalization.Get("update_conflict_stash_body_fmt", repo, FormatEntries(result?.Entries, result?.EntryCount ?? 0)),
+                SkillsLocalization.Get("update_conflict_stash_continue"),
+                SkillsLocalization.Get("dialog_cancel"));
+        }
+
+        /// <summary>
+        /// Asks before overwriting conflicting files in a Track B archive update (non-conflicting edits are preserved).
+        /// </summary>
+        internal static bool ConfirmArchiveConflictOverwrite(string packageDir, IReadOnlyList<string> conflicts, int count)
+        {
+            return EditorUtility.DisplayDialog(
+                SkillsLocalization.Get("update_archive_conflict_title"),
+                SkillsLocalization.Get("update_archive_conflict_body_fmt", packageDir, FormatEntries(conflicts, count)),
+                SkillsLocalization.Get("update_vendored_overwrite_continue"),
+                SkillsLocalization.Get("dialog_cancel"));
+        }
+
         /// <summary>At most <see cref="LocalSelfUpdateService.MaxListedEntries"/> lines, then "...and N more" for the rest.</summary>
         internal static string FormatEntries(IReadOnlyList<string> entries, int count)
         {

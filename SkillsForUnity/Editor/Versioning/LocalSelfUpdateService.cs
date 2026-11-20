@@ -45,7 +45,7 @@ namespace UnitySkills
         private static string StagingDir => Path.Combine(WorkDir, "staging");
         // Survives CleanupWorkDir on purpose: the package folder this update replaced.
         private static string BackupDir => Path.Combine(WorkDir, BackupDirName);
-        private static string VendoredFingerprintPath => Path.Combine(WorkDir, "vendored_fingerprint.json");
+        private static string BaseManifestPath => Path.Combine(WorkDir, "base_manifest.json");
         private static string DoneFilePath => Path.Combine(UnitySkillsLibraryDir, DoneFileName);
 
         private static UnityWebRequest _activeRequest;
@@ -119,7 +119,7 @@ namespace UnitySkills
                     : $"{marker.Value<string>("from")}..{tag}";
                 var line = $"Self-update via local Git sync ({span}{versionSuffix}) completed successfully.";
                 return marker.Value<bool?>("stashed") == true
-                    ? line + " Previous working-tree changes were saved in git stash (unity-skills-selfupdate-legacy-sync)."
+                    ? line + " Previous working-tree changes were saved in git stash (unity-skills-selfupdate-backup)."
                     : line;
             }
 
@@ -233,9 +233,12 @@ namespace UnitySkills
                 ApplyGitUpdate(prepared, stashFirst: false);
                 return;
             }
-            if (prepared.Outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles && prepared.IsLegacyArchiveClone)
+            if (prepared.Outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles && prepared.CanStashAndSync)
             {
-                if (SelfUpdateFeedback.ConfirmLegacyCloneStashSync(prepared))
+                bool confirmed = prepared.IsLegacyArchiveClone
+                    ? SelfUpdateFeedback.ConfirmLegacyCloneStashSync(prepared)
+                    : SelfUpdateFeedback.ConfirmConflictStashSync(prepared);
+                if (confirmed)
                 {
                     ApplyGitUpdate(prepared, stashFirst: true);
                     return;
@@ -364,9 +367,12 @@ namespace UnitySkills
 
             if (!stashFirst &&
                 result.Outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles &&
-                result.IsLegacyArchiveClone)
+                result.CanStashAndSync)
             {
-                if (SelfUpdateFeedback.ConfirmLegacyCloneStashSync(result))
+                bool confirmed = result.IsLegacyArchiveClone
+                    ? SelfUpdateFeedback.ConfirmLegacyCloneStashSync(result)
+                    : SelfUpdateFeedback.ConfirmConflictStashSync(result);
+                if (confirmed)
                 {
                     ApplyGitUpdate(result, stashFirst: true);
                     return;
@@ -534,14 +540,27 @@ namespace UnitySkills
                 Finish(Outcome(guard.Value));
                 return;
             }
-            if (_probe.Track == LocalUpdateTrack.ArchiveInRepository)
+            var officialNextHashes = CollectFileHashes(StagingDir);
+            var baseManifest = ReadBaseManifest(_targetDir, BaseManifestPath);
+            ArchiveMigrationPlan migration = null;
+
+            if (baseManifest != null)
+            {
+                migration = PlanArchiveMigration(_targetDir, baseManifest, officialNextHashes);
+                if (migration.Conflicts.Count > 0 &&
+                    !SelfUpdateFeedback.ConfirmArchiveConflictOverwrite(_targetDir, migration.Conflicts, migration.Conflicts.Count))
+                {
+                    Finish(Outcome(LocalUpdateOutcome.Cancelled));
+                    return;
+                }
+            }
+            else if (_probe.Track == LocalUpdateTrack.ArchiveInRepository)
             {
                 var verdict = LocalGitSync.CheckVendoredSubtree(_git, out var entries, out var count);
                 FlushGitLog();
                 if (verdict == LocalUpdateOutcome.VendoredSubtreeModified)
                 {
-                    if (!MatchesVendoredFingerprint(_targetDir, VendoredFingerprintPath) &&
-                        !SelfUpdateFeedback.ConfirmVendoredOverwrite(_targetDir, entries, count))
+                    if (!SelfUpdateFeedback.ConfirmVendoredOverwrite(_targetDir, entries, count))
                     {
                         Finish(Outcome(LocalUpdateOutcome.Cancelled));
                         return;
@@ -555,6 +574,20 @@ namespace UnitySkills
                     refused.Entries = entries;
                     refused.EntryCount = count;
                     Finish(refused);
+                    return;
+                }
+            }
+
+            if (migration != null && migration.PreservedFiles.Count > 0)
+            {
+                try
+                {
+                    ApplyPreservedFiles(_targetDir, StagingDir, migration.PreservedFiles);
+                }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogError("Self-update custom-file migration failed: " + ex.Message);
+                    Finish(Outcome(LocalUpdateOutcome.DiskError));
                     return;
                 }
             }
@@ -577,7 +610,7 @@ namespace UnitySkills
                 }
                 foreach (var warning in report.Warnings)
                     SkillsLogger.LogWarning(warning);
-                WriteVendoredFingerprint(_targetDir, _targetVersion, VendoredFingerprintPath);
+                WriteBaseManifest(_targetDir, _targetVersion, officialNextHashes, BaseManifestPath);
                 AfterPackageChanged(oldDependencies);
             }
             finally
@@ -905,31 +938,30 @@ namespace UnitySkills
             }
         }
 
-        internal static string ComputeDirectoryFingerprint(string rootDir)
+        internal sealed class ArchiveMigrationPlan
         {
-            var root = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories)
-                .Select(path => (full: path, rel: path.Substring(root.Length + 1).Replace('\\', '/')))
-                .Where(item => !IsIgnoredFingerprintEntry(item.rel))
-                .OrderBy(item => item.rel, StringComparer.Ordinal);
-
-            using (var sha = SHA256.Create())
-            {
-                var nl = new[] { (byte)'\n' };
-                foreach (var item in files)
-                {
-                    var nameBytes = Encoding.UTF8.GetBytes(item.rel + "\0");
-                    sha.TransformBlock(nameBytes, 0, nameBytes.Length, null, 0);
-                    var content = File.ReadAllBytes(item.full);
-                    sha.TransformBlock(content, 0, content.Length, null, 0);
-                    sha.TransformBlock(nl, 0, nl.Length, null, 0);
-                }
-                sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                return BitConverter.ToString(sha.Hash).Replace("-", string.Empty).ToLowerInvariant();
-            }
+            public readonly List<string> PreservedFiles = new List<string>();
+            public readonly List<string> Conflicts = new List<string>();
         }
 
-        private static bool IsIgnoredFingerprintEntry(string relativePath)
+        internal static Dictionary<string, string> CollectFileHashes(string rootDir)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(rootDir) || !Directory.Exists(rootDir)) return result;
+
+            var root = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            foreach (var full in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+            {
+                var rel = full.Substring(root.Length + 1).Replace('\\', '/');
+                if (IsIgnoredBaselineEntry(rel)) continue;
+                using (var sha = SHA256.Create())
+                using (var stream = File.OpenRead(full))
+                    result[rel] = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).ToLowerInvariant();
+            }
+            return result;
+        }
+
+        private static bool IsIgnoredBaselineEntry(string relativePath)
         {
             if (string.IsNullOrEmpty(relativePath)) return true;
             var parts = relativePath.Split('/');
@@ -942,47 +974,105 @@ namespace UnitySkills
             return relativePath.EndsWith(".pyc", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static void WriteVendoredFingerprint(string packageDir, string version, string fingerprintPath)
+        internal static ArchiveMigrationPlan PlanArchiveMigration(
+            string currentDir,
+            IReadOnlyDictionary<string, string> baseManifest,
+            IReadOnlyDictionary<string, string> nextOfficialManifest)
+        {
+            var plan = new ArchiveMigrationPlan();
+            if (baseManifest == null || nextOfficialManifest == null) return plan;
+
+            var currentHashes = CollectFileHashes(currentDir);
+            foreach (var pair in currentHashes.OrderBy(p => p.Key, StringComparer.Ordinal))
+            {
+                var rel = pair.Key;
+                var curHash = pair.Value;
+                if (!baseManifest.TryGetValue(rel, out var baseHash))
+                {
+                    if (!nextOfficialManifest.TryGetValue(rel, out var nextHash))
+                        plan.PreservedFiles.Add(rel);
+                    else if (!string.Equals(nextHash, curHash, StringComparison.OrdinalIgnoreCase))
+                        plan.Conflicts.Add(rel);
+                    continue;
+                }
+
+                if (string.Equals(curHash, baseHash, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (nextOfficialManifest.TryGetValue(rel, out var updatedHash) &&
+                    string.Equals(updatedHash, baseHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.PreservedFiles.Add(rel);
+                }
+                else
+                {
+                    plan.Conflicts.Add(rel);
+                }
+            }
+            return plan;
+        }
+
+        internal static void ApplyPreservedFiles(string currentDir, string stagingDir, IEnumerable<string> preservedFiles)
+        {
+            foreach (var rel in preservedFiles)
+            {
+                var src = Path.Combine(currentDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                var dst = Path.Combine(stagingDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(src)) continue;
+                var dstDir = Path.GetDirectoryName(dst);
+                if (!string.IsNullOrEmpty(dstDir)) Directory.CreateDirectory(dstDir);
+                File.Copy(src, dst, overwrite: true);
+            }
+        }
+
+        internal static void WriteBaseManifest(string packageDir, string version, IReadOnlyDictionary<string, string> files, string manifestPath)
         {
             try
             {
-                var dir = Path.GetDirectoryName(fingerprintPath);
+                var dir = Path.GetDirectoryName(manifestPath);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                var filesObj = new JObject();
+                foreach (var pair in files.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    filesObj[pair.Key] = pair.Value;
+
                 var payload = new JObject
                 {
                     ["packageDir"] = Path.GetFullPath(packageDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                     ["version"] = version ?? string.Empty,
-                    ["treeHash"] = ComputeDirectoryFingerprint(packageDir),
+                    ["files"] = filesObj,
                 };
-                File.WriteAllText(fingerprintPath, payload.ToString(Newtonsoft.Json.Formatting.None));
+                File.WriteAllText(manifestPath, payload.ToString(Newtonsoft.Json.Formatting.None));
             }
             catch (Exception ex)
             {
-                SkillsLogger.LogWarning("Failed to write vendored self-update fingerprint: " + ex.Message);
+                SkillsLogger.LogWarning("Failed to write archive self-update baseline manifest: " + ex.Message);
             }
         }
 
-        internal static bool MatchesVendoredFingerprint(string packageDir, string fingerprintPath)
+        internal static Dictionary<string, string> ReadBaseManifest(string packageDir, string manifestPath)
         {
             try
             {
-                if (!File.Exists(fingerprintPath)) return false;
-                var json = JObject.Parse(File.ReadAllText(fingerprintPath));
+                if (!File.Exists(manifestPath)) return null;
+                var json = JObject.Parse(File.ReadAllText(manifestPath));
                 var savedDir = json.Value<string>("packageDir");
-                var savedHash = json.Value<string>("treeHash");
-                if (string.IsNullOrEmpty(savedDir) || string.IsNullOrEmpty(savedHash)) return false;
+                var filesObj = json["files"] as JObject;
+                if (string.IsNullOrEmpty(savedDir) || filesObj == null) return null;
 
                 var currentDir = Path.GetFullPath(packageDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var comparison = GitCliRunner.IsWindows || GitCliRunner.IsMac
                     ? StringComparison.OrdinalIgnoreCase
                     : StringComparison.Ordinal;
-                if (!string.Equals(savedDir, currentDir, comparison)) return false;
+                if (!string.Equals(savedDir, currentDir, comparison)) return null;
 
-                return string.Equals(savedHash, ComputeDirectoryFingerprint(packageDir), StringComparison.OrdinalIgnoreCase);
+                var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var prop in filesObj.Properties())
+                    dict[prop.Name] = prop.Value?.ToString() ?? string.Empty;
+                return dict;
             }
             catch
             {
-                return false;
+                return null;
             }
         }
 

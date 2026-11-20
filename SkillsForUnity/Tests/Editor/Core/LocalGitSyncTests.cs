@@ -614,6 +614,51 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void NonOverlappingSameFileEdit_ThreeWayMergesAndPreservesLocalAndUntrackedEdits()
+        {
+            BuildOfficial();
+            // Seed a multi-line file so upstream and local can touch disjoint regions.
+            var initial = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5\n");
+            G(_clone, "fetch", "-q", "origin", "main");
+            G(_clone, "merge", "--ff-only", "-q", initial);
+
+            var upstream = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"), "line1_user\nline2\nline3\nline4\nline5\n");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Custom.cs"), "custom");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(upstream));
+            var merged = File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"));
+            Assert.That(merged, Does.Contain("line1_user").And.Contain("line5_upstream"));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Custom.cs")), Is.EqualTo("custom"));
+            Assert.That(G(_clone, "stash", "list").StdOut.Trim(), Is.Empty);
+        }
+
+        [Test]
+        public void NonOverlappingSameFileStagedEdit_ThreeWayMergesAndPreservesStagedState()
+        {
+            BuildOfficial();
+            var initial = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5\n");
+            G(_clone, "fetch", "-q", "origin", "main");
+            G(_clone, "merge", "--ff-only", "-q", initial);
+
+            var upstream = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"), "line1_staged\nline2\nline3\nline4\nline5\n");
+            G(_clone, "add", "SkillsForUnity/Editor/multi.cs");
+
+            var result = Update(ClonePackage);
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(upstream));
+            var merged = File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"));
+            Assert.That(merged, Does.Contain("line1_staged").And.Contain("line5_upstream"));
+            StringAssert.Contains("M  SkillsForUnity/Editor/multi.cs", Status(_clone));
+            Assert.That(G(_clone, "stash", "list").StdOut.Trim(), Is.Empty);
+        }
+
+        [Test]
         public void OverlappingTrackedEdit_RefusesWithWouldOverwrite_PreservesLocalEdit()
         {
             BuildOfficial();
@@ -625,10 +670,12 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(result.IsLegacyArchiveClone, Is.False);
+            Assert.That(result.CanStashAndSync, Is.True);
             Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/a.cs"));
             Assert.That(result.EntryCount, Is.EqualTo(1));
             Assert.That(Snapshot(_clone), Is.EqualTo(before));
             Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs")), Is.EqualTo("my edit"));
+            Assert.That(G(_clone, "stash", "list").StdOut.Trim(), Is.Empty);
         }
 
         [Test]
@@ -643,8 +690,10 @@ namespace UnitySkills.Tests.Core
             var result = Update(ClonePackage);
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.CanStashAndSync, Is.True);
             Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/a.cs"));
             Assert.That(Snapshot(_clone), Is.EqualTo(before));
+            Assert.That(G(_clone, "stash", "list").StdOut.Trim(), Is.Empty);
         }
 
         [Test]
@@ -684,7 +733,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(Head(_clone), Is.EqualTo(upstream));
             Assert.That(Status(_clone), Is.Empty);
             Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "package.json")), Does.Contain("2.0.0"));
-            StringAssert.Contains("unity-skills-selfupdate-legacy-sync", G(_clone, "stash", "list").StdOut);
+            StringAssert.Contains("unity-skills-selfupdate-backup", G(_clone, "stash", "list").StdOut);
         }
 
         [Test]

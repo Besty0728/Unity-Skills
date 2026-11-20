@@ -450,26 +450,77 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void VendoredFingerprint_MatchesUnmodifiedTreeAndDetectsEdits()
+        public void BaseManifest_AndArchiveMigration_PreservesNonConflictingCustomEditsAndDetectsConflicts()
+        {
+            var pkg = Path.Combine(_tempDir, "pkg");
+            var staging = Path.Combine(_tempDir, "staging");
+            Directory.CreateDirectory(Path.Combine(pkg, "Editor"));
+            Directory.CreateDirectory(Path.Combine(pkg, "scripts"));
+            Directory.CreateDirectory(Path.Combine(staging, "Editor"));
+            Directory.CreateDirectory(Path.Combine(staging, "scripts"));
+
+            File.WriteAllText(Path.Combine(pkg, "package.json"), "{ \"version\": \"3.0.1\" }");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "Untouched.cs"), "v1");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "UserEditedOnly.cs"), "v1");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "BothEdited.cs"), "v1");
+            File.WriteAllText(Path.Combine(pkg, "scripts", "unity_skills.py"), "print(1)\n");
+
+            var baseHashes = LocalSelfUpdateService.CollectFileHashes(pkg);
+            var manifestPath = Path.Combine(_tempDir, "Library", "selfupdate", "base_manifest.json");
+            LocalSelfUpdateService.WriteBaseManifest(pkg, "3.0.1", baseHashes, manifestPath);
+
+            // Simulate bytecode noise plus user customizations on top of 3.0.1.
+            Directory.CreateDirectory(Path.Combine(pkg, "scripts", "__pycache__"));
+            File.WriteAllText(Path.Combine(pkg, "scripts", "__pycache__", "unity_skills.cpython-312.pyc"), "bytecode");
+            File.WriteAllText(Path.Combine(pkg, ".DS_Store"), "finder");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "UserCustom.cs"), "custom");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "UserEditedOnly.cs"), "user-edit");
+            File.WriteAllText(Path.Combine(pkg, "Editor", "BothEdited.cs"), "user-conflict");
+
+            // Prepare next version (3.0.2) in staging: Untouched & BothEdited updated, UserEditedOnly unchanged.
+            File.WriteAllText(Path.Combine(staging, "package.json"), "{ \"version\": \"3.0.2\" }");
+            File.WriteAllText(Path.Combine(staging, "Editor", "Untouched.cs"), "v2");
+            File.WriteAllText(Path.Combine(staging, "Editor", "UserEditedOnly.cs"), "v1");
+            File.WriteAllText(Path.Combine(staging, "Editor", "BothEdited.cs"), "v2");
+            File.WriteAllText(Path.Combine(staging, "scripts", "unity_skills.py"), "print(1)\n");
+
+            var loadedBase = LocalSelfUpdateService.ReadBaseManifest(pkg, manifestPath);
+            Assert.That(loadedBase, Is.Not.Null);
+            var nextHashes = LocalSelfUpdateService.CollectFileHashes(staging);
+            var plan = LocalSelfUpdateService.PlanArchiveMigration(pkg, loadedBase, nextHashes);
+
+            Assert.That(plan.PreservedFiles, Is.EquivalentTo(new[] { "Editor/UserCustom.cs", "Editor/UserEditedOnly.cs" }));
+            Assert.That(plan.Conflicts, Is.EqualTo(new[] { "Editor/BothEdited.cs" }));
+
+            LocalSelfUpdateService.ApplyPreservedFiles(pkg, staging, plan.PreservedFiles);
+            Assert.That(File.ReadAllText(Path.Combine(staging, "Editor", "UserCustom.cs")), Is.EqualTo("custom"));
+            Assert.That(File.ReadAllText(Path.Combine(staging, "Editor", "UserEditedOnly.cs")), Is.EqualTo("user-edit"));
+            Assert.That(File.ReadAllText(Path.Combine(staging, "Editor", "Untouched.cs")), Is.EqualTo("v2"));
+            Assert.That(File.ReadAllText(Path.Combine(staging, "Editor", "BothEdited.cs")), Is.EqualTo("v2"));
+        }
+
+        [Test]
+        public void BaseManifest_UnmodifiedTreeWithBytecode_HasZeroPreservedAndZeroConflicts()
         {
             var pkg = Path.Combine(_tempDir, "pkg");
             Directory.CreateDirectory(Path.Combine(pkg, "scripts"));
             File.WriteAllText(Path.Combine(pkg, "package.json"), "{ \"version\": \"3.0.1\" }");
             File.WriteAllText(Path.Combine(pkg, "scripts", "unity_skills.py"), "print(1)\n");
-            var fp = Path.Combine(_tempDir, "Library", "selfupdate", "vendored_fingerprint.json");
-
-            LocalSelfUpdateService.WriteVendoredFingerprint(pkg, "3.0.1", fp);
-            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.True);
+            var baseHashes = LocalSelfUpdateService.CollectFileHashes(pkg);
+            var manifestPath = Path.Combine(_tempDir, "Library", "selfupdate", "base_manifest.json");
+            LocalSelfUpdateService.WriteBaseManifest(pkg, "3.0.1", baseHashes, manifestPath);
 
             Directory.CreateDirectory(Path.Combine(pkg, "scripts", "__pycache__"));
             File.WriteAllText(Path.Combine(pkg, "scripts", "__pycache__", "unity_skills.cpython-312.pyc"), "bytecode");
             File.WriteAllText(Path.Combine(pkg, ".DS_Store"), "finder");
-            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.True,
-                "Bytecode and .DS_Store must not invalidate the self-update baseline.");
 
-            File.WriteAllText(Path.Combine(pkg, "scripts", "unity_skills.py"), "print(2)\n");
-            Assert.That(LocalSelfUpdateService.MatchesVendoredFingerprint(pkg, fp), Is.False,
-                "Manual edits to package files must be detected.");
+            var plan = LocalSelfUpdateService.PlanArchiveMigration(
+                pkg,
+                LocalSelfUpdateService.ReadBaseManifest(pkg, manifestPath),
+                baseHashes);
+
+            Assert.That(plan.PreservedFiles, Is.Empty);
+            Assert.That(plan.Conflicts, Is.Empty);
         }
 
         [Test]
