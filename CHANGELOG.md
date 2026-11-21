@@ -13,7 +13,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Changed
 
 - **默认关闭顶部 Evaluation（评测）标签页** — `TabVisibilitySettings.GetDefaultVisibility("evaluation")` 返回 `false`，新开面板或未显式配置的工程默认隐藏评测页，避免干扰日常开发界面；仍可通过 `Settings ▸ Tab Display` 随时开启。
-- **CI 发布矩阵稳定性加固** — 固定 game-ci CLI 镜像版本、收敛并发上限、关闭非必要覆盖率采集、补齐完整汇总输出并将相关 GitHub Actions 升至 Node 24（`b504fdc9`）。
+- **CI 发布矩阵稳定性加固** — 固定 game-ci CLI 镜像版本、收敛并发上限、补齐完整汇总输出并将相关 GitHub Actions 升至 Node 24（`b504fdc9`）。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.3`。
 
 ### Fixed

@@ -185,6 +185,7 @@ jobs:
           {
             "dependencies": {
               "com.unity.test-framework": "1.4.5",
+              "com.unity.testtools.codecoverage": "1.3.0",
               "com.unity.ugui": "${{ matrix.uguiVersion }}",
               "com.besty.unity-skills": "file:../../SkillsForUnity"
             },
@@ -218,7 +219,7 @@ jobs:
           unityVersion: ${{ matrix.unityVersion }}
           cliVersion: v0.1.76
           testMode: EditMode
-          coverageEnabled: false
+          # Omit coverageEnabled: false because game-ci CLI v0.1.76 rejects --no-coverageEnabled.
           artifactsPath: artifacts/${{ matrix.unityVersion }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
 
