@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [3.0.3] - 2026-11-21
+
+> **取消启动时无条件注入 `testables`、增强 `test_run` 测试过滤与自测隔离、修复新版 Antigravity 进程归因并默认关闭评测界面** —— 遵循 UPM 惯例不再自动修改宿主工程 `Packages/manifest.json`，并在 SettingsDrawer Runtime 区提供按需开关；`test_run` 支持 `assemblyNames`、`categoryNames` 与 `excludeSelfTests`（默认 `true`），精准过滤实际含测试的程序集；`ClientProcessResolver` 支持新版无平台后缀 `language_server.exe` 穿透及 `--override_ide_name` 兜底；顶部评测标签页调整为默认隐藏，可随时在设置中重新打开。873 个技能不变。
+
+### Added
+
+- **Test Runner 自测可见性开关与 `test_run` 过滤参数** — `PackageManagerHelper` 提供 `IsExposedInTestRunner()` / `SetExposeTestsInTestRunner(bool)` 与 `ExposeTestsInTestRunner` 属性，并在设置抽屉 `Runtime` 区新增「在 Test Runner 中显示自测」（`drawer_testables_label` / `drawer_testables_hint`，三语齐备，默认关闭，开启/关闭时即时更新 `Packages/manifest.json` 并在清空后移除空 `testables` 数组）；`test_run` 新增 `assemblyNames`、`categoryNames` 与 `excludeSelfTests`（默认 `true`）入参，并在未指定 `assemblyNames` 时通过 `CompilationPipeline` + `TypeCache` 识别实际包含测试的加载程序集、默认排除 `UnitySkills.Tests.*`。
+
+### Changed
+
+- **默认关闭顶部 Evaluation（评测）标签页** — `TabVisibilitySettings.GetDefaultVisibility("evaluation")` 返回 `false`，新开面板或未显式配置的工程默认隐藏评测页，避免干扰日常开发界面；仍可通过 `Settings ▸ Tab Display` 随时开启。
+- **CI 发布矩阵稳定性加固** — 固定 game-ci CLI 镜像版本、收敛并发上限、关闭非必要覆盖率采集、补齐完整汇总输出并将相关 GitHub Actions 升至 Node 24（`b504fdc9`）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.3`。
+
+### Fixed
+
+- **不再在编辑器启动时静默污染宿主 `Packages/manifest.json`** — 移除 `PackageManagerHelper` 静态构造函数中对 `EnsureTestable()` 的无条件调用，防止宿主工程 `manifest.json` 在不知情下产生 Git 变更或意外把插件自测混入 Test Runner；同时在仅加载自测程序集且 `excludeSelfTests=true` 时拦截并返回清晰错误提示而非误跑或空跑。
+- **新版 Antigravity 操控 Unity 时日志误显示 `Language_server`** — `ClientProcessResolver` 将无平台后缀名 `language_server` 与 `language-server` 加入 `_denylistExact`，并支持从命令行 `--override_ide_name` / `--ide_name` 提取已映射 IDE 名称作为 `tentative` 兜底（Windows `TryCaptureAncestors` 同步采集其 PEB 命令行），在桌面版可穿透至父进程显示 `Antigravity`，standalone / 孤儿模式下亦可准确回落。
+
 ## [3.0.2] - 2026-11-20
 
 > **Antigravity 全系列全局 Skill 路径修正与安全迁移，维护指令升级为跨工具项目 Skill，并升级本地自更新以支持无冲突迁移与冲突安全解决** —— 将 Antigravity 全局安装目录调整为官方 App / CLI / IDE 共用的 `~/.gemini/config/skills/`，并为 `~/.gemini/antigravity/skills/` 老用户补齐向后兼容识别、主/评测双 Skill 安全迁移与新版防降级保护；将仓库维护斜杠命令迁移为 `.claude/skills/` 与 `.agents/skills/` 双目录项目 Skill 并接入 CI 镜像一致性校验；同时完善本地克隆与源码包自更新：无冲突修改直接保留或 3-way 合并，老版本 ZIP 覆盖或真实冲突时原子回滚并提供保存到 `git stash` / 备份旧版到 `previous` 的进一步解决选项。873 个技能不变。
