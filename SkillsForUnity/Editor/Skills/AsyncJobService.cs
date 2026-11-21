@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using UnityEditor;
-using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
@@ -355,7 +354,7 @@ namespace UnitySkills
         internal static string[] DiscoverTestAssembliesForMode(TestMode mode)
         {
             var wantEditor = mode == TestMode.EditMode;
-            var assemblies = CompilationPipeline.GetAssemblies(AssembliesType.Editor);
+            var assemblies = UnityEditor.Compilation.CompilationPipeline.GetAssemblies(UnityEditor.Compilation.AssembliesType.Editor);
             if (assemblies == null || assemblies.Length == 0)
                 return Array.Empty<string>();
 
@@ -365,7 +364,7 @@ namespace UnitySkills
                 if (asm == null || string.IsNullOrWhiteSpace(asm.name))
                     continue;
 
-                var isEditor = (asm.flags & AssemblyFlags.EditorAssembly) != 0;
+                var isEditor = (asm.flags & UnityEditor.Compilation.AssemblyFlags.EditorAssembly) != 0;
                 if (isEditor == wantEditor)
                     modeAssemblies.Add(asm.name);
             }
