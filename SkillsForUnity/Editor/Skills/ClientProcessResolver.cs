@@ -513,6 +513,16 @@ namespace UnitySkills
                         tentative = normalized;
                     }
                 }
+                else if (IsLanguageServerHost(name))
+                {
+                    if (tentative == null)
+                    {
+                        var args = info.Args ?? commandLineFetcher?.Invoke(current);
+                        var ideHint = TryExtractLanguageServerIdeName(args);
+                        if (ideHint != null)
+                            tentative = ideHint;
+                    }
+                }
                 else if (!IsDenylisted(name))
                 {
                     var normalized = NormalizeDisplayName(name);
@@ -585,13 +595,17 @@ namespace UnitySkills
             // routinely wrap the actual agent CLI (`npx @some/agent-cli`), so excluding them and continuing
             // upward/downward the chain is exactly what surfaces the real wrapped tool.
             "make", "cmake", "npm", "npx", "yarn", "pnpm", "git", "ssh", "sshd", "nohup", "direnv", "watchexec", "just", "task", "uv", "uvx", "pipx",
+            // Codeium-derived IDE agent hosts (newer builds drop the platform suffix and ship plain language_server.exe)
+            "language_server", "language-server",
         };
 
-        // Prefix-matched denylist entries (versioned/suffixed process names). "language_server_" covers the
-        // Codeium-derived IDEs (Windsurf, Antigravity): they host their agent in a language-server binary whose
-        // name is identical across products and only varies by platform suffix (language_server_windows_x64,
-        // language_server_macos_arm, language_server_linux_x64, ...) -- it can't be name-mapped to either
-        // product, so skip it and let the walk reach the IDE's own main process for attribution.
+        // Prefix-matched denylist entries (versioned/suffixed process names). "language_server_" (paired with
+        // exact "language_server" / "language-server" above) covers both the legacy platform-suffixed binaries
+        // (language_server_windows_x64, language_server_macos_arm, language_server_linux_x64, ...) and newer
+        // unsuffixed language_server binaries shared across Codeium-derived IDEs (Windsurf, Antigravity). Because
+        // multiple products share these binary names, they cannot be name-mapped directly; skip them so the walk
+        // reaches the IDE's own main process (or falls back to a tentative CLI --override_ide_name / --ide_name hint
+        // in standalone/orphan mode).
         private static readonly string[] _denylistPrefixes = { "itermserver", "tmux", "language_server_" };
 
         // Interpreters get special handling: their own process name is useless, so their command line is
@@ -611,6 +625,14 @@ namespace UnitySkills
         }
 
         internal static bool IsInterpreter(string name) => !string.IsNullOrEmpty(name) && _interpreters.Contains(name);
+
+        internal static bool IsLanguageServerHost(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return string.Equals(name, "language_server", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "language-server", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("language_server_", StringComparison.OrdinalIgnoreCase);
+        }
 
         // Matches a trailing Electron/Chromium helper-process suffix: "<AppName> Helper", optionally followed
         // by a parenthesized role such as " (Renderer)"/" (GPU)"/" (Plugin)". Every Electron app (VS Code,
@@ -807,6 +829,73 @@ namespace UnitySkills
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Extracts a known IDE display name from a language_server command line (<c>--override_ide_name</c> or
+        /// <c>--ide_name</c>), returning only values present in <see cref="DisplayNameMap"/> so unknown flags or
+        /// arbitrary strings never become fabricated agent identities.
+        /// </summary>
+        internal static string TryExtractLanguageServerIdeName(string args)
+        {
+            if (string.IsNullOrWhiteSpace(args)) return null;
+            var tokens = TokenizeCommandLine(args);
+            string fallbackIde = null;
+            for (int i = 1; i < tokens.Count; i++)
+            {
+                var tok = tokens[i];
+                if (string.IsNullOrEmpty(tok)) continue;
+
+                if (TryMatchFlagValue(tokens, ref i, "--override_ide_name", out var overrideVal))
+                {
+                    var mapped = MapIdeCandidate(overrideVal);
+                    if (mapped != null) return mapped;
+                }
+                else if (fallbackIde == null && TryMatchFlagValue(tokens, ref i, "--ide_name", out var ideVal))
+                {
+                    fallbackIde = MapIdeCandidate(ideVal);
+                }
+            }
+            return fallbackIde;
+        }
+
+        private static bool TryMatchFlagValue(List<string> tokens, ref int index, string flagName, out string value)
+        {
+            var tok = tokens[index];
+            if (string.Equals(tok, flagName, StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < tokens.Count && !string.IsNullOrWhiteSpace(tokens[index + 1]))
+                {
+                    value = tokens[++index];
+                    return true;
+                }
+                value = null;
+                return false;
+            }
+
+            var prefix = flagName + "=";
+            if (tok.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                value = tok.Substring(prefix.Length);
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            value = null;
+            return false;
+        }
+
+        private static string MapIdeCandidate(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var candidate = raw.Trim();
+            if (candidate.Length >= 2 &&
+                ((candidate[0] == '"' && candidate[candidate.Length - 1] == '"') ||
+                 (candidate[0] == '\'' && candidate[candidate.Length - 1] == '\'')))
+            {
+                candidate = candidate.Substring(1, candidate.Length - 2).Trim();
+            }
+            if (string.IsNullOrEmpty(candidate) || !IsMappedDisplayName(candidate)) return null;
+            return NormalizeDisplayName(candidate);
         }
 
         // ===== Display-name normalization =====
@@ -1529,10 +1618,11 @@ namespace UnitySkills
             /// <summary>
             /// One Toolhelp32 snapshot (the same full enumeration TryGetSingle already pays for) plus an
             /// in-memory ppid-link walk -- the whole ancestor chain for the price of a single-pid lookup.
-            /// Interpreter links additionally get their PEB command line read EAGERLY: Toolhelp32 has no
-            /// command line and a dead process's PEB is gone, so a node/python-hosted CLI whose process exits
-            /// together with its curl child would otherwise become unidentifiable before the async round.
-            /// Only interpreter links pay the ~1ms PEB read; a typical chain has zero or one.
+            /// Interpreter and language-server host links additionally get their PEB command line read EAGERLY:
+            /// Toolhelp32 has no command line and a dead process's PEB is gone, so a node/python-hosted CLI
+            /// (or language_server host carrying --override_ide_name) whose process exits together with its
+            /// curl child would otherwise become unidentifiable before the async round.
+            /// Only interpreter and language-server host links pay the ~1ms PEB read; a typical chain has zero or one.
             /// </summary>
             public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain)
             {
@@ -1543,7 +1633,8 @@ namespace UnitySkills
                 {
                     for (int i = 0; i < chain.Count; i++)
                     {
-                        if (!IsInterpreter(NormalizeProcessName(chain[i].Value.Name))) continue;
+                        var normalizedName = NormalizeProcessName(chain[i].Value.Name);
+                        if (!IsInterpreter(normalizedName) && !IsLanguageServerHost(normalizedName)) continue;
                         var args = TryGetCommandLine(chain[i].Key);
                         if (args == null) continue;
                         var enriched = chain[i].Value;

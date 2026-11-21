@@ -157,6 +157,8 @@
   "drawer_confirm_label": "Подтверждать высокорисковые skills",
   "drawer_telemetry_label": "Записывать телеметрию выполнения",
   "drawer_telemetry_hint": "Записывает каждый вызов skill (имя, агент, режим, успех, длительность — без аргументов и значений полей) в Library/UnitySkillsTelemetry.jsonl, питая вкладку Analytics и GET /analytics. Только локально; никогда не покидает ваш компьютер. Выключите, чтобы прекратить запись.",
+  "drawer_testables_label": "Показать автотесты в Test Runner",
+  "drawer_testables_hint": "Добавляет com.besty.unity-skills в testables файла Packages/manifest.json, чтобы тесты плагина отображались в Unity Test Runner. По умолчанию выключено, чтобы не менять manifest.json проекта.",
   "shortcut_section_title": "Горячие клавиши",
   "shortcut_section_hint": "Назначьте горячую клавишу для быстрого открытия каждой панели UnitySkills. По умолчанию не назначены — без конфликтов из коробки.",
   "shortcut_cmd_open_main": "Открыть главную панель",

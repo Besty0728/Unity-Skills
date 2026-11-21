@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -321,6 +322,179 @@ namespace UnitySkills.Tests.Core
             Assert.That(json["status"]?.ToString(), Is.EqualTo("accepted"));
             Assert.That(json["jobId"]?.ToString(), Is.Not.Null.And.Not.Empty);
             Assert.That(json["kind"]?.ToString(), Is.EqualTo("test_smoke"));
+        }
+
+        [Test]
+        public void NormalizeAssemblyNames_StripsDllTrimAndDeduplicates()
+        {
+            Assert.That(AsyncJobService.NormalizeAssemblyNames(null), Is.Null);
+            Assert.That(AsyncJobService.NormalizeAssemblyNames(Array.Empty<string>()), Is.Null);
+            Assert.That(AsyncJobService.NormalizeAssemblyNames(new[] { " ", "\t", ".dll", " .DLL " }), Is.Null);
+
+            var normalized = AsyncJobService.NormalizeAssemblyNames(new[]
+            {
+                "  Host.Tests.dll ",
+                "host.tests",
+                null,
+                "Other.Tests.DLL",
+                "Other.Tests"
+            });
+
+            Assert.That(normalized, Is.EqualTo(new[] { "Host.Tests", "Other.Tests" }));
+        }
+
+        [Test]
+        public void NormalizeCategoryNames_TrimsAndDeduplicates()
+        {
+            Assert.That(AsyncJobService.NormalizeCategoryNames(null), Is.Null);
+            Assert.That(AsyncJobService.NormalizeCategoryNames(new[] { " ", "" }), Is.Null);
+
+            var normalized = AsyncJobService.NormalizeCategoryNames(new[]
+            {
+                " Smoke ",
+                "smoke",
+                null,
+                "Integration"
+            });
+
+            Assert.That(normalized, Is.EqualTo(new[] { "Smoke", "Integration" }));
+        }
+
+        [Test]
+        public void IsSelfTestAssemblyName_MatchesExpectedPrefixesAndDllSuffix()
+        {
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("UnitySkills.Tests"), Is.True);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("UnitySkills.Tests.dll"), Is.True);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("UnitySkills.Tests.Editor"), Is.True);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("  UnitySkills.Tests.Runtime.dll  "), Is.True);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("unityskills.tests.fixtures"), Is.True);
+
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("Host.Tests"), Is.False);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("UnitySkills.TestsOther"), Is.False);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName(null), Is.False);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName("   "), Is.False);
+            Assert.That(AsyncJobService.IsSelfTestAssemblyName(".dll"), Is.False);
+        }
+
+        [Test]
+        public void ResolveEffectiveAssemblyNames_ExplicitAssemblyNamesOverrideExcludeSelfTests()
+        {
+            var providerCalled = false;
+            var ok = AsyncJobService.ResolveEffectiveAssemblyNames(
+                TestMode.EditMode,
+                new[] { " UnitySkills.Tests.Editor.dll ", "Host.Tests" },
+                excludeSelfTests: true,
+                _ =>
+                {
+                    providerCalled = true;
+                    return Array.Empty<string>();
+                },
+                out var effective,
+                out var error);
+
+            Assert.That(ok, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(providerCalled, Is.False);
+            Assert.That(effective, Is.EqualTo(new[] { "UnitySkills.Tests.Editor", "Host.Tests" }));
+        }
+
+        [Test]
+        public void ResolveEffectiveAssemblyNames_WhenExcludeSelfTestsFalse_ReturnsNullFilter()
+        {
+            var providerCalled = false;
+            var ok = AsyncJobService.ResolveEffectiveAssemblyNames(
+                TestMode.EditMode,
+                null,
+                excludeSelfTests: false,
+                _ =>
+                {
+                    providerCalled = true;
+                    return new[] { "UnitySkills.Tests.Editor" };
+                },
+                out var effective,
+                out var error);
+
+            Assert.That(ok, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(providerCalled, Is.False);
+            Assert.That(effective, Is.Null);
+        }
+
+        [Test]
+        public void ResolveEffectiveAssemblyNames_WhenNoSelfTestsLoaded_ReturnsNullForZeroInterference()
+        {
+            var ok = AsyncJobService.ResolveEffectiveAssemblyNames(
+                TestMode.EditMode,
+                null,
+                excludeSelfTests: true,
+                _ => new[] { "Host.Tests", "Game.EditModeTests" },
+                out var effective,
+                out var error);
+
+            Assert.That(ok, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(effective, Is.Null);
+        }
+
+        [Test]
+        public void ResolveEffectiveAssemblyNames_WhenHostAndSelfTestsLoaded_KeepsOnlyHostAssemblies()
+        {
+            var ok = AsyncJobService.ResolveEffectiveAssemblyNames(
+                TestMode.EditMode,
+                null,
+                excludeSelfTests: true,
+                _ => new[]
+                {
+                    "UnitySkills.Tests.Editor",
+                    "Host.Tests",
+                    "UnitySkills.Tests.Fixtures",
+                    "host.tests",
+                    "Game.Tests"
+                },
+                out var effective,
+                out var error);
+
+            Assert.That(ok, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(effective, Is.EqualTo(new[] { "Host.Tests", "Game.Tests" }));
+        }
+
+        [Test]
+        public void ResolveEffectiveAssemblyNames_WhenOnlySelfTestsLoaded_FailsWithClearError()
+        {
+            var ok = AsyncJobService.ResolveEffectiveAssemblyNames(
+                TestMode.PlayMode,
+                null,
+                excludeSelfTests: true,
+                _ => new[] { "UnitySkills.Tests.Runtime", "UnitySkills.Tests.Fixtures" },
+                out var effective,
+                out var error);
+
+            Assert.That(ok, Is.False);
+            Assert.That(effective, Is.Null);
+            StringAssert.Contains("Only UnitySkills self-test assemblies are loaded for PlayMode", error);
+            StringAssert.Contains("excludeSelfTests=false", error);
+            StringAssert.Contains("assemblyNames", error);
+        }
+
+        [Test]
+        public void BuildTestFilter_AppliesAssemblyAndCategoryNames()
+        {
+            var filterWithFilters = AsyncJobService.BuildTestFilter(
+                "EditMode",
+                null,
+                TestMode.EditMode,
+                new[] { "Host.Tests" },
+                new[] { "Smoke", "Fast" });
+
+            Assert.That(filterWithFilters.testMode, Is.EqualTo(TestMode.EditMode));
+            Assert.That(filterWithFilters.assemblyNames, Is.EqualTo(new[] { "Host.Tests" }));
+            Assert.That(filterWithFilters.categoryNames, Is.EqualTo(new[] { "Smoke", "Fast" }));
+
+            var filterWithoutFilters = AsyncJobService.BuildTestFilter("PlayMode", null, TestMode.PlayMode);
+            Assert.That(filterWithoutFilters.testMode, Is.EqualTo(TestMode.PlayMode));
+            Assert.That(filterWithoutFilters.assemblyNames, Is.Null);
+            Assert.That(filterWithoutFilters.categoryNames, Is.Null);
         }
 
         private static JObject ToJObject(object result)

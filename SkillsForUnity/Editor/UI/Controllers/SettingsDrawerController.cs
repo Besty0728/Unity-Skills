@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -132,6 +132,9 @@ namespace UnitySkills
         private Toggle        _telemetryToggle;
         private Label         _telemetryLabel;
         private Label         _telemetryHint;
+        private Toggle        _testablesToggle;
+        private Label         _testablesLabel;
+        private Label         _testablesHint;
         // Stats group
         private Label  _statsGroupTitle;
         private Label  _statsHint;
@@ -283,6 +286,9 @@ namespace UnitySkills
             _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
             _telemetryLabel    = _drawerContainer.Q<Label>("telemetry-label");
             _telemetryHint     = _drawerContainer.Q<Label>("telemetry-hint");
+            _testablesToggle   = _drawerContainer.Q<Toggle>("testables-toggle");
+            _testablesLabel    = _drawerContainer.Q<Label>("testables-label");
+            _testablesHint     = _drawerContainer.Q<Label>("testables-hint");
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
             _statsResetBtn   = _drawerContainer.Q<Button>("stats-reset-btn");
@@ -435,6 +441,13 @@ namespace UnitySkills
                     TabVisibilitySettings.NotifyChanged();
                 });
 
+            if (_testablesToggle != null)
+                _testablesToggle.RegisterValueChangedCallback(evt =>
+                {
+                    PackageManagerHelper.SetExposeTestsInTestRunner(evt.newValue);
+                    SyncSettingSwitches();
+                });
+
             if (_statsResetBtn != null)
                 _statsResetBtn.clicked += () =>
                 {
@@ -517,6 +530,7 @@ namespace UnitySkills
             _shortcutsController?.Refresh();
             RefreshPermissionsUi();
             SyncTabVisibilityUi();
+            SyncSettingSwitches();
             RefreshLocalization();
             // The binding state may have just changed in UnityCliWindow, so fetch the latest when opening the drawer.
 
@@ -670,6 +684,11 @@ namespace UnitySkills
             if (_telemetryHint != null)
                 _telemetryHint.text = SkillsLocalization.Get("drawer_telemetry_hint");
 
+            if (_testablesLabel != null)
+                _testablesLabel.text = SkillsLocalization.Get("drawer_testables_label");
+            if (_testablesHint != null)
+                _testablesHint.text = SkillsLocalization.Get("drawer_testables_hint");
+
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
             if (_languagePinsTitle != null) _languagePinsTitle.text = SkillsLocalization.Get("language_pins_title");
@@ -697,6 +716,7 @@ namespace UnitySkills
         {
             _updateNotificationsToggle?.SetValueWithoutNotify(VersionCheckService.NotificationsEnabled);
             _telemetryToggle?.SetValueWithoutNotify(SkillTelemetryService.Enabled);
+            _testablesToggle?.SetValueWithoutNotify(PackageManagerHelper.IsExposedInTestRunner());
         }
 
         // ===== Package update check (two-step: check first, then update on a second click) =====

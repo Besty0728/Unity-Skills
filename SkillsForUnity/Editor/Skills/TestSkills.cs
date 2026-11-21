@@ -29,15 +29,27 @@ namespace UnitySkills
             public string[] MetadataWarnings;
         }
 
-        [UnitySkill("test_run", "Run Unity tests asynchronously. Returns a platform jobId immediately. Poll with job_status/job_wait or test_get_result(jobId).",
+        [UnitySkill("test_run", "Run Unity tests asynchronously. Returns a platform jobId immediately. Poll with job_status/job_wait or test_get_result(jobId). Supports assemblyNames/categoryNames filtering and excludes UnitySkills self-tests by default unless assemblyNames is provided.",
             Category = SkillCategory.Test, Operation = SkillOperation.Execute,
-            Tags = new[] { "test", "run", "async", "editmode", "playmode", "job" },
-            Outputs = new[] { "jobId", "testMode", "message" },
+            Tags = new[] { "test", "run", "async", "editmode", "playmode", "job", "assembly", "filter" },
+            Outputs = new[] { "jobId", "testMode", "assemblyNames", "categoryNames", "excludeSelfTests", "message" },
             SupportsDryRun = false, MayEnterPlayMode = true)]
-        public static object TestRun(string testMode = "EditMode", string filter = null)
+        public static object TestRun(
+            string testMode = "EditMode",
+            string filter = null,
+            [SkillParam("Optional test assembly names (without .dll) passed to Unity Filter.assemblyNames.")] string[] assemblyNames = null,
+            [SkillParam("Optional NUnit category names passed to Unity Filter.categoryNames.")] string[] categoryNames = null,
+            [SkillParam("When true (default) and assemblyNames is omitted, excludes UnitySkills.Tests.* assemblies if loaded.")] bool excludeSelfTests = true)
         {
-            if (!AsyncJobService.TryStartTestJob(testMode, filter, out var job, out var error))
+            if (!AsyncJobService.TryStartTestJob(testMode, filter, assemblyNames, categoryNames, excludeSelfTests, out var job, out var error))
                 return new { success = false, error };
+
+            var effectiveAssemblies = job.resultData != null && job.resultData.TryGetValue("assemblyNames", out var resolvedAssemblies)
+                ? resolvedAssemblies
+                : AsyncJobService.NormalizeAssemblyNames(assemblyNames);
+            var effectiveCategories = job.resultData != null && job.resultData.TryGetValue("categoryNames", out var resolvedCategories)
+                ? resolvedCategories
+                : AsyncJobService.NormalizeCategoryNames(categoryNames);
 
             return new
             {
@@ -47,6 +59,9 @@ namespace UnitySkills
                 kind = job.kind,
                 testMode,
                 filter,
+                assemblyNames = effectiveAssemblies,
+                categoryNames = effectiveCategories,
+                excludeSelfTests,
                 message = "Tests started. Use job_status/job_wait or test_get_result(jobId) to monitor progress."
             };
         }

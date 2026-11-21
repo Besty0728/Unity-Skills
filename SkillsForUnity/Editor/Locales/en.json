@@ -148,6 +148,8 @@
   "drawer_confirm_label": "Confirm high-risk skills",
   "drawer_telemetry_label": "Record execution telemetry",
   "drawer_telemetry_hint": "Logs each skill call (name, agent, mode, ok, duration — no arguments or field values) to Library/UnitySkillsTelemetry.jsonl, powering the Analytics tab and GET /analytics. Local only; never leaves your machine. Turn off to stop recording.",
+  "drawer_testables_label": "Expose UnitySkills tests in Test Runner",
+  "drawer_testables_hint": "Adds com.besty.unity-skills to testables in Packages/manifest.json so plugin self-tests appear in Unity Test Runner. Off by default to avoid modifying your project manifest; changes take effect immediately.",
   "surface_profile": "Skill surface",
   "surface_profile_tooltip": "A filter on which skills exist at all — not a hint the AI may ignore. Hidden skills are removed from every list the AI sees, and calling one anyway is rejected with SURFACE_EXCLUDED. No operating mode gets around it: Bypass and the allowlist obey it too, because those grant authority you delegated while this states work you do not want attempted. This dropdown is the only place it can be changed — the AI cannot switch it back.",
   "surface_profile_full": "Full automation",

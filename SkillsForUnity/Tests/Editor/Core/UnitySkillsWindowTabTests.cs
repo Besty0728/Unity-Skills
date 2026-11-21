@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 
 namespace UnitySkills.Tests.Core
 {
@@ -75,6 +76,39 @@ namespace UnitySkills.Tests.Core
             StringAssert.DoesNotContain("_tabContents[1]", script);
             StringAssert.DoesNotContain("_tabContents[2]", script);
             StringAssert.DoesNotContain("_tabContents[3]", script);
+        }
+
+        [Test]
+        public void EvaluationTab_IsHiddenByDefault_AndHonorsExplicitPreference()
+        {
+            const string prefKey = "UnitySkills_TabVisible_evaluation";
+            bool hadKey = EditorPrefs.HasKey(prefKey);
+            bool previousValue = hadKey && EditorPrefs.GetBool(prefKey, false);
+
+            try
+            {
+                EditorPrefs.DeleteKey(prefKey);
+
+                Assert.That(TabVisibilitySettings.GetDefaultVisibility("evaluation"), Is.False);
+                Assert.That(TabVisibilitySettings.GetDefaultVisibility("skills"), Is.True);
+                Assert.That(TabVisibilitySettings.GetDefaultVisibility("history"), Is.True);
+                Assert.That(TabVisibilitySettings.GetDefaultVisibility("analytics"), Is.True);
+
+                Assert.That(TabVisibilitySettings.GetUserPreference("evaluation"), Is.False);
+                Assert.That(TabVisibilitySettings.IsTabVisible("evaluation"), Is.False);
+
+                TabVisibilitySettings.SetUserPreference("evaluation", true);
+
+                Assert.That(TabVisibilitySettings.GetUserPreference("evaluation"), Is.True);
+                Assert.That(TabVisibilitySettings.IsTabVisible("evaluation"), Is.True);
+            }
+            finally
+            {
+                if (hadKey)
+                    EditorPrefs.SetBool(prefKey, previousValue);
+                else
+                    EditorPrefs.DeleteKey(prefKey);
+            }
         }
     }
 }

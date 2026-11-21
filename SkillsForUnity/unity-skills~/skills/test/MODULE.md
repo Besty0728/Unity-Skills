@@ -9,17 +9,18 @@ Run and manage Unity Test Runner tests. Parameters come from the schema (`GET /s
 - Scaffolding test files
 
 ## Rules
-- Test runs are asynchronous. `test_run`, `test_run_by_name`, `test_discover_start` and the `test_create_*` skills return a `jobId` at once. Poll with `test_get_result(jobId)` or `test_discover_get_result(jobId)`.
-- Unity Test Runner runs one job at a time. Do not start a second `test_run` while another test job is active.
-- `test_run` in PlayMode and `test_run_by_name` in PlayMode enter Play Mode (`MayEnterPlayMode`).
-- `test_create_editmode` and `test_create_playmode` write a `.cs` file and trigger a domain reload. The server is briefly unavailable; retry as the root protocol describes.
-- `test_list` and `test_list_categories` return `pendingDiscovery=true` with a `discoveryJobId` on a cache miss. Poll `test_discover_get_result(jobId)`, then call again.
-- For compile errors use `debug_check_compilation` in the [debug](../debug/MODULE.md) module. To edit a generated test, use the [script](../script/MODULE.md) module.
-- `test_smoke_skills` uses transient probes, so it does not pollute workflow or batch persistence. It skips any skill with `MayTriggerReload`.
+- Test runs are asynchronous. `test_run`, `test_run_by_name`, `test_discover_start` and `test_create_*` return a `jobId` at once; poll with `test_get_result(jobId)` or `test_discover_get_result(jobId)`.
+- Unity Test Runner runs one job at a time; do not start another `test_run` while one is active.
+- `test_run` and `test_run_by_name` in PlayMode enter Play Mode (`MayEnterPlayMode`).
+- `test_create_editmode` and `test_create_playmode` write a `.cs` file and trigger domain reload; retry per the root protocol.
+- `test_list` and `test_list_categories` return `pendingDiscovery=true` + `discoveryJobId` on cache miss; poll `test_discover_get_result(jobId)`, then retry.
+- For compile errors use `debug_check_compilation` ([debug](../debug/MODULE.md)); to edit a test use [script](../script/MODULE.md).
+- `test_smoke_skills` uses transient probes (no workflow/batch pollution) and skips `MayTriggerReload` skills.
+- When `assemblyNames` is omitted, `test_run` defaults `excludeSelfTests=true` and excludes `UnitySkills.Tests.*` assemblies if loaded (returning an error when no host tests exist).
 
 ## Pitfalls
-- `test_run_all`, `test_create_template`, `test_get_status` and `test_run_async` do not exist. Use `test_run` or `test_run_by_name`, `test_create_editmode` or `test_create_playmode`, and `test_get_result`.
-- `test_discover_get_result` and `test_list` both report counts, but `count` means different things. In `test_list`, `count` is the number returned and `total` is the number discovered. In `test_discover_get_result`, `count` is the number discovered and `returned` is the number in `tests`. The default `limit` (100) caps a larger suite: check `truncated`, and take the suite size from `total` (test_list) or `count` (discover).
+- `test_run_all`, `test_create_template`, `test_get_status` and `test_run_async` do not exist. Use `test_run` / `test_run_by_name`, `test_create_editmode` / `test_create_playmode`, and `test_get_result`.
+- In `test_list`, `count` is returned and `total` is discovered. In `test_discover_get_result`, `count` is discovered and `returned` is in `tests`. Default `limit` (100) caps larger suites; check `truncated`.
 - `test_cancel` is best effort: Unity Test Runner has no hard cancel.
 
 ## Skills
@@ -31,8 +32,11 @@ Run tests asynchronously. Returns a `jobId` at once.
 |-----------|------|----------|---------|-------------|
 | testMode | string | No | "EditMode" | `EditMode` or `PlayMode` |
 | filter | string | No | - | Test filter passed to the runner |
+| assemblyNames | string[] | No | - | Test assembly names (no `.dll`) for `Filter.assemblyNames` |
+| categoryNames | string[] | No | - | NUnit category names for `Filter.categoryNames` |
+| excludeSelfTests | bool | No | true | Exclude `UnitySkills.Tests.*` when `assemblyNames` omitted |
 
-**Returns**: `{success, status, jobId, kind, testMode, filter, message}`
+**Returns**: `{success, status, jobId, kind, testMode, filter, assemblyNames, categoryNames, excludeSelfTests, message}`
 
 ### test_run_by_name
 Run specific tests by class or method name.

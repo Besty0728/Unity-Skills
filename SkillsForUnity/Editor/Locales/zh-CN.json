@@ -148,6 +148,8 @@
   "drawer_confirm_label": "高风险技能二次确认",
   "drawer_telemetry_label": "记录执行数据",
   "drawer_telemetry_hint": "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。",
+  "drawer_testables_label": "在 Test Runner 中显示自测",
+  "drawer_testables_hint": "将 com.besty.unity-skills 写入 Packages/manifest.json 的 testables，使 Unity Test Runner 显示插件自测。默认关闭以避免修改宿主清单；修改后立即生效。",
   "surface_profile": "技能范围",
   "surface_profile_tooltip": "这是对「有哪些技能存在」的强制过滤，不是 AI 可以不理的建议。被隐藏的技能不会出现在 AI 看到的任何清单里，硬调也会被 SURFACE_EXCLUDED 拒绝。任何操作模式都绕不过去：Bypass 和白名单同样受限 —— 这两项授予的是你已经委托出去的权限，而档位表达的是你不希望被尝试的操作。只有这个下拉框能改档，AI 自己改不回来。",
   "surface_profile_full": "完全自动",

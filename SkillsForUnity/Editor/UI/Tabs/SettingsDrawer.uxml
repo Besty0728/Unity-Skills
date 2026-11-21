@@ -194,6 +194,12 @@
                     </ui:VisualElement>
                     <ui:Label name="telemetry-hint" class="setting-hint" />
 
+                    <ui:VisualElement name="testables-row" class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="testables-label" class="setting-row__label" />
+                        <ui:Toggle name="testables-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+                    <ui:Label name="testables-hint" class="setting-hint" />
+
                 </ui:VisualElement>
 
                 <!-- Shortcuts group — panel hotkeys (rows built by ShortcutsSettingsController) -->

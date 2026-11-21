@@ -87,10 +87,29 @@ namespace UnitySkills.Tests.Core
         [TestCase("uv")]
         [TestCase("uvx")]
         [TestCase("pipx")]
+        [TestCase("language_server")]          // Codeium-derived IDEs' unsuffixed agent host (e.g. Antigravity 2.34.0+ language_server.exe)
+        [TestCase("language-server")]          // hyphenated variant
         [TestCase("language_server_windows_x64")] // Codeium-derived IDEs' agent host (Windsurf AND Antigravity share this binary name) -- skipped so the walk reaches the IDE's own main process
         public void IsDenylisted_BuildToolsAndPackageManagerMiddlemen_AreExcluded(string name)
         {
             Assert.That(ClientProcessResolver.IsDenylisted(name), Is.True, $"'{name}' should be excluded -- these commonly wrap the real agent CLI (e.g. npx @scope/agent-cli).");
+        }
+
+        // ===== Language server host recognition =====
+
+        [TestCase("language_server", true)]
+        [TestCase("LANGUAGE_SERVER", true)]
+        [TestCase("language-server", true)]
+        [TestCase("language_server_windows_x64", true)]
+        [TestCase("language_server_macos_arm", true)]
+        [TestCase("language_server_linux_x64", true)]
+        [TestCase("claude", false)]
+        [TestCase("antigravity", false)]
+        [TestCase("", false)]
+        [TestCase(null, false)]
+        public void IsLanguageServerHost_RecognizesBothUnsuffixedAndPlatformSuffixedNames(string name, bool expected)
+        {
+            Assert.That(ClientProcessResolver.IsLanguageServerHost(name), Is.EqualTo(expected));
         }
 
         // ===== Process-name normalization =====
@@ -325,13 +344,16 @@ namespace UnitySkills.Tests.Core
             Assert.That(ClientProcessResolver.NormalizeDisplayName(token), Is.EqualTo(expected));
         }
 
-        [Test]
-        public void NormalizeDisplayName_LanguageServerBinary_IsNotMappedToAnySpecificIDE()
+        [TestCase("language_server_windows_x64")]
+        [TestCase("language_server")]
+        [TestCase("language-server")]
+        public void NormalizeDisplayName_LanguageServerBinary_IsNotMappedToAnySpecificIDE(string binaryName)
         {
-            // Windsurf and Antigravity ship an identical "language_server_windows_x64" agent-host binary name,
-            // so it must NOT appear in DisplayNameMap -- hardcoding it to either product would mislabel the
-            // other. It is denylisted instead, letting the chain walk reach the IDE's own main process.
-            var name = ClientProcessResolver.NormalizeDisplayName("language_server_windows_x64");
+            // Windsurf and Antigravity ship identical language_server binary names (both legacy platform-suffixed
+            // and newer unsuffixed forms), so none of them may appear in DisplayNameMap -- hardcoding it to
+            // either product would mislabel the other. It is denylisted instead, letting the chain walk reach
+            // the IDE's own main process.
+            var name = ClientProcessResolver.NormalizeDisplayName(binaryName);
             Assert.That(name, Is.Not.EqualTo("Antigravity"));
             Assert.That(name, Is.Not.EqualTo("Windsurf"));
         }
@@ -833,6 +855,95 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(agentId, Is.EqualTo("PreCachedAgent"));
             Assert.That(visited, Is.EqualTo(new List<int> { 100, 200 }), "must stop at the cache hit, never reaching 300.");
+        }
+
+        // ===== Language server IDE hint extraction & chain walk =====
+
+        [TestCase("language_server.exe --standalone --override_ide_name antigravity --subclient_type hub", "Antigravity")]
+        [TestCase("language_server --override_ide_name=windsurf", "Windsurf")]
+        [TestCase("language_server --override_ide_name=\"antigravity\"", "Antigravity")]
+        [TestCase("language_server --ide_name antigravity", "Antigravity")]
+        [TestCase("language_server --ide_name=windsurf", "Windsurf")]
+        [TestCase("language_server --OVERRIDE_IDE_NAME Antigravity", "Antigravity")]
+        [TestCase("language_server --ide_name windsurf --override_ide_name antigravity", "Antigravity")]
+        [TestCase("language_server --override_ide_name unknown_ide", null)]
+        [TestCase("language_server --override_ide_name", null)]
+        [TestCase("language_server --override_ide_name=", null)]
+        [TestCase("language_server --standalone", null)]
+        [TestCase("", null)]
+        [TestCase("   ", null)]
+        [TestCase(null, null)]
+        public void TryExtractLanguageServerIdeName_ExtractsOnlyMappedIdeNames(string args, string expected)
+        {
+            Assert.That(ClientProcessResolver.TryExtractLanguageServerIdeName(args), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void WalkChainCore_LanguageServerUnderAntigravityMainProcess_SkipsLanguageServerAndReturnsConfidentAntigravity()
+        {
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [10] = new ClientProcessResolver.ProcessInfo { Ppid = 20, Name = "python.exe", Args = "python.exe -c \"print(1)\"" },
+                [20] = new ClientProcessResolver.ProcessInfo { Ppid = 30, Name = "powershell.exe" },
+                [30] = new ClientProcessResolver.ProcessInfo { Ppid = 40, Name = "language_server.exe" },
+                [40] = new ClientProcessResolver.ProcessInfo { Ppid = 50, Name = "Antigravity.exe" },
+                [50] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "explorer.exe" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(10, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.EqualTo("Antigravity"));
+            Assert.That(result.VisitedPids, Is.EqualTo(new List<int> { 10, 20, 30, 40 }));
+        }
+
+        [Test]
+        public void WalkChainCore_StandaloneLanguageServerWithOverrideIdeName_FallsBackToTentativeIdeName()
+        {
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [10] = new ClientProcessResolver.ProcessInfo { Ppid = 20, Name = "python.exe", Args = "python.exe -c \"print(1)\"" },
+                [20] = new ClientProcessResolver.ProcessInfo { Ppid = 30, Name = "powershell.exe" },
+                [30] = new ClientProcessResolver.ProcessInfo { Ppid = 40, Name = "language_server.exe", Args = "language_server.exe --standalone --override_ide_name antigravity" },
+                [40] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "explorer.exe" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(10, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.Null);
+            Assert.That(result.Tentative, Is.EqualTo("Antigravity"));
+            Assert.That(result.VisitedPids, Is.EqualTo(new List<int> { 10, 20, 30, 40 }));
+        }
+
+        [Test]
+        public void WalkChainCore_LanguageServerWithLazyCommandLineFetcher_ExtractsTentativeIdeName()
+        {
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [30] = new ClientProcessResolver.ProcessInfo { Ppid = 40, Name = "language_server.exe", Args = null },
+                [40] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "explorer.exe" },
+            };
+
+            string Fetcher(int pid) => pid == 30 ? "language_server.exe --override_ide_name antigravity" : null;
+
+            var result = ClientProcessResolver.WalkChainCore(30, table, Fetcher);
+
+            Assert.That(result.Confident, Is.Null);
+            Assert.That(result.Tentative, Is.EqualTo("Antigravity"));
+        }
+
+        [Test]
+        public void WalkChainCore_LanguageServerWithoutArgsOrIdeParent_ReturnsNullConfidentAndNullTentative()
+        {
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [30] = new ClientProcessResolver.ProcessInfo { Ppid = 40, Name = "language_server.exe" },
+                [40] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "explorer.exe" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(30, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.Null);
+            Assert.That(result.Tentative, Is.Null);
         }
 
         // ===== TtlCache =====

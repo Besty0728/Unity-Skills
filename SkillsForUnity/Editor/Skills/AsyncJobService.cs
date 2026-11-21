@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
@@ -17,6 +19,7 @@ namespace UnitySkills
     {
         private const int TestStartTimeoutSeconds = 90;
         private const int MaxConcurrentActiveTestJobs = 1;
+        internal const string SelfTestAssemblyPrefix = "UnitySkills.Tests.";
 
         private sealed class TestRuntimeContext
         {
@@ -282,7 +285,225 @@ namespace UnitySkills
             return job;
         }
 
+        internal static bool IsSelfTestAssemblyName(string assemblyName)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyName))
+                return false;
+
+            var trimmed = StripDllExtension(assemblyName.Trim());
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return false;
+
+            return string.Equals(trimmed, "UnitySkills.Tests", StringComparison.OrdinalIgnoreCase) ||
+                   trimmed.StartsWith(SelfTestAssemblyPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string[] NormalizeAssemblyNames(string[] assemblyNames)
+        {
+            if (assemblyNames == null || assemblyNames.Length == 0)
+                return null;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var normalized = new List<string>(assemblyNames.Length);
+            foreach (var raw in assemblyNames)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                var candidate = StripDllExtension(raw.Trim()).Trim();
+                if (string.IsNullOrWhiteSpace(candidate))
+                    continue;
+
+                if (seen.Add(candidate))
+                    normalized.Add(candidate);
+            }
+
+            return normalized.Count > 0 ? normalized.ToArray() : null;
+        }
+
+        internal static string[] NormalizeCategoryNames(string[] categoryNames)
+        {
+            if (categoryNames == null || categoryNames.Length == 0)
+                return null;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var normalized = new List<string>(categoryNames.Length);
+            foreach (var raw in categoryNames)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                var candidate = raw.Trim();
+                if (seen.Add(candidate))
+                    normalized.Add(candidate);
+            }
+
+            return normalized.Count > 0 ? normalized.ToArray() : null;
+        }
+
+        private static readonly string[] MethodTestAttributeFullNames =
+        {
+            "NUnit.Framework.TestAttribute",
+            "NUnit.Framework.TestCaseAttribute",
+            "NUnit.Framework.TestCaseSourceAttribute",
+            "NUnit.Framework.TheoryAttribute",
+            "UnityEngine.TestTools.UnityTestAttribute"
+        };
+
+        private const string TypeTestAttributeFullName = "NUnit.Framework.TestFixtureAttribute";
+
+        internal static string[] DiscoverTestAssembliesForMode(TestMode mode)
+        {
+            var wantEditor = mode == TestMode.EditMode;
+            var assemblies = CompilationPipeline.GetAssemblies(AssembliesType.Editor);
+            if (assemblies == null || assemblies.Length == 0)
+                return Array.Empty<string>();
+
+            var modeAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var asm in assemblies)
+            {
+                if (asm == null || string.IsNullOrWhiteSpace(asm.name))
+                    continue;
+
+                var isEditor = (asm.flags & AssemblyFlags.EditorAssembly) != 0;
+                if (isEditor == wantEditor)
+                    modeAssemblies.Add(asm.name);
+            }
+
+            if (modeAssemblies.Count == 0)
+                return Array.Empty<string>();
+
+            // Checking only nunit.framework.dll or TestRunner references pulls in non-test assemblies
+            // with autoReferenced: true (e.g. UnitySkills.Editor, Unity.Timeline.Editor), so filter via TypeCache.
+            var assembliesWithTests = CollectAssembliesWithTests();
+            if (assembliesWithTests.Count == 0)
+                return Array.Empty<string>();
+
+            var discovered = new List<string>();
+            foreach (var name in modeAssemblies)
+            {
+                if (assembliesWithTests.Contains(name))
+                    discovered.Add(name);
+            }
+
+            return discovered.ToArray();
+        }
+
+        private static HashSet<string> CollectAssembliesWithTests()
+        {
+            var assembliesWithTests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+            if (loadedAssemblies == null || loadedAssemblies.Length == 0)
+                return assembliesWithTests;
+
+            foreach (var fullName in MethodTestAttributeFullNames)
+            {
+                var attrType = FindLoadedType(loadedAssemblies, fullName);
+                if (attrType == null)
+                    continue;
+
+                foreach (var method in TypeCache.GetMethodsWithAttribute(attrType))
+                {
+                    var asmName = method?.DeclaringType?.Assembly?.GetName()?.Name;
+                    if (!string.IsNullOrWhiteSpace(asmName))
+                        assembliesWithTests.Add(asmName);
+                }
+            }
+
+            var fixtureAttrType = FindLoadedType(loadedAssemblies, TypeTestAttributeFullName);
+            if (fixtureAttrType != null)
+            {
+                foreach (var type in TypeCache.GetTypesWithAttribute(fixtureAttrType))
+                {
+                    var asmName = type?.Assembly?.GetName()?.Name;
+                    if (!string.IsNullOrWhiteSpace(asmName))
+                        assembliesWithTests.Add(asmName);
+                }
+            }
+
+            return assembliesWithTests;
+        }
+
+        private static Type FindLoadedType(System.Reflection.Assembly[] loadedAssemblies, string fullName)
+        {
+            foreach (var asm in loadedAssemblies)
+            {
+                if (asm == null)
+                    continue;
+
+                var type = asm.GetType(fullName, throwOnError: false);
+                if (type != null)
+                    return type;
+            }
+
+            return null;
+        }
+
+        internal static bool ResolveEffectiveAssemblyNames(
+            TestMode mode,
+            string[] requestedAssemblyNames,
+            bool excludeSelfTests,
+            Func<TestMode, string[]> testAssemblyProvider,
+            out string[] effectiveAssemblyNames,
+            out string error)
+        {
+            error = null;
+            var normalizedRequested = NormalizeAssemblyNames(requestedAssemblyNames);
+            if (normalizedRequested != null && normalizedRequested.Length > 0)
+            {
+                effectiveAssemblyNames = normalizedRequested;
+                return true;
+            }
+
+            if (!excludeSelfTests)
+            {
+                effectiveAssemblyNames = null;
+                return true;
+            }
+
+            var loaded = (testAssemblyProvider ?? DiscoverTestAssembliesForMode)(mode) ?? Array.Empty<string>();
+            if (!loaded.Any(IsSelfTestAssemblyName))
+            {
+                effectiveAssemblyNames = null;
+                return true;
+            }
+
+            var hostAssemblies = loaded
+                .Where(name => !string.IsNullOrWhiteSpace(name) && !IsSelfTestAssemblyName(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (hostAssemblies.Length > 0)
+            {
+                effectiveAssemblyNames = hostAssemblies;
+                return true;
+            }
+
+            effectiveAssemblyNames = null;
+            error = $"Only UnitySkills self-test assemblies are loaded for {mode} and excludeSelfTests=true excluded them. Add host tests, pass excludeSelfTests=false, or specify assemblyNames explicitly.";
+            return false;
+        }
+
+        private static string StripDllExtension(string assemblyName)
+        {
+            return assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                ? assemblyName.Substring(0, assemblyName.Length - 4)
+                : assemblyName;
+        }
+
         internal static bool TryStartTestJob(string testMode, string filter, out BatchJobRecord job, out string error)
+        {
+            return TryStartTestJob(testMode, filter, null, null, false, out job, out error);
+        }
+
+        internal static bool TryStartTestJob(
+            string testMode,
+            string filter,
+            string[] assemblyNames,
+            string[] categoryNames,
+            bool excludeSelfTests,
+            out BatchJobRecord job,
+            out string error)
         {
             job = null;
             error = null;
@@ -304,10 +525,24 @@ namespace UnitySkills
                 return false;
             }
 
+            var mode = string.Equals(testMode, "PlayMode", StringComparison.OrdinalIgnoreCase)
+                ? TestMode.PlayMode
+                : TestMode.EditMode;
+            var normalizedCategories = NormalizeCategoryNames(categoryNames);
+
+            if (!ResolveEffectiveAssemblyNames(mode, assemblyNames, excludeSelfTests, null, out var effectiveAssemblies, out error))
+                return false;
+
+            var recordedAssemblies = effectiveAssemblies ?? Array.Empty<string>();
+            var recordedCategories = normalizedCategories ?? Array.Empty<string>();
+
             var metadata = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
                 ["testMode"] = testMode ?? "EditMode",
-                ["filter"] = filter ?? string.Empty
+                ["filter"] = filter ?? string.Empty,
+                ["assemblyNames"] = recordedAssemblies,
+                ["categoryNames"] = recordedCategories,
+                ["excludeSelfTests"] = excludeSelfTests
             };
 
             job = CreateJob(
@@ -320,6 +555,9 @@ namespace UnitySkills
                 {
                     ["testMode"] = testMode ?? "EditMode",
                     ["filter"] = filter ?? string.Empty,
+                    ["assemblyNames"] = recordedAssemblies,
+                    ["categoryNames"] = recordedCategories,
+                    ["excludeSelfTests"] = excludeSelfTests,
                     ["totalTests"] = 0,
                     ["passedTests"] = 0,
                     ["failedTests"] = 0,
@@ -330,14 +568,11 @@ namespace UnitySkills
                     ["failedTestDetails"] = new List<object>()
                 });
 
-            var mode = string.Equals(testMode, "PlayMode", StringComparison.OrdinalIgnoreCase)
-                ? TestMode.PlayMode
-                : TestMode.EditMode;
             var api = ScriptableObject.CreateInstance<TestRunnerApi>();
             var callbacks = new TestCallbacks(job.jobId);
             api.RegisterCallbacks(callbacks);
 
-            var filterObj = BuildTestFilter(testMode, filter, mode, job);
+            var filterObj = BuildTestFilter(testMode, filter, mode, effectiveAssemblies, normalizedCategories, job);
 
             TestRuntimeJobs[job.jobId] = new TestRuntimeContext
             {
@@ -407,9 +642,20 @@ namespace UnitySkills
             return false;
         }
 
-        private static Filter BuildTestFilter(string testMode, string filter, TestMode mode, BatchJobRecord jobForWarnings = null)
+        internal static Filter BuildTestFilter(
+            string testMode,
+            string filter,
+            TestMode mode,
+            string[] assemblyNames = null,
+            string[] categoryNames = null,
+            BatchJobRecord jobForWarnings = null)
         {
             var filterObj = new Filter { testMode = mode };
+            if (assemblyNames != null && assemblyNames.Length > 0)
+                filterObj.assemblyNames = assemblyNames;
+            if (categoryNames != null && categoryNames.Length > 0)
+                filterObj.categoryNames = categoryNames;
+
             if (string.IsNullOrEmpty(filter))
                 return filterObj;
 

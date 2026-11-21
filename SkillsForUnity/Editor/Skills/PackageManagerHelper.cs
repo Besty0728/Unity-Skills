@@ -19,7 +19,6 @@ namespace UnitySkills
     public static class PackageManagerHelper
     {
         private const string PrefKeyAutoInstallPackagesOnStartup = "UnitySkills_AutoInstallPackagesOnStartup";
-        private const string SessionKeyTestableChecked = "UnitySkills.PackageManagerHelper.TestableChecked";
         private const string SessionKeyAutoInstallAttempted = "UnitySkills.PackageManagerHelper.AutoInstallAttempted";
         public const string CinemachinePackageId = "com.unity.cinemachine";
         public const string SplinesPackageId = "com.unity.splines";
@@ -60,7 +59,6 @@ namespace UnitySkills
 
             try
             {
-                EnsureTestable();
                 EditorApplication.delayCall += InitializePackageList;
             }
             catch (Exception ex)
@@ -423,7 +421,7 @@ namespace UnitySkills
         {
             try
             {
-                var manifestPath = Path.Combine(Application.dataPath, "..", "Packages", "manifest.json");
+                var manifestPath = GetManifestPath();
                 if (!File.Exists(manifestPath)) return SelfInstallKind.Unsupported;
 
                 var json = JObject.Parse(File.ReadAllText(manifestPath));
@@ -495,38 +493,130 @@ namespace UnitySkills
             InstallPackage(SelfGitUrl + fragment, null, callback);
         }
 
-        private static void EnsureTestable()
+        private static string GetManifestPath() => Path.Combine(Application.dataPath, "..", "Packages", "manifest.json");
+
+        /// <summary>
+        /// Whether this package is listed in <c>Packages/manifest.json</c> <c>testables</c>.
+        /// </summary>
+        public static bool ExposeTestsInTestRunner
         {
-            if (SessionState.GetBool(SessionKeyTestableChecked, false))
-                return;
+            get => IsExposedInTestRunner();
+            set => SetExposeTestsInTestRunner(value);
+        }
 
-            SessionState.SetBool(SessionKeyTestableChecked, true);
+        public static bool IsExposedInTestRunner() => IsPackageInManifestTestables(GetManifestPath());
 
-            var manifestPath = Path.Combine(Application.dataPath, "..", "Packages", "manifest.json");
-            if (!File.Exists(manifestPath)) return;
+        public static bool SetExposeTestsInTestRunner(bool enabled, bool resolvePackages = true)
+        {
+            if (!TrySetPackageInManifestTestables(GetManifestPath(), enabled, out var changed, out var error) || error != null)
+            {
+                SkillsLogger.LogWarning(error ?? "Failed to update Packages/manifest.json testables.");
+                return false;
+            }
+
+            if (changed && resolvePackages)
+            {
+                SkillsLogger.Log(enabled
+                    ? $"Added {PackageName} to Packages/manifest.json testables for Test Runner visibility."
+                    : $"Removed {PackageName} from Packages/manifest.json testables.");
+                Client.Resolve();
+            }
+
+            return true;
+        }
+
+        internal static bool IsPackageInManifestTestables(string manifestPath)
+        {
+            if (string.IsNullOrEmpty(manifestPath) || !File.Exists(manifestPath))
+                return false;
+
+            try
+            {
+                var json = JObject.Parse(File.ReadAllText(manifestPath));
+                return ContainsPackageName(json["testables"] as JArray);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        internal static bool TrySetPackageInManifestTestables(string manifestPath, bool enabled, out bool changed, out string error)
+        {
+            changed = false;
+            error = null;
+
+            if (string.IsNullOrEmpty(manifestPath) || !File.Exists(manifestPath))
+            {
+                error = $"Manifest file not found: {manifestPath}";
+                return false;
+            }
 
             try
             {
                 var json = JObject.Parse(File.ReadAllText(manifestPath));
                 var testables = json["testables"] as JArray;
 
-                if (testables != null && testables.Any(t => t.Value<string>() == PackageName))
-                    return;
-
-                if (testables == null)
+                if (enabled)
                 {
-                    testables = new JArray();
-                    json["testables"] = testables;
+                    if (testables == null)
+                    {
+                        if (json["testables"] != null && json["testables"].Type != JTokenType.Null)
+                        {
+                            error = "Invalid 'testables' field in manifest.json: expected a JSON array.";
+                            return false;
+                        }
+
+                        testables = new JArray();
+                        json["testables"] = testables;
+                    }
+
+                    if (!ContainsPackageName(testables))
+                    {
+                        testables.Add(PackageName);
+                        changed = true;
+                    }
+                }
+                else if (testables != null)
+                {
+                    for (int i = testables.Count - 1; i >= 0; i--)
+                    {
+                        if (testables[i].Type == JTokenType.String &&
+                            string.Equals(testables[i].Value<string>(), PackageName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            testables.RemoveAt(i);
+                            changed = true;
+                        }
+                    }
+
+                    // Remove empty testables property so the project manifest stays clean.
+                    if (changed && testables.Count == 0)
+                        json.Remove("testables");
                 }
 
-                testables.Add(PackageName);
-                File.WriteAllText(manifestPath, json.ToString(Newtonsoft.Json.Formatting.Indented));
-                SkillsLogger.Log("Added package to manifest.json testables for Test Runner visibility.");
+                if (changed)
+                    File.WriteAllText(manifestPath, json.ToString(Newtonsoft.Json.Formatting.Indented) + "\n");
+
+                return true;
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                Debug.LogWarning($"[UnitySkills] Failed to update manifest.json testables: {ex.Message}");
+                changed = false;
+                error = $"Failed to update manifest.json testables: {ex.Message}";
+                return false;
             }
+        }
+
+        private static bool ContainsPackageName(JArray testables)
+        {
+            if (testables == null) return false;
+            foreach (var token in testables)
+            {
+                if (token.Type == JTokenType.String &&
+                    string.Equals(token.Value<string>(), PackageName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private static int _autoInstallRetryCount = 0;
