@@ -26,9 +26,12 @@
 ## 💖 Sponsors
 
 <!-- sponsors:start -->
-<p align="center">
-  <a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link" title="Infistar"><img src="docs/sponsors/infistar-bilingual.png" alt="Unity-Skills × Infistar (无限星河AI)" width="800"></a>
-</p>
+<details open>
+  <summary>Infistar sponsor banner</summary>
+  <p align="center">
+    <a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link" title="Infistar"><img src="docs/sponsors/infistar-bilingual.png" alt="Unity-Skills × Infistar (无限星河AI)" width="800"></a>
+  </p>
+</details>
 
 <div align="center">
 <table>
