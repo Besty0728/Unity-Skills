@@ -43,41 +43,29 @@
   <a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link" title="Infistar"><img src="docs/sponsors/infistar-cn.png" alt="Unity-Skills × Infistar 无限星河AI" width="800"></a>
 </p>
 
-<p align="center"><strong>Unity-Skills × Infistar 无限星河AI｜Claude、GPT、Gemini、Grok、DeepSeek 等全家桶，一个 Key，官方价的零头</strong></p>
-
 <div align="center">
 <table>
   <tr>
-    <th>亮点</th>
-    <th>详情</th>
+    <th>赞助商</th>
+    <th>赞助内容</th>
   </tr>
   <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f4a5/32.png">💥</a></td>
-    <td>低至官方 0.1 折，省 99%：同样的模型，只花官方价的零头</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/2705/32.png">✅</a></td>
-    <td>官方渠道，100% 官方纯血模型：不降智、不掺水，每个模型都能验真</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/26a1/32.png">⚡</a></td>
-    <td>上千线路安全冗余自动切换：一条线出问题马上换下一条，不再总是报错</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f9e9/32.png">🧩</a></td>
-    <td>200+ 个模型、16 个品牌：文本、图片、视频一个 Key 全搞定</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3c6/32.png">🏆</a></td>
-    <td>100+ 顶级开源项目都在推荐，最高 10 万+ star</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3af/32.png">🎯</a></td>
-    <td>Claude Code / Cursor / OpenCode 驱动 Unity 自动化开发，一个 Key 搞定多模型调用</td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f381/32.png">🎁</a></td>
-    <td>Unity-Skills 用户专属：通过专属链接注册直接送 ¥5</td>
+    <td align="center"><a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link">Infistar 无限星河AI</a></td>
+    <td>
+      <strong>Unity-Skills × Infistar 无限星河AI｜Claude、GPT、Gemini、Grok、DeepSeek 等全家桶，一个 Key，官方价的零头</strong>
+      <details>
+        <summary>查看推广亮点</summary>
+        <ul>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f4a5/32.png">💥</a> 低至官方 0.1 折，省 99%：同样的模型，只花官方价的零头</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/2705/32.png">✅</a> 官方渠道，100% 官方纯血模型：不降智、不掺水，每个模型都能验真</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/26a1/32.png">⚡</a> 上千线路安全冗余自动切换：一条线出问题马上换下一条，不再总是报错</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f9e9/32.png">🧩</a> 200+ 个模型、16 个品牌：文本、图片、视频一个 Key 全搞定</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3c6/32.png">🏆</a> 100+ 顶级开源项目都在推荐，最高 10 万+ star</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3af/32.png">🎯</a> Claude Code / Cursor / OpenCode 驱动 Unity 自动化开发，一个 Key 搞定多模型调用</li>
+          <li><a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f381/32.png">🎁</a> Unity-Skills 用户专属：通过专属链接注册直接送 ¥5</li>
+        </ul>
+      </details>
+    </td>
   </tr>
 </table>
 </div>
