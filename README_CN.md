@@ -36,19 +36,21 @@
     <td align="center"><a href="https://mirasim.ai" title="Mirasim"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="96"></a></td>
     <td>为即将发布的 v3.0 提供大量 API 额度支持，后续也将持续提供 API 支持。</td>
   </tr>
+  <tr>
+    <td align="center"><a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link" title="Infistar"><img src="docs/sponsors/infistar-cn.png" alt="Unity-Skills × Infistar 无限星河AI" width="320"></a></td>
+    <td>
+      <strong>Unity-Skills × Infistar 无限星河AI｜Claude、GPT、Gemini、Grok、DeepSeek 等全家桶，一个 Key，官方价的零头</strong><br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f4a5/32.png">💥</a> 低至官方 0.1 折，省 99%：同样的模型，只花官方价的零头<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/2705/32.png">✅</a> 官方渠道，100% 官方纯血模型：不降智、不掺水，每个模型都能验真<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/26a1/32.png">⚡</a> 上千线路安全冗余自动切换：一条线出问题马上换下一条，不再总是报错<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f9e9/32.png">🧩</a> 200+ 个模型、16 个品牌：文本、图片、视频一个 Key 全搞定<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3c6/32.png">🏆</a> 100+ 顶级开源项目都在推荐，最高 10 万+ star<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3af/32.png">🎯</a> Claude Code / Cursor / OpenCode 驱动 Unity 自动化开发，一个 Key 搞定多模型调用<br>
+      <a href="https://fonts.gstatic.com/s/e/notoemoji/17.0/1f381/32.png">🎁</a> Unity-Skills 用户专属：通过专属链接注册直接送 ¥5
+    </td>
+  </tr>
 </table>
 </div>
-
-[![Unity-Skills × Infistar 无限星河AI](docs/sponsors/infistar-cn.png)](https://www.infistar.cc/register?aff=E96F8GCU&ref_source=link)
-
-Unity-Skills × Infistar 无限星河AI｜Claude、GPT、Gemini、Grok、DeepSeek 等全家桶，一个 Key，官方价的零头<br>
-[💥](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f4a5/32.png) 低至官方 0.1 折，省 99%：同样的模型，只花官方价的零头<br>
-[✅](https://fonts.gstatic.com/s/e/notoemoji/17.0/2705/32.png) 官方渠道，100% 官方纯血模型：不降智、不掺水，每个模型都能验真<br>
-[⚡](https://fonts.gstatic.com/s/e/notoemoji/17.0/26a1/32.png) 上千线路安全冗余自动切换：一条线出问题马上换下一条，不再总是报错<br>
-[🧩](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f9e9/32.png) 200+ 个模型、16 个品牌：文本、图片、视频一个 Key 全搞定<br>
-[🏆](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3c6/32.png) 100+ 顶级开源项目都在推荐，最高 10 万+ star<br>
-[🎯](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3af/32.png) Claude Code / Cursor / OpenCode 驱动 Unity 自动化开发，一个 Key 搞定多模型调用<br>
-[🎁](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f381/32.png) Unity-Skills 用户专属：通过专属链接注册直接送 ¥5
 
 <p align="center">
   <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#120;&#50;&#49;&#50;&#48;&#48;&#54;&#48;&#50;&#48;&#53;&#64;&#103;&#109;&#97;&#105;&#108;&#46;&#99;&#111;&#109;?subject=Unity-Skills%20%E8%B5%9E%E5%8A%A9%E5%92%A8%E8%AF%A2">成为赞助商 →</a>
