@@ -38,6 +38,18 @@
   </tr>
 </table>
 </div>
+
+[![Unity-Skills × Infistar (无限星河AI)](docs/sponsors/infistar-bilingual.png)](https://www.infistar.cc/register?aff=E96F8GCU&ref_source=link)
+
+Unity-Skills × Infistar (无限星河AI)｜低至官方 0.1 折 · Claude, GPT, Gemini, Grok, DeepSeek & more — one key, up to 99% off<br>
+[💥](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f4a5/32.png) 低至官方 0.1 折，省 99% / Up to 99% off (from 0.1x official pricing)<br>
+[✅](https://fonts.gstatic.com/s/e/notoemoji/17.0/2705/32.png) 100% 官方纯血可验真 / Official upstreams, 100% genuine & verifiable<br>
+[⚡](https://fonts.gstatic.com/s/e/notoemoji/17.0/26a1/32.png) 上千线路冗余自动切换 / 1,000+ redundant routes with auto failover<br>
+[🧩](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f9e9/32.png) 200+ 模型、16 品牌一个 Key / 200+ models from 16 brands under one key<br>
+[🏆](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3c6/32.png) 100+ 顶级开源项目推荐 / Recommended by 100+ top OSS (up to 100k+ stars)<br>
+[🎯](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f3af/32.png) 一个 Key 在 Claude Code / Cursor / OpenCode 中直接驱动 Unity 自动化 / One key for multi-model AI coding in Unity<br>
+[🎁](https://fonts.gstatic.com/s/e/notoemoji/17.0/1f381/32.png) Unity-Skills 用户专属链接注册直接送 ¥5 / Sign up via exclusive link for ¥5 free
+
 <p align="center">
   <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#120;&#50;&#49;&#50;&#48;&#48;&#54;&#48;&#50;&#48;&#53;&#64;&#103;&#109;&#97;&#105;&#108;&#46;&#99;&#111;&#109;?subject=Unity-Skills%20Sponsorship%20Inquiry">Become a sponsor →</a>
 </p>
