@@ -26,19 +26,6 @@
 ## 💖 Sponsors
 
 <!-- sponsors:start -->
-<div align="center">
-<table>
-  <tr>
-    <th>Sponsor</th>
-    <th>Contribution</th>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://mirasim.ai" title="Mirasim"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="96"></a></td>
-    <td>Provides substantial API credits for the upcoming v3.0, with continued API support to follow.</td>
-  </tr>
-</table>
-</div>
-
 <p align="center">
   <a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link" title="Infistar"><img src="docs/sponsors/infistar-bilingual.png" alt="Unity-Skills × Infistar (无限星河AI)" width="800"></a>
 </p>
@@ -48,6 +35,10 @@
   <tr>
     <th>Sponsor</th>
     <th>Contribution</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://mirasim.ai" title="Mirasim"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="96"></a></td>
+    <td>Provides substantial API credits for the upcoming v3.0, with continued API support to follow.</td>
   </tr>
   <tr>
     <td align="center"><a href="https://www.infistar.cc/register?aff=E96F8GCU&amp;ref_source=link">Infistar (无限星河AI)</a></td>
