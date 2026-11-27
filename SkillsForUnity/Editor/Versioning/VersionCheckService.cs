@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine.Networking;
@@ -11,6 +11,8 @@ namespace UnitySkills
     /// </summary>
     internal static class VersionCheckService
     {
+        internal enum CheckVerdict { Failed, UpToDate, UpdateAvailable }
+
         internal sealed class ReleaseInfo
         {
             public string Version { get; }
@@ -56,6 +58,7 @@ namespace UnitySkills
         }
 
         internal static ReleaseInfo LatestRelease => _latestRelease;
+        internal static bool LastCheckSucceeded { get; private set; }
 
         internal static bool NotificationsEnabled
         {
@@ -120,6 +123,8 @@ namespace UnitySkills
                 if (ReferenceEquals(_activeRequest, request))
                     _activeRequest = null;
                 request?.Dispose();
+                LastCheckSucceeded = false;
+                CheckCompleted?.Invoke();
             }
         }
 
@@ -127,6 +132,28 @@ namespace UnitySkills
         {
             if (release == null || !TryParseVersion(release.Version, out _)) return;
             EditorPrefs.SetString(PrefDismissedVersion, NormalizeVersion(release.Version));
+        }
+
+        internal static CheckVerdict EvaluateManualCheck(
+            bool succeeded,
+            ReleaseInfo release,
+            string currentVersion,
+            out string newerVersion)
+        {
+            if (!succeeded || release == null)
+            {
+                newerVersion = null;
+                return CheckVerdict.Failed;
+            }
+
+            if (TryCompareVersions(release.Version, currentVersion, out var cmp) && cmp > 0)
+            {
+                newerVersion = release.Version;
+                return CheckVerdict.UpdateAvailable;
+            }
+
+            newerVersion = null;
+            return CheckVerdict.UpToDate;
         }
 
         internal static bool ShouldShowUpdate(
@@ -187,6 +214,7 @@ namespace UnitySkills
             if (!ReferenceEquals(_activeRequest, request))
                 return;
 
+            var succeeded = false;
             try
             {
                 if (request.result != UnityWebRequest.Result.Success) return;
@@ -194,11 +222,13 @@ namespace UnitySkills
 
                 _latestRelease = release;
                 CacheRelease(release, DateTime.UtcNow);
+                succeeded = true;
             }
             finally
             {
                 _activeRequest = null;
                 request.Dispose();
+                LastCheckSucceeded = succeeded;
                 CheckCompleted?.Invoke();
             }
         }
@@ -361,6 +391,7 @@ namespace UnitySkills
             _activeRequest = null;
             if (request != null)
             {
+                LastCheckSucceeded = false;
                 try { request.Abort(); }
                 catch { }
                 request.Dispose();

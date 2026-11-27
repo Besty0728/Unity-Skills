@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -173,8 +173,9 @@ namespace UnitySkills
 
             if (InstallKind == PackageManagerHelper.SelfInstallKind.Local)
             {
-                // Local (file:/embedded) installs update on disk -- a git clone fast-forwards its branch, anything
-                // else swaps in this release's archive -- instead of asking the Package Manager to rewrite the manifest.
+                // Local (file:/embedded) installs update on disk -- main and detached-tag clones update to the release
+                // tag, beta clones fast-forward beta, and archives swap in this release's archive -- instead of asking
+                // the Package Manager to rewrite the manifest.
                 LocalSelfUpdateService.Start(release.Version, OnLocalUpdateCompleted);
                 return;
             }

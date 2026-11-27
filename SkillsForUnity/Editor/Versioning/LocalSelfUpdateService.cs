@@ -16,9 +16,11 @@ namespace UnitySkills
     /// <summary>
     /// In-place self-update for local installs (file: or embedded), on one of two tracks that
     /// <see cref="LocalGitSync.Probe"/> picks on every run:
-    /// Track A, an official git clone: fast-forward to the official branch head (or, detached at a release tag, move to
-    /// the newest release tag). Reads, network and fetch run on a worker thread; the single write runs synchronously on
-    /// the main thread inside LockReloadAssemblies, so no import or skill can interleave with git writing files.
+    /// Track A, an official git clone: on main or detached at an official release tag, move to the target release tag
+    /// v{targetVersion} (staying on main via fast-forward or safe alignment across official main / Star History
+    /// divergence); on beta, fast-forward to the official branch head. Reads, network and fetch run on a worker thread;
+    /// the single write runs synchronously on the main thread inside LockReloadAssemblies, so no import or skill can
+    /// interleave with git writing files.
     /// Track B, no repository or a clean copy inside another one: download the release archive of the target tag,
     /// extract the SkillsForUnity subtree, validate it, swap it in by same-volume renames with rollback, and keep the
     /// replaced version as a one-generation backup under Library/UnitySkills/selfupdate/previous.
@@ -114,9 +116,16 @@ namespace UnitySkills
             if (marker?.Value<string>("mode") == "git")
             {
                 var tag = marker.Value<string>("tag");
-                var span = string.IsNullOrEmpty(tag)
-                    ? $"{marker.Value<string>("branch")} {marker.Value<string>("from")}..{marker.Value<string>("to")}"
-                    : $"{marker.Value<string>("from")}..{tag}";
+                var branch = marker.Value<string>("branch");
+                var from = marker.Value<string>("from");
+                var to = marker.Value<string>("to");
+                string span;
+                if (!string.IsNullOrEmpty(tag) && !string.IsNullOrEmpty(branch))
+                    span = $"{branch} {from}..{tag}";
+                else if (!string.IsNullOrEmpty(tag))
+                    span = $"{from}..{tag}";
+                else
+                    span = $"{branch} {from}..{to}";
                 var line = $"Self-update via local Git sync ({span}{versionSuffix}) completed successfully.";
                 return marker.Value<bool?>("stashed") == true
                     ? line + " Previous working-tree changes were saved in git stash (unity-skills-selfupdate-backup)."
@@ -137,9 +146,9 @@ namespace UnitySkills
         internal static string ShortSha(string sha) => LocalGitSync.ShortSha(sha);
 
         /// <summary>
-        /// What an update would do, without writing anything: git clones ask the official remote for their branch head
-        /// (or newest release tag); archive installs answer <see cref="LocalUpdateOutcome.ReleaseCheckRequired"/> and the
-        /// caller compares against the latest stable release. The callback runs on the main thread.
+        /// What an update would do, without writing anything: beta clones ask the official remote for their branch head;
+        /// main, detached release-tag, and archive installs answer <see cref="LocalUpdateOutcome.ReleaseCheckRequired"/>
+        /// and the caller compares against the latest stable release. The callback runs on the main thread.
         /// </summary>
         internal static void Check(Action<LocalUpdateResult> callback)
         {
@@ -164,9 +173,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Runs the update. Track A ignores <paramref name="targetVersion"/>: the target is always the official head of
-        /// the checked-out branch (or the newest release tag). Track B downloads v{targetVersion}. The callback runs on
-        /// the main thread exactly once.
+        /// Runs the update. Track A updates main and detached release-tag clones to v{targetVersion}, while beta clones
+        /// ignore <paramref name="targetVersion"/> and fast-forward the official beta branch head. Track B downloads
+        /// v{targetVersion}. The callback runs on the main thread exactly once.
         /// </summary>
         internal static void Start(string targetVersion, Action<LocalUpdateResult> callback)
         {
@@ -205,6 +214,8 @@ namespace UnitySkills
             {
                 PackageDir = packageDir,
                 OfficialUrl = LocalGitSync.OfficialUrlOverrideForTesting ?? LocalGitSync.OfficialRepoHttpsUrl,
+                TargetVersion = targetVersion,
+                CurrentVersion = SkillsLogger.Version,
                 IsCancelled = () => _cancelRequested,
             };
         }
@@ -307,7 +318,9 @@ namespace UnitySkills
             var elapsed = EditorApplication.timeSinceStartup - _workerStartedAt;
             var progress = (float)(0.9 * (1.0 - Math.Exp(-elapsed / 20.0)));
             var info = _git.Phase == GitSyncPhase.Fetching
-                ? SkillsLocalization.Get("update_git_fetching_fmt", _git.PhaseTarget ?? string.Empty)
+                ? SkillsLocalization.Get(
+                    _git.PhaseTargetIsTag ? "update_git_fetching_tag_fmt" : "update_git_fetching_fmt",
+                    _git.PhaseTarget ?? string.Empty)
                 : SkillsLocalization.Get("update_check_checking");
             if (EditorUtility.DisplayCancelableProgressBar(SkillsLocalization.Get("drawer_update_check_label"), info, progress))
                 _cancelRequested = true;
@@ -331,7 +344,6 @@ namespace UnitySkills
 
         private static void ApplyGitUpdate(LocalUpdateResult prepared, bool stashFirst)
         {
-            var isTag = prepared.Probe.Track == LocalUpdateTrack.GitTag;
             var oldDependencies = ReadDependencies(_targetDir);
             LocalUpdateResult result;
 
@@ -340,11 +352,12 @@ namespace UnitySkills
             EditorApplication.LockReloadAssemblies();
             try
             {
-                EditorUtility.DisplayProgressBar(SkillsLocalization.Get("drawer_update_check_label"),
-                    isTag
-                        ? SkillsLocalization.Get("update_git_switching_fmt", prepared.TargetLabel)
-                        : SkillsLocalization.Get("update_git_merging_fmt", prepared.Probe.Branch),
-                    1f);
+                var progressMessage = prepared.Probe.IsDetachedTag
+                    ? SkillsLocalization.Get("update_git_switching_fmt", prepared.TargetLabel)
+                    : prepared.Probe.IsBranchTag
+                        ? SkillsLocalization.Get("update_git_updating_branch_tag_fmt", prepared.Probe.Branch, prepared.TargetLabel)
+                        : SkillsLocalization.Get("update_git_merging_fmt", prepared.Probe.Branch);
+                EditorUtility.DisplayProgressBar(SkillsLocalization.Get("drawer_update_check_label"), progressMessage, 1f);
                 result = stashFirst ? LocalGitSync.StashAndApply(_git, prepared) : LocalGitSync.Apply(_git, prepared);
                 FlushGitLog();
                 if (result.Outcome == LocalUpdateOutcome.Updated)
@@ -387,11 +400,24 @@ namespace UnitySkills
                 {
                     ["version"] = result.Version,
                     ["mode"] = "git",
-                    ["from"] = isTag ? prepared.Probe.HeadLabel : LocalGitSync.ShortSha(result.FromSha),
                     ["to"] = LocalGitSync.ShortSha(result.ToSha),
                 };
-                if (isTag) marker["tag"] = prepared.TargetLabel;
-                else marker["branch"] = prepared.Probe.Branch;
+                if (prepared.Probe.IsDetachedTag)
+                {
+                    marker["from"] = prepared.Probe.HeadLabel;
+                    marker["tag"] = prepared.TargetLabel;
+                }
+                else if (prepared.Probe.IsBranchTag)
+                {
+                    marker["from"] = LocalGitSync.ShortSha(result.FromSha);
+                    marker["branch"] = prepared.Probe.Branch;
+                    marker["tag"] = prepared.TargetLabel;
+                }
+                else
+                {
+                    marker["from"] = LocalGitSync.ShortSha(result.FromSha);
+                    marker["branch"] = prepared.Probe.Branch;
+                }
                 if (stashFirst) marker["stashed"] = true;
                 WriteDoneMarker(marker);
             }

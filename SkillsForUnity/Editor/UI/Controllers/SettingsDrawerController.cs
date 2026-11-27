@@ -769,6 +769,11 @@ namespace UnitySkills
             _updateCheckState = UpdateCheckState.Checking;
             _updateCheckBtn?.SetEnabled(false);
             SetUpdateCheckStatus("update_check_checking");
+            if (_updateCheckKind != PackageManagerHelper.SelfInstallKind.Local)
+            {
+                _updateModeHintKey = null;
+                ApplyUpdateModeHint();
+            }
 
             if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Beta)
             {
@@ -776,8 +781,8 @@ namespace UnitySkills
             }
             else if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Local)
             {
-                // A git clone compares commits with its official branch; comparing release numbers would call a beta
-                // clone up to date forever, or downgrade it to the stable archive.
+                // A beta clone fast-forwards branch commits; main and detached-tag clones check against
+                // releases/latest and update by official release tag, while archives compare release numbers.
                 LocalSelfUpdateService.Check(OnLocalCheckCompleted);
             }
             else
@@ -792,18 +797,23 @@ namespace UnitySkills
             VersionCheckService.CheckCompleted -= OnStableCheckCompleted;
             if (_updateCheckState != UpdateCheckState.Checking) return;
 
-            var release = VersionCheckService.LatestRelease;
-            if (release != null &&
-                VersionCheckService.TryCompareVersions(release.Version, SkillsLogger.Version, out var comparison) &&
-                comparison > 0)
+            switch (VersionCheckService.EvaluateManualCheck(
+                VersionCheckService.LastCheckSucceeded,
+                VersionCheckService.LatestRelease,
+                SkillsLogger.Version,
+                out var newerVersion))
             {
-                // Manual checks ignore the dismissed banner version on purpose.
-                _updateCheckVersion = release.Version;
-                EnterReadyState(null, "v" + release.Version);
-            }
-            else
-            {
-                EnterIdleState("update_check_latest");
+                case VersionCheckService.CheckVerdict.Failed:
+                    EnterIdleState("update_check_failed_fmt", argKey: "update_check_reason_network");
+                    break;
+                case VersionCheckService.CheckVerdict.UpdateAvailable:
+                    // Manual checks ignore the dismissed banner version on purpose.
+                    _updateCheckVersion = newerVersion;
+                    EnterReadyState(null, "v" + newerVersion);
+                    break;
+                default:
+                    EnterIdleState("update_check_latest");
+                    break;
             }
         }
 
@@ -815,7 +825,8 @@ namespace UnitySkills
             switch (result.Outcome)
             {
                 case LocalUpdateOutcome.UpdateAvailable:
-                    // Git targets are language-neutral literals ("main @ 1a2b3c4", "v2.9.0"); Start ignores the version.
+                    // Git targets are language-neutral literals ("beta @ 1a2b3c4", "v2.9.0"); beta fast-forwards
+                    // commits and ignores the version.
                     _updateCheckVersion = null;
                     EnterReadyState(null, result.TargetLabel);
                     break;
@@ -907,8 +918,9 @@ namespace UnitySkills
 
             if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Local)
             {
-                // Local (file:/embedded) installs update on disk -- a git clone fast-forwards, anything else swaps in
-                // the release archive -- instead of asking the Package Manager to rewrite the manifest.
+                // Local (file:/embedded) installs update on disk -- main and detached-tag clones move to the release
+                // tag, beta clones fast-forward commits, and archives swap the folder -- instead of rewriting
+                // manifest.json.
                 LocalSelfUpdateService.Start(_updateCheckVersion, OnLocalUpdateCompleted);
                 return;
             }

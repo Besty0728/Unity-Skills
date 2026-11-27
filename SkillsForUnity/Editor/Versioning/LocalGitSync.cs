@@ -17,9 +17,9 @@ namespace UnitySkills
         ArchiveInRepository,
         /// <summary>Inside another repository but no git to prove the folder clean: archive only after the user confirms.</summary>
         ArchiveUnverified,
-        /// <summary>An official clone on main or beta: fast-forward to the official branch head.</summary>
+        /// <summary>An official clone on beta: fast-forward to the official branch head.</summary>
         GitSync,
-        /// <summary>An official clone detached at an official release tag: move to the newest release tag.</summary>
+        /// <summary>An official clone on main or detached at an official release tag: move to the target release tag.</summary>
         GitTag,
         /// <summary>Nothing may be written; <see cref="LocalUpdateProbe.Blocker"/> says why.</summary>
         Blocked,
@@ -31,7 +31,7 @@ namespace UnitySkills
         Updated,
         AlreadyUpToDate,
         UpdateAvailable,
-        /// <summary>Archive tracks: the caller compares against the latest stable release itself.</summary>
+        /// <summary>Archive and release-tag tracks: the caller compares against the latest stable release itself.</summary>
         ReleaseCheckRequired,
         /// <summary>The install changed between check and update (another branch, the repository went away); check again.</summary>
         RecheckRequired,
@@ -74,6 +74,9 @@ namespace UnitySkills
         public bool IsOfficialClone => Track == LocalUpdateTrack.GitSync || Track == LocalUpdateTrack.GitTag ||
             (Track == LocalUpdateTrack.Blocked &&
              (Blocker == LocalUpdateOutcome.DetachedHead || Blocker == LocalUpdateOutcome.UnsupportedBranch));
+
+        public bool IsBranchTag => Track == LocalUpdateTrack.GitTag && !string.IsNullOrEmpty(Branch);
+        public bool IsDetachedTag => Track == LocalUpdateTrack.GitTag && string.IsNullOrEmpty(Branch);
     }
 
     internal sealed class LocalUpdateResult
@@ -89,6 +92,8 @@ namespace UnitySkills
         public bool IsLegacyArchiveClone;
         /// <summary>True when Prepare expects a 3-way stash-apply merge for overlapping tracked/staged edits.</summary>
         public bool NeedsThreeWayMerge;
+        /// <summary>True when main must be aligned to an official release tag (Star History / docs commits on main).</summary>
+        public bool NeedsBranchAlign;
         /// <summary>True when offering "save changes to git stash and sync" is safe for this refusal.</summary>
         public bool CanStashAndSync;
         public string HeadPackageVersion, DiskPackageVersion;
@@ -118,12 +123,15 @@ namespace UnitySkills
         public string PackageDir;
         public string OfficialUrl = LocalGitSync.OfficialRepoHttpsUrl;
         public string OfficialRootCommit = LocalGitSync.OfficialRootCommitSha;
+        public string TargetVersion;
+        public string CurrentVersion;
         /// <summary>Tests only: the .git marker walk never climbs above this directory.</summary>
         public string MarkerCeiling;
         public Func<bool> IsCancelled;
 
         private volatile int _phase;
         private volatile string _phaseTarget;
+        private volatile int _phaseTargetIsTag;
         private readonly List<GitLogLine> _log = new List<GitLogLine>();
 
         /// <summary>What the worker is doing, for the progress bar the main thread draws.</summary>
@@ -138,6 +146,13 @@ namespace UnitySkills
         {
             get => _phaseTarget;
             set => _phaseTarget = value;
+        }
+
+        /// <summary>True when <see cref="PhaseTarget"/> is a release tag rather than a branch.</summary>
+        public bool PhaseTargetIsTag
+        {
+            get => _phaseTargetIsTag != 0;
+            set => _phaseTargetIsTag = value ? 1 : 0;
         }
 
         public void Add(GitLogLevel level, string message)
@@ -323,7 +338,9 @@ namespace UnitySkills
                         probe.OfficialRemote = remoteName;
                         probe.TrackingRef = trackingRef;
                     }
-                    probe.Track = LocalUpdateTrack.GitSync;
+                    probe.Track = string.Equals(branch, "main", StringComparison.Ordinal)
+                        ? LocalUpdateTrack.GitTag
+                        : LocalUpdateTrack.GitSync;
                     return probe;
                 case BranchVerdict.Unsupported:
                     probe.Branch = branch;
@@ -445,8 +462,10 @@ namespace UnitySkills
                     available.TargetLabel = BranchTargetLabel(probe.Branch, target);
                     return available;
                 }
+                case LocalUpdateTrack.GitTag when probe.IsBranchTag:
+                    return CheckRemoteMainTag(ctx, probe);
                 case LocalUpdateTrack.Blocked when probe.Blocker == LocalUpdateOutcome.DetachedHead && probe.HeadAtReleaseTag:
-                    return ResolveReleaseTags(ctx, probe, out _);
+                    return CheckRemoteDetachedTag(ctx, probe);
                 case LocalUpdateTrack.Blocked:
                     return Result(probe.Blocker, probe);
                 default:
@@ -454,17 +473,74 @@ namespace UnitySkills
             }
         }
 
+        private static LocalUpdateResult CheckRemoteMainTag(GitSyncContext ctx, LocalUpdateProbe probe)
+        {
+            if (string.IsNullOrWhiteSpace(ctx.TargetVersion))
+                return Result(LocalUpdateOutcome.ReleaseCheckRequired, probe);
+            if (!TryNormalizeReleaseTag(ctx.TargetVersion, out var tagName, out var targetVer))
+                return Result(LocalUpdateOutcome.RecheckRequired, probe);
+            if (TryNormalizeReleaseTag(ctx.CurrentVersion, out _, out var curVer) && targetVer <= curVer)
+                return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            var remote = LsRemoteReleaseTag(ctx, tagName, out var tag);
+            if (remote != null) return Result(remote.Value, probe);
+            if (tag.Commit == probe.HeadSha || IsLocalAncestor(ctx, tag.Commit, probe.HeadSha))
+                return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            var available = Result(LocalUpdateOutcome.UpdateAvailable, probe);
+            available.FromSha = probe.HeadSha;
+            available.ToSha = tag.Commit;
+            available.TargetLabel = tag.Name;
+            return available;
+        }
+
+        private static LocalUpdateResult CheckRemoteDetachedTag(GitSyncContext ctx, LocalUpdateProbe probe)
+        {
+            var run = Git(ctx, RemoteTimeoutMs, true, "ls-remote", "--tags", ctx.OfficialUrl);
+            if (!run.Succeeded)
+            {
+                LogFailure(ctx, "ls-remote --tags", run);
+                return Result(run.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.NetworkError, probe);
+            }
+
+            var tags = ParseReleaseTags(run.StdOut);
+            var current = tags.Where(tag => tag.Commit == probe.HeadSha).OrderByDescending(tag => tag.Version).FirstOrDefault();
+            if (current == null) return Result(LocalUpdateOutcome.DetachedHead, probe);
+
+            probe.Track = LocalUpdateTrack.GitTag;
+            probe.HeadLabel = current.Name;
+
+            if (string.IsNullOrWhiteSpace(ctx.TargetVersion))
+                return Result(LocalUpdateOutcome.ReleaseCheckRequired, probe);
+            if (!TryNormalizeReleaseTag(ctx.TargetVersion, out var tagName, out _))
+                return Result(LocalUpdateOutcome.RecheckRequired, probe);
+
+            var targetTag = tags.FirstOrDefault(tag => string.Equals(tag.Name, tagName, StringComparison.Ordinal));
+            if (targetTag == null) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+
+            if (targetTag.Version <= current.Version ||
+                (TryNormalizeReleaseTag(ctx.CurrentVersion, out _, out var curVer) && targetTag.Version <= curVer))
+                return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            var available = Result(LocalUpdateOutcome.UpdateAvailable, probe);
+            available.FromSha = probe.HeadSha;
+            available.ToSha = targetTag.Commit;
+            available.TargetLabel = targetTag.Name;
+            return available;
+        }
+
         // ===== Prepare (worker thread; reads, network, fetch -- never touches the working tree) =====
 
         /// <summary>
-        /// Everything before the single write: whole-repository clean check, the official head by ls-remote, fetch, and
-        /// the ancestry test. UpdateAvailable here means "ready": <see cref="Apply"/> fast-forwards to ToSha.
+        /// Everything before the single write: whole-repository clean check, the official head or release tag by ls-remote,
+        /// fetch, and the ancestry test. UpdateAvailable here means "ready": <see cref="Apply"/> moves to ToSha.
         /// </summary>
         internal static LocalUpdateResult Prepare(GitSyncContext ctx, LocalUpdateProbe probe)
         {
             if (probe.Track == LocalUpdateTrack.GitSync) return PrepareBranch(ctx, probe);
+            if (probe.IsBranchTag) return PrepareMainTag(ctx, probe);
             if (probe.Track == LocalUpdateTrack.Blocked && probe.Blocker == LocalUpdateOutcome.DetachedHead && probe.HeadAtReleaseTag)
-                return PrepareTag(ctx, probe);
+                return PrepareDetachedTag(ctx, probe);
             return Result(probe.Track == LocalUpdateTrack.Blocked ? probe.Blocker : LocalUpdateOutcome.ReleaseCheckRequired, probe);
         }
 
@@ -481,6 +557,7 @@ namespace UnitySkills
                 ? $"+refs/heads/{probe.Branch}:{probe.TrackingRef}"
                 : $"refs/heads/{probe.Branch}";
             ctx.PhaseTarget = probe.Branch;
+            ctx.PhaseTargetIsTag = false;
             var fetched = Fetch(ctx, refspec);
             if (fetched != null) return Result(fetched.Value, probe);
 
@@ -511,47 +588,65 @@ namespace UnitySkills
             return ready;
         }
 
-        private static LocalUpdateResult PrepareTag(GitSyncContext ctx, LocalUpdateProbe probe)
+        private static LocalUpdateResult PrepareMainTag(GitSyncContext ctx, LocalUpdateProbe probe)
         {
             if (HasUnmergedEntries(ctx, out var conflictOutcome))
                 return Result(conflictOutcome, probe);
 
-            var resolved = ResolveReleaseTags(ctx, probe, out var newest);
-            if (resolved.Outcome != LocalUpdateOutcome.UpdateAvailable) return resolved;
+            if (!TryNormalizeReleaseTag(ctx.TargetVersion, out var tagName, out var targetVer))
+                return Result(LocalUpdateOutcome.RecheckRequired, probe);
 
-            // Non-forcing refspec: a local tag of that name pointing elsewhere is never overwritten; fetch refuses.
-            var tagRef = "refs/tags/" + newest.Name;
-            ctx.PhaseTarget = newest.Name;
+            if (TryNormalizeReleaseTag(ctx.CurrentVersion, out _, out var curVer) && targetVer <= curVer)
+                return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            var remote = LsRemoteReleaseTag(ctx, tagName, out var targetTag);
+            if (remote != null) return Result(remote.Value, probe);
+            if (targetTag.Commit == probe.HeadSha) return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            var tagRef = "refs/tags/" + targetTag.Name;
+            ctx.PhaseTarget = targetTag.Name;
+            ctx.PhaseTargetIsTag = true;
             var fetched = Fetch(ctx, tagRef + ":" + tagRef);
             if (fetched == LocalUpdateOutcome.Cancelled) return Result(LocalUpdateOutcome.Cancelled, probe);
 
-            // A tag already present locally at the official commit works even when the fetch itself failed.
             var local = Git(ctx, ReadTimeoutMs, false, "rev-parse", "--verify", "-q", tagRef + "^{commit}");
-            if (local.Succeeded && local.StdOut.Trim() == newest.Commit)
-            {
-                var overlap = CheckOverlappingChanges(ctx, probe, probe.HeadSha, newest.Commit, newest.Name, tagRef, out var needsThreeWay, out _);
-                if (overlap != null) return overlap;
-
-                resolved.TargetRef = tagRef;
-                resolved.NeedsThreeWayMerge = needsThreeWay;
-                return resolved;
-            }
-            if (local.Succeeded)
+            if (!local.Succeeded)
+                return Result(fetched ?? LocalUpdateOutcome.GitCommandFailed, probe);
+            if (local.StdOut.Trim() != targetTag.Commit)
             {
                 ctx.Add(GitLogLevel.Error,
-                    $"Self-update: the local tag {newest.Name} in {probe.RepoRoot} points at {ShortSha(local.StdOut.Trim())}, not at the official release {ShortSha(newest.Commit)}; it was left untouched.");
+                    $"Self-update: the local tag {targetTag.Name} in {probe.RepoRoot} points at {ShortSha(local.StdOut.Trim())}, not at the official release {ShortSha(targetTag.Commit)}; it was left untouched.");
                 return Result(LocalUpdateOutcome.GitCommandFailed, probe);
             }
-            return Result(fetched ?? LocalUpdateOutcome.GitCommandFailed, probe);
+
+            var transition = EvaluateMainBranchTransition(ctx, probe, probe.HeadSha, targetTag.Commit, out var needsBranchAlign);
+            if (transition != null) return transition;
+
+            var overlap = CheckOverlappingChanges(ctx, probe, probe.HeadSha, targetTag.Commit, targetTag.Name, tagRef, out var needsThreeWay, out _);
+            if (overlap != null)
+            {
+                overlap.NeedsBranchAlign = needsBranchAlign;
+                return overlap;
+            }
+
+            var ready = Result(LocalUpdateOutcome.UpdateAvailable, probe);
+            ready.FromSha = probe.HeadSha;
+            ready.ToSha = targetTag.Commit;
+            ready.TargetLabel = targetTag.Name;
+            ready.TargetRef = tagRef;
+            ready.NeedsThreeWayMerge = needsThreeWay;
+            ready.NeedsBranchAlign = needsBranchAlign;
+            return ready;
         }
 
-        /// <summary>
-        /// Detached HEAD: only a checkout of an official release commit may move, and only forward to the newest release.
-        /// Anything else keeps the DetachedHead refusal. On UpdateAvailable the probe's track becomes GitTag.
-        /// </summary>
-        private static LocalUpdateResult ResolveReleaseTags(GitSyncContext ctx, LocalUpdateProbe probe, out ReleaseTag newest)
+        private static LocalUpdateResult PrepareDetachedTag(GitSyncContext ctx, LocalUpdateProbe probe)
         {
-            newest = null;
+            if (HasUnmergedEntries(ctx, out var conflictOutcome))
+                return Result(conflictOutcome, probe);
+
+            if (!TryNormalizeReleaseTag(ctx.TargetVersion, out var tagName, out _))
+                return Result(LocalUpdateOutcome.RecheckRequired, probe);
+
             var run = Git(ctx, RemoteTimeoutMs, true, "ls-remote", "--tags", ctx.OfficialUrl);
             if (!run.Succeeded)
             {
@@ -565,14 +660,150 @@ namespace UnitySkills
 
             probe.Track = LocalUpdateTrack.GitTag;
             probe.HeadLabel = current.Name;
-            newest = tags.OrderByDescending(tag => tag.Version).First();
-            if (newest.Version <= current.Version) return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
 
-            var available = Result(LocalUpdateOutcome.UpdateAvailable, probe);
-            available.FromSha = probe.HeadSha;
-            available.ToSha = newest.Commit;
-            available.TargetLabel = newest.Name;
-            return available;
+            var targetTag = tags.FirstOrDefault(tag => string.Equals(tag.Name, tagName, StringComparison.Ordinal));
+            if (targetTag == null) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+
+            if (targetTag.Version <= current.Version ||
+                (TryNormalizeReleaseTag(ctx.CurrentVersion, out _, out var curVer) && targetTag.Version <= curVer))
+                return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+
+            // Non-forcing refspec: a local tag of that name pointing elsewhere is never overwritten; fetch refuses.
+            var tagRef = "refs/tags/" + targetTag.Name;
+            ctx.PhaseTarget = targetTag.Name;
+            ctx.PhaseTargetIsTag = true;
+            var fetched = Fetch(ctx, tagRef + ":" + tagRef);
+            if (fetched == LocalUpdateOutcome.Cancelled) return Result(LocalUpdateOutcome.Cancelled, probe);
+
+            // A tag already present locally at the official commit works even when the fetch itself failed.
+            var local = Git(ctx, ReadTimeoutMs, false, "rev-parse", "--verify", "-q", tagRef + "^{commit}");
+            if (local.Succeeded && local.StdOut.Trim() == targetTag.Commit)
+            {
+                var overlap = CheckOverlappingChanges(ctx, probe, probe.HeadSha, targetTag.Commit, targetTag.Name, tagRef, out var needsThreeWay, out _);
+                if (overlap != null) return overlap;
+
+                var ready = Result(LocalUpdateOutcome.UpdateAvailable, probe);
+                ready.FromSha = probe.HeadSha;
+                ready.ToSha = targetTag.Commit;
+                ready.TargetLabel = targetTag.Name;
+                ready.TargetRef = tagRef;
+                ready.NeedsThreeWayMerge = needsThreeWay;
+                return ready;
+            }
+            if (local.Succeeded)
+            {
+                ctx.Add(GitLogLevel.Error,
+                    $"Self-update: the local tag {targetTag.Name} in {probe.RepoRoot} points at {ShortSha(local.StdOut.Trim())}, not at the official release {ShortSha(targetTag.Commit)}; it was left untouched.");
+                return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+            }
+            return Result(fetched ?? LocalUpdateOutcome.GitCommandFailed, probe);
+        }
+
+        private static LocalUpdateResult EvaluateMainBranchTransition(GitSyncContext ctx, LocalUpdateProbe probe,
+            string headSha, string targetCommit, out bool needsBranchAlign)
+        {
+            needsBranchAlign = false;
+            var forward = MergeBase(ctx, headSha, targetCommit);
+            if (forward == 0)
+            {
+                needsBranchAlign = false;
+                return null;
+            }
+            if (forward != 1) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+
+            var behind = MergeBase(ctx, targetCommit, headSha);
+            if (behind == 0) return Result(LocalUpdateOutcome.AlreadyUpToDate, probe);
+            if (behind != 1) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+
+            if (!string.IsNullOrEmpty(probe.TrackingRef) && HasCommit(ctx, probe.TrackingRef) &&
+                MergeBase(ctx, headSha, probe.TrackingRef) == 0)
+            {
+                needsBranchAlign = true;
+                return null;
+            }
+
+            if (IsStarHistoryOnlyDivergence(ctx, targetCommit, headSha))
+            {
+                needsBranchAlign = true;
+                return null;
+            }
+
+            return Result(LocalUpdateOutcome.Diverged, probe);
+        }
+
+        /// <summary>Parses `git cherry` output ("+ sha" / "- sha"), returning unmatched "+" commit SHAs and total valid lines.</summary>
+        internal static List<string> ParseCherryAddedCommits(string output, out int totalCommits)
+        {
+            var added = new List<string>();
+            totalCommits = 0;
+            foreach (var raw in (output ?? string.Empty).Split('\n'))
+            {
+                var line = raw.TrimEnd('\r').Trim();
+                if (line.Length < 3 || line[1] != ' ' || (line[0] != '+' && line[0] != '-')) continue;
+                var sha = line.Substring(2).Trim();
+                if (!HexSha.IsMatch(sha)) continue;
+                totalCommits++;
+                if (line[0] == '+') added.Add(sha);
+            }
+            return added;
+        }
+
+        private static bool IsStarHistoryCommit(GitSyncContext ctx, string sha)
+        {
+            var showRun = Git(ctx, ReadTimeoutMs, false, "show", "-s", "--format=%an%x09%s", sha);
+            if (!showRun.Succeeded) return false;
+
+            var line = (showRun.StdOut ?? string.Empty).TrimEnd('\r', '\n');
+            var tab = line.IndexOf('\t');
+            if (tab <= 0) return false;
+
+            var author = line.Substring(0, tab);
+            var subject = line.Substring(tab + 1);
+            if (!IsStarHistoryCommitRecord(author, subject)) return false;
+
+            var diffRun = Git(ctx, ReadTimeoutMs, false, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", sha);
+            if (!diffRun.Succeeded) return false;
+
+            var paths = diffRun.StdOut.Split('\0').Where(p => p.Length > 0).ToList();
+            return paths.Count > 0 && paths.All(IsStarHistoryPath);
+        }
+
+        private static bool IsStarHistoryOnlyDivergence(GitSyncContext ctx, string targetCommit, string headSha)
+        {
+            var cherryRun = Git(ctx, ReadTimeoutMs, false, "cherry", targetCommit, headSha);
+            if (cherryRun.Succeeded)
+            {
+                var added = ParseCherryAddedCommits(cherryRun.StdOut, out var totalCommits);
+                if (totalCommits > 0)
+                    return added.All(sha => IsStarHistoryCommit(ctx, sha));
+            }
+
+            var logRun = Git(ctx, ReadTimeoutMs, false, "log", "--format=%H%x09%an%x09%s", "-z", $"{targetCommit}..{headSha}");
+            if (!logRun.Succeeded) return false;
+
+            var records = logRun.StdOut.Split('\0').Where(r => r.Length > 0).ToList();
+            if (records.Count == 0) return false;
+
+            foreach (var record in records)
+            {
+                var firstTab = record.IndexOf('\t');
+                var secondTab = firstTab >= 0 ? record.IndexOf('\t', firstTab + 1) : -1;
+                if (firstTab <= 0 || secondTab <= firstTab) return false;
+
+                var sha = record.Substring(0, firstTab).Trim();
+                var author = record.Substring(firstTab + 1, secondTab - firstTab - 1);
+                var subject = record.Substring(secondTab + 1);
+                if (!HexSha.IsMatch(sha) || !IsStarHistoryCommitRecord(author, subject))
+                    return false;
+
+                var diffRun = Git(ctx, ReadTimeoutMs, false, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", sha);
+                if (!diffRun.Succeeded) return false;
+
+                var paths = diffRun.StdOut.Split('\0').Where(p => p.Length > 0).ToList();
+                if (paths.Count == 0 || !paths.All(IsStarHistoryPath))
+                    return false;
+            }
+            return true;
         }
 
         // ===== Apply (main thread, inside LockReloadAssemblies) =====
@@ -601,10 +832,21 @@ namespace UnitySkills
                 ? BranchVerdict.Failed
                 : EvaluateBranch(symbolic.ExitCode, symbolic.StdOut, out branchNow);
 
-            if (probe.Track == LocalUpdateTrack.GitTag)
+            var needsBranchAlign = false;
+            if (probe.IsDetachedTag)
             {
                 if (verdict != BranchVerdict.Detached || headNow != probe.HeadSha)
                     return Result(LocalUpdateOutcome.RecheckRequired, probe);
+            }
+            else if (probe.IsBranchTag)
+            {
+                if (verdict == BranchVerdict.Detached) return Result(LocalUpdateOutcome.DetachedHead, probe);
+                if (verdict == BranchVerdict.Failed) return Result(LocalUpdateOutcome.GitCommandFailed, probe);
+                if (!string.Equals(branchNow, probe.Branch, StringComparison.Ordinal))
+                    return Result(verdict == BranchVerdict.Unsupported ? LocalUpdateOutcome.UnsupportedBranch : LocalUpdateOutcome.RecheckRequired, probe);
+
+                var transition = EvaluateMainBranchTransition(ctx, probe, headNow, target, out needsBranchAlign);
+                if (transition != null) return transition;
             }
             else
             {
@@ -631,16 +873,20 @@ namespace UnitySkills
                 return Result(conflictOutcome, probe);
 
             var overlap = CheckOverlappingChanges(ctx, probe, headNow, target, prepared.TargetLabel, prepared.TargetRef, out var needsThreeWay, out var overlappingEntries);
-            if (overlap != null) return overlap;
+            if (overlap != null)
+            {
+                overlap.NeedsBranchAlign = needsBranchAlign;
+                return overlap;
+            }
 
             if (needsThreeWay)
-                return ApplyWithThreeWayMerge(ctx, probe, headNow, target, prepared.TargetLabel, prepared.TargetRef, overlappingEntries);
+                return ApplyWithThreeWayMerge(ctx, probe, headNow, target, prepared.TargetLabel, prepared.TargetRef, needsBranchAlign, overlappingEntries);
 
-            return RunDirectWrite(ctx, probe, headNow, target, prepared.TargetLabel, prepared.TargetRef);
+            return RunDirectWrite(ctx, probe, headNow, target, prepared.TargetLabel, prepared.TargetRef, needsBranchAlign);
         }
 
         private static LocalUpdateResult RunDirectWrite(GitSyncContext ctx, LocalUpdateProbe probe,
-            string headNow, string target, string targetLabel, string targetRef)
+            string headNow, string target, string targetLabel, string targetRef, bool needsBranchAlign)
         {
             var preStatus = Git(ctx, StatusTimeoutMs, false, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal");
             if (!preStatus.Succeeded)
@@ -649,13 +895,14 @@ namespace UnitySkills
                 return Result(preStatus.Cancelled ? LocalUpdateOutcome.Cancelled : LocalUpdateOutcome.GitCommandFailed, probe);
             }
 
-            var write = ExecuteWriteCommand(ctx, probe, target, targetRef);
+            var write = ExecuteWriteCommand(ctx, probe, target, targetRef, needsBranchAlign);
             var outcome = ClassifyWrite(ctx, probe, write, target, preStatus.StdOut, out var entries, out var count);
             var result = Result(outcome, probe);
             result.FromSha = headNow;
             result.ToSha = target;
             result.TargetLabel = targetLabel;
             result.TargetRef = targetRef;
+            result.NeedsBranchAlign = needsBranchAlign;
             result.Entries = entries;
             result.EntryCount = count;
             if (outcome == LocalUpdateOutcome.WouldOverwriteLocalFiles &&
@@ -669,13 +916,20 @@ namespace UnitySkills
             return result;
         }
 
-        private static ProcessRunResult ExecuteWriteCommand(GitSyncContext ctx, LocalUpdateProbe probe, string target, string targetRef)
+        private static ProcessRunResult ExecuteWriteCommand(GitSyncContext ctx, LocalUpdateProbe probe,
+            string target, string targetRef, bool needsBranchAlign)
         {
-            if (probe.Track == LocalUpdateTrack.GitTag)
+            if (probe.IsDetachedTag)
             {
                 return ctx.GitVersion != null && ctx.GitVersion < SwitchVersion
                     ? Git(ctx, WriteTimeoutMs, true, "checkout", "--detach", "--no-overwrite-ignore", "--quiet", targetRef)
                     : Git(ctx, WriteTimeoutMs, true, "switch", "--detach", "--no-overwrite-ignore", "--quiet", targetRef);
+            }
+            if (probe.IsBranchTag && needsBranchAlign)
+            {
+                return ctx.GitVersion != null && ctx.GitVersion < SwitchVersion
+                    ? Git(ctx, WriteTimeoutMs, true, "checkout", "-B", probe.Branch, "--no-overwrite-ignore", "--quiet", target)
+                    : Git(ctx, WriteTimeoutMs, true, "switch", "-C", probe.Branch, "--no-overwrite-ignore", "--quiet", target);
             }
             return Git(ctx, WriteTimeoutMs, true, "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", target);
         }
@@ -685,7 +939,7 @@ namespace UnitySkills
         /// If any line conflicts, rolls HEAD, index and working tree back byte-for-byte before returning WouldOverwriteLocalFiles.
         /// </summary>
         private static LocalUpdateResult ApplyWithThreeWayMerge(GitSyncContext ctx, LocalUpdateProbe probe,
-            string headNow, string target, string targetLabel, string targetRef, IReadOnlyList<string> overlappingEntries)
+            string headNow, string target, string targetLabel, string targetRef, bool needsBranchAlign, IReadOnlyList<string> overlappingEntries)
         {
             var stashPush = Git(ctx, WriteTimeoutMs, true,
                 "-c", "user.name=UnitySkills",
@@ -701,9 +955,9 @@ namespace UnitySkills
             }
 
             if (Contains(stashPush.StdOut, "No local changes to save"))
-                return RunDirectWrite(ctx, probe, headNow, target, targetLabel, targetRef);
+                return RunDirectWrite(ctx, probe, headNow, target, targetLabel, targetRef, needsBranchAlign);
 
-            var write = ExecuteWriteCommand(ctx, probe, target, targetRef);
+            var write = ExecuteWriteCommand(ctx, probe, target, targetRef, needsBranchAlign);
             if (!write.Succeeded && !HeadIs(ctx, target))
             {
                 RollbackToHeadWithPop(ctx, headNow);
@@ -713,6 +967,7 @@ namespace UnitySkills
                 failed.ToSha = target;
                 failed.TargetLabel = targetLabel;
                 failed.TargetRef = targetRef;
+                failed.NeedsBranchAlign = needsBranchAlign;
                 failed.Entries = entries;
                 failed.EntryCount = count;
                 return failed;
@@ -727,6 +982,7 @@ namespace UnitySkills
                 updated.ToSha = target;
                 updated.TargetLabel = targetLabel;
                 updated.TargetRef = targetRef;
+                updated.NeedsBranchAlign = needsBranchAlign;
                 return updated;
             }
 
@@ -742,6 +998,7 @@ namespace UnitySkills
             conflictResult.ToSha = target;
             conflictResult.TargetLabel = targetLabel;
             conflictResult.TargetRef = targetRef;
+            conflictResult.NeedsBranchAlign = needsBranchAlign;
             conflictResult.CanStashAndSync = true;
             conflictResult.Entries = conflicts.Take(MaxListedEntries).ToList();
             conflictResult.EntryCount = conflicts.Count;
@@ -1014,6 +1271,23 @@ namespace UnitySkills
             }
             if (TryParseLsRemote(run.StdOut, refName, out sha)) return null;
             LogFailure(ctx, "ls-remote (unexpected output)", run);
+            return LocalUpdateOutcome.GitCommandFailed;
+        }
+
+        private static LocalUpdateOutcome? LsRemoteReleaseTag(GitSyncContext ctx, string tagName, out ReleaseTag tag)
+        {
+            tag = null;
+            var refName = "refs/tags/" + tagName;
+            var run = Git(ctx, RemoteTimeoutMs, true, "ls-remote", "--exit-code", "--tags", ctx.OfficialUrl, refName, refName + "^{}");
+            if (run.Cancelled) return LocalUpdateOutcome.Cancelled;
+            if (!run.Succeeded)
+            {
+                LogFailure(ctx, "ls-remote --tags", run);
+                return run.ExitCode == 2 ? LocalUpdateOutcome.GitCommandFailed : LocalUpdateOutcome.NetworkError;
+            }
+            tag = ParseReleaseTags(run.StdOut).FirstOrDefault(t => string.Equals(t.Name, tagName, StringComparison.Ordinal));
+            if (tag != null && !string.IsNullOrEmpty(tag.Commit)) return null;
+            LogFailure(ctx, "ls-remote --tags (unexpected output)", run);
             return LocalUpdateOutcome.GitCommandFailed;
         }
 
@@ -1407,6 +1681,28 @@ namespace UnitySkills
             version = new Version(major, minor, patch);
             return true;
         }
+
+        internal static bool TryNormalizeReleaseTag(string versionOrTag, out string tagName, out Version version)
+        {
+            tagName = null;
+            version = null;
+            if (string.IsNullOrWhiteSpace(versionOrTag)) return false;
+            var trimmed = versionOrTag.Trim();
+            var candidate = trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                ? "v" + trimmed.Substring(1)
+                : "v" + trimmed;
+            if (!TryParseReleaseTag(candidate, out version)) return false;
+            tagName = candidate;
+            return true;
+        }
+
+        internal static bool IsStarHistoryCommitRecord(string author, string subject) =>
+            string.Equals(author, "github-actions[bot]", StringComparison.Ordinal) &&
+            string.Equals(subject, "docs: update Star History charts", StringComparison.Ordinal);
+
+        internal static bool IsStarHistoryPath(string path) =>
+            string.Equals(path, "docs/star-history-light.svg", StringComparison.Ordinal) ||
+            string.Equals(path, "docs/star-history-dark.svg", StringComparison.Ordinal);
 
         /// <summary>
         /// Paths git lists under "…would be overwritten by merge/checkout:" (tab-indented, repository-relative, UTF-8

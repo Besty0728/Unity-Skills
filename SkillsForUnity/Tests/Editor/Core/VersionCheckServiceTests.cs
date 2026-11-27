@@ -121,6 +121,44 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        [Test]
+        public void EvaluateManualCheck_CoversFailedUpToDateAndNewerRelease()
+        {
+            var release = new VersionCheckService.ReleaseInfo(
+                "2.5.0",
+                "v2.5.0",
+                "https://github.com/Besty0728/Unity-Skills/releases/tag/v2.5.0");
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(false, null, "2.4.3", out var newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.Failed));
+            Assert.That(newer, Is.Null);
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(false, release, "2.4.3", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.Failed));
+            Assert.That(newer, Is.Null);
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(true, null, "2.4.3", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.Failed));
+            Assert.That(newer, Is.Null);
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(true, release, "2.5.0", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.UpToDate));
+            Assert.That(newer, Is.Null);
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(true, release, "2.6.0", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.UpToDate));
+            Assert.That(newer, Is.Null);
+
+            Assert.That(VersionCheckService.EvaluateManualCheck(true, release, "2.4.3", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.UpdateAvailable));
+            Assert.That(newer, Is.EqualTo("2.5.0"));
+
+            var invalidRelease = new VersionCheckService.ReleaseInfo("invalid", "invalid", "https://example.invalid");
+            Assert.That(VersionCheckService.EvaluateManualCheck(true, invalidRelease, "2.4.3", out newer),
+                Is.EqualTo(VersionCheckService.CheckVerdict.UpToDate));
+            Assert.That(newer, Is.Null);
+        }
+
     }
 }
 

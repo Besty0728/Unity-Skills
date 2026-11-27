@@ -45,6 +45,11 @@ namespace UnitySkills
         {
             argument = null;
             if (probe == null) return null;
+            if (probe.Track == LocalUpdateTrack.GitTag)
+            {
+                argument = probe.Branch ?? probe.HeadLabel ?? LocalSelfUpdateService.ShortSha(probe.HeadSha);
+                return "update_mode_git_tag_fmt";
+            }
             if (probe.IsOfficialClone)
             {
                 argument = probe.HeadLabel ?? probe.Branch ?? LocalSelfUpdateService.ShortSha(probe.HeadSha);

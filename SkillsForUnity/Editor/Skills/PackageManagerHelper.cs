@@ -392,22 +392,36 @@ namespace UnitySkills
         /// <summary>
         /// Classifies a raw dependency spec from the manifest. Pure function so the mapping is
         /// testable without touching the file system: null/blank spec (embedded package) and
-        /// non-git specs (file:, local path) => Local; git URL with "#beta" => Beta; any other
-        /// git URL => Stable.
+        /// directory-based file: specs => Local; http(s) git URL with "#beta" => Beta; any other
+        /// http(s) git URL => Stable; tarballs (.tgz/.tar.gz), non-http git URLs (ssh/git), and
+        /// registry semvers => Unsupported.
         /// </summary>
         internal static SelfInstallKind ClassifySpec(string spec)
         {
             if (string.IsNullOrWhiteSpace(spec))
                 return SelfInstallKind.Local;
 
-            if (!spec.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                return SelfInstallKind.Local;
+            var trimmed = spec.Trim();
+            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                var hashIndex = trimmed.IndexOf('#');
+                var fragment = hashIndex >= 0 ? trimmed.Substring(hashIndex + 1).Trim() : string.Empty;
+                return string.Equals(fragment, "beta", StringComparison.OrdinalIgnoreCase)
+                    ? SelfInstallKind.Beta
+                    : SelfInstallKind.Stable;
+            }
 
-            var hashIndex = spec.IndexOf('#');
-            var fragment = hashIndex >= 0 ? spec.Substring(hashIndex + 1).Trim() : string.Empty;
-            return string.Equals(fragment, "beta", StringComparison.OrdinalIgnoreCase)
-                ? SelfInstallKind.Beta
-                : SelfInstallKind.Stable;
+            if (trimmed.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (trimmed.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+                    return SelfInstallKind.Unsupported;
+
+                return SelfInstallKind.Local;
+            }
+
+            return SelfInstallKind.Unsupported;
         }
 
         /// <summary>

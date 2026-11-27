@@ -86,6 +86,17 @@ namespace UnitySkills.Tests.Core
             Assert.That(PackageManagerHelper.ClassifySpec(spec), Is.EqualTo(PackageManagerHelper.SelfInstallKind.Local));
         }
 
+        [TestCase("file:../com.besty.unity-skills-3.0.3.tgz")]
+        [TestCase("file:/tmp/pkg.tar.gz")]
+        [TestCase("ssh://git@github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v3.0.3")]
+        [TestCase("git@github.com:Besty0728/Unity-Skills.git?path=/SkillsForUnity")]
+        [TestCase("git://github.com/Besty0728/Unity-Skills.git")]
+        [TestCase("3.0.3")]
+        public void ClassifySpec_TarballsSshAndRegistrySpecsAreUnsupported(string spec)
+        {
+            Assert.That(PackageManagerHelper.ClassifySpec(spec), Is.EqualTo(PackageManagerHelper.SelfInstallKind.Unsupported));
+        }
+
         [Test]
         public void ValidateStagedPackage_AcceptsMatchingPackage()
         {
@@ -371,6 +382,9 @@ namespace UnitySkills.Tests.Core
                     "{\"version\":\"2.8.5\",\"mode\":\"git\",\"branch\":\"main\",\"from\":\"1a2b3c4\",\"to\":\"5d6e7f8\"}")),
                 Is.EqualTo("Self-update via local Git sync (main 1a2b3c4..5d6e7f8, 2.8.5) completed successfully."));
             Assert.That(LocalSelfUpdateService.DescribeDoneMarker(JObject.Parse(
+                    "{\"version\":\"3.0.4\",\"mode\":\"git\",\"branch\":\"main\",\"tag\":\"v3.0.4\",\"from\":\"1a2b3c4\",\"to\":\"5d6e7f8\"}")),
+                Is.EqualTo("Self-update via local Git sync (main 1a2b3c4..v3.0.4, 3.0.4) completed successfully."));
+            Assert.That(LocalSelfUpdateService.DescribeDoneMarker(JObject.Parse(
                     "{\"version\":\"2.9.0\",\"mode\":\"git\",\"tag\":\"v2.9.0\",\"from\":\"v2.8.4\",\"to\":\"5d6e7f8\"}")),
                 Is.EqualTo("Self-update via local Git sync (v2.8.4..v2.9.0, 2.9.0) completed successfully."));
             Assert.That(LocalSelfUpdateService.DescribeDoneMarker(JObject.Parse(
@@ -436,6 +450,12 @@ namespace UnitySkills.Tests.Core
             Assert.That(SelfUpdateFeedback.ModeHintKey(new LocalUpdateProbe { Track = LocalUpdateTrack.GitSync, Branch = "beta", HeadLabel = "beta" }, out var arg),
                 Is.EqualTo("update_mode_git_fmt"));
             Assert.That(arg, Is.EqualTo("beta"));
+            Assert.That(SelfUpdateFeedback.ModeHintKey(new LocalUpdateProbe { Track = LocalUpdateTrack.GitTag, Branch = "main", HeadLabel = "main" }, out arg),
+                Is.EqualTo("update_mode_git_tag_fmt"));
+            Assert.That(arg, Is.EqualTo("main"));
+            Assert.That(SelfUpdateFeedback.ModeHintKey(new LocalUpdateProbe { Track = LocalUpdateTrack.GitTag, HeadLabel = "v3.0.3" }, out arg),
+                Is.EqualTo("update_mode_git_tag_fmt"));
+            Assert.That(arg, Is.EqualTo("v3.0.3"));
             Assert.That(SelfUpdateFeedback.ModeHintKey(new LocalUpdateProbe
                     { Track = LocalUpdateTrack.Blocked, Blocker = LocalUpdateOutcome.DetachedHead, HeadLabel = "1a2b3c4" }, out arg),
                 Is.EqualTo("update_mode_git_fmt"));

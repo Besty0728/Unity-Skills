@@ -260,6 +260,53 @@ namespace UnitySkills.Tests.Core
                 "Versions compare numerically, not as text.");
         }
 
+        [TestCase("3.0.4", true, "v3.0.4", 3, 0, 4)]
+        [TestCase("v3.0.4", true, "v3.0.4", 3, 0, 4)]
+        [TestCase("V1.2.3", true, "v1.2.3", 1, 2, 3)]
+        [TestCase(" 3.0.4 ", true, "v3.0.4", 3, 0, 4)]
+        [TestCase("v1.0.0-rc1", false, null, 0, 0, 0)]
+        [TestCase("3.0", false, null, 0, 0, 0)]
+        [TestCase("abc", false, null, 0, 0, 0)]
+        [TestCase("", false, null, 0, 0, 0)]
+        [TestCase(null, false, null, 0, 0, 0)]
+        public void TryNormalizeReleaseTag_ValidatesAndNormalizes(
+            string input, bool expectedOk, string expectedTag, int major, int minor, int patch)
+        {
+            var ok = LocalGitSync.TryNormalizeReleaseTag(input, out var tagName, out var version);
+            Assert.That(ok, Is.EqualTo(expectedOk));
+            if (expectedOk)
+            {
+                Assert.That(tagName, Is.EqualTo(expectedTag));
+                Assert.That(version, Is.EqualTo(new Version(major, minor, patch)));
+            }
+            else
+            {
+                Assert.That(tagName, Is.Null);
+                Assert.That(version, Is.Null);
+            }
+        }
+
+        [TestCase("github-actions[bot]", "docs: update Star History charts", true)]
+        [TestCase("other-bot", "docs: update Star History charts", false)]
+        [TestCase("github-actions[bot]", "docs: update README", false)]
+        [TestCase("", "docs: update Star History charts", false)]
+        [TestCase(null, null, false)]
+        public void IsStarHistoryCommitRecord_MatchesExactBotAndSubject(string author, string subject, bool expected)
+        {
+            Assert.That(LocalGitSync.IsStarHistoryCommitRecord(author, subject), Is.EqualTo(expected));
+        }
+
+        [TestCase("docs/star-history-light.svg", true)]
+        [TestCase("docs/star-history-dark.svg", true)]
+        [TestCase("docs/star-history.svg", false)]
+        [TestCase("SkillsForUnity/Editor/a.cs", false)]
+        [TestCase("", false)]
+        [TestCase(null, false)]
+        public void IsStarHistoryPath_MatchesOnlyStarHistorySvgs(string path, bool expected)
+        {
+            Assert.That(LocalGitSync.IsStarHistoryPath(path), Is.EqualTo(expected));
+        }
+
         [Test]
         public void ParseOverwrittenPaths_ReadsTheTabIndentedList()
         {
@@ -470,37 +517,228 @@ namespace UnitySkills.Tests.Core
         public void FastForwardsMainToOfficialHead()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(head));
             Assert.That(G(_clone, "rev-list", "--merges", "HEAD").StdOut.Trim(), Is.Empty, "Fast-forward only: no merge commit.");
             Assert.That(Status(_clone), Is.Empty);
-            Assert.That(G(_clone, "rev-parse", "refs/remotes/origin/main").StdOut.Trim(), Is.EqualTo(head),
-                "An official origin gets its tracking ref refreshed, like the user's own fetch would.");
             Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.EqualTo("b"));
             Assert.That(result.FromSha, Is.EqualTo(_rootCommit));
             Assert.That(result.ToSha, Is.EqualTo(head));
+            Assert.That(result.TargetLabel, Is.EqualTo("v1.1.0"));
         }
 
         [Test]
         public void CheckRemote_ReportsTheBranchTargetWithoutWriting()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+            var before = Snapshot(_clone);
+
+            var ctx = Context(ClonePackage, "1.1.0");
+            var result = LocalGitSync.CheckRemote(ctx, LocalGitSync.Probe(ctx));
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
+            Assert.That(result.TargetLabel, Is.EqualTo("v1.1.0"));
+            Assert.That(result.Probe.Track, Is.EqualTo(LocalUpdateTrack.GitTag));
+            Assert.That(result.Probe.IsBranchTag, Is.True);
+            Assert.That(Snapshot(_clone), Is.EqualTo(before), "Checking never writes.");
+            Assert.That(File.Exists(Path.Combine(_clone, ".git", "FETCH_HEAD")), Is.False, "Checking never fetches.");
+            Assert.That(G(_clone, "rev-parse", "refs/remotes/origin/main").StdOut.Trim(), Is.EqualTo(_rootCommit));
+        }
+
+        [Test]
+        public void Beta_CheckRemote_ReportsTheBranchTargetWithoutWriting()
+        {
+            BuildOfficial();
+            G(_clone, "checkout", "-q", "-b", "beta", "origin/beta");
+            var head = CommitUpstream("beta", "SkillsForUnity/Editor/b.cs", "b");
             var before = Snapshot(_clone);
 
             var ctx = Context(ClonePackage);
             var result = LocalGitSync.CheckRemote(ctx, LocalGitSync.Probe(ctx));
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
-            Assert.That(result.TargetLabel, Is.EqualTo("main @ " + head.Substring(0, 7)));
+            Assert.That(result.TargetLabel, Is.EqualTo("beta @ " + head.Substring(0, 7)));
             Assert.That(result.Probe.Track, Is.EqualTo(LocalUpdateTrack.GitSync));
             Assert.That(Snapshot(_clone), Is.EqualTo(before), "Checking never writes.");
             Assert.That(File.Exists(Path.Combine(_clone, ".git", "FETCH_HEAD")), Is.False, "Checking never fetches.");
-            Assert.That(G(_clone, "rev-parse", "refs/remotes/origin/main").StdOut.Trim(), Is.EqualTo(_rootCommit));
+            Assert.That(G(_clone, "rev-parse", "refs/remotes/origin/beta").StdOut.Trim(), Is.EqualTo(_rootCommit));
+        }
+
+        [Test]
+        public void Main_CheckRemote_WithoutTargetVersion_ReturnsReleaseCheckRequired()
+        {
+            BuildOfficial();
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+
+            var ctx = Context(ClonePackage);
+            var probe = LocalGitSync.Probe(ctx);
+            Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.GitTag));
+            Assert.That(probe.IsBranchTag, Is.True);
+            Assert.That(probe.IsDetachedTag, Is.False);
+
+            var result = LocalGitSync.CheckRemote(ctx, probe);
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.ReleaseCheckRequired));
+        }
+
+        [Test]
+        public void Main_CheckRemote_SameVersionWithDocsCommits_ReturnsAlreadyUpToDate()
+        {
+            BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
+            CommitStarHistoryUpstream("main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            var ctx = Context(ClonePackage, targetVersion: "1.0.0", currentVersion: "1.0.0");
+            Assert.That(LocalGitSync.CheckRemote(ctx, LocalGitSync.Probe(ctx)).Outcome,
+                Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate));
+
+            // Even without CurrentVersion, HEAD is ahead of v1.0.0 (tag commit is an ancestor of HEAD).
+            var ctxNoCurrent = Context(ClonePackage, targetVersion: "1.0.0");
+            Assert.That(LocalGitSync.CheckRemote(ctxNoCurrent, LocalGitSync.Probe(ctxNoCurrent)).Outcome,
+                Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate));
+        }
+
+        [Test]
+        public void Main_UpdatesToExactReleaseTag_IgnoringNewerUntaggedMainCommits()
+        {
+            BuildOfficial();
+            var release = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+            CommitUpstream("main", "SkillsForUnity/Editor/unreleased.cs", "unreleased");
+
+            var result = Update(ClonePackage, "1.1.0");
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(release));
+            Assert.That(result.TargetLabel, Is.EqualTo("v1.1.0"));
+            Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.True);
+            Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "unreleased.cs")), Is.False);
+        }
+
+        [Test]
+        public void Main_StarHistoryDivergence_WithTrackingRef_SafeAlignsToNewTag()
+        {
+            BuildOfficial();
+            CommitStarHistoryUpstream("main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            var release = CommitSiblingReleaseTag("v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+
+            var ctx = Context(ClonePackage, "1.1.0");
+            var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
+            Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
+            Assert.That(prepared.NeedsBranchAlign, Is.True);
+
+            var applied = LocalGitSync.Apply(ctx, prepared);
+            Assert.That(applied.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(release));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.EqualTo("b"));
+            Assert.That(File.Exists(Path.Combine(_clone, "docs", "star-history-light.svg")), Is.False);
+        }
+
+        [Test]
+        public void Main_OfficialTrackingRefDocsDivergence_SafeAlignsToNewTag()
+        {
+            BuildOfficial();
+            CommitUpstream("main", "docs/GUIDE.md", "official docs");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            var release = CommitSiblingReleaseTag("v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+
+            var ctx = Context(ClonePackage, "1.1.0");
+            var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
+            Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
+            Assert.That(prepared.NeedsBranchAlign, Is.True);
+
+            var applied = LocalGitSync.Apply(ctx, prepared);
+            Assert.That(applied.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(release));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Main_StarHistoryDivergence_WithoutTrackingRef_SafeAlignsToNewTag()
+        {
+            BuildOfficial();
+            CommitStarHistoryUpstream("main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+            G(_clone, "remote", "remove", "origin");
+
+            var release = CommitSiblingReleaseTag("v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+
+            var ctx = Context(ClonePackage, "1.1.0");
+            var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
+            Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
+            Assert.That(prepared.NeedsBranchAlign, Is.True);
+
+            var applied = LocalGitSync.Apply(ctx, prepared);
+            Assert.That(applied.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(release));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Main_UserLocalCommitDivergence_RefusesWithDiverged()
+        {
+            BuildOfficial();
+            Commit(_clone, "SkillsForUnity/Editor/mine.cs", "mine");
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/theirs.cs", "theirs");
+            var before = Snapshot(_clone);
+
+            Assert.That(Update(ClonePackage, "1.1.0").Outcome, Is.EqualTo(LocalUpdateOutcome.Diverged));
+            Assert.That(Snapshot(_clone), Is.EqualTo(before), "No merge commit, no rebase, nothing.");
+        }
+
+        [Test]
+        public void Main_StarHistoryDivergence_WithOverlappingEdit_RollsBackCleanly()
+        {
+            BuildOfficial();
+            var starHead = CommitStarHistoryUpstream("main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            CommitSiblingReleaseTag("v1.1.0", "SkillsForUnity/Editor/a.cs", "upstream edit");
+            File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my edit");
+            var before = Snapshot(_clone);
+
+            var result = Update(ClonePackage, "1.1.0");
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.CanStashAndSync, Is.True);
+            Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/a.cs"));
+            Assert.That(Head(_clone), Is.EqualTo(starHead));
+            Assert.That(Snapshot(_clone), Is.EqualTo(before));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs")), Is.EqualTo("my edit"));
+            Assert.That(G(_clone, "stash", "list").StdOut.Trim(), Is.Empty);
+        }
+
+        [Test]
+        public void Main_StarHistoryDivergence_WithIgnoredFileCollision_Refuses()
+        {
+            BuildOfficial();
+            var starHead = CommitStarHistoryUpstream("main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            G(_seed, "checkout", "-q", "-b", "rel", _rootCommit);
+            WriteFile(_seed, "SkillsForUnity/Editor/x.asset", "upstream");
+            G(_seed, "add", "-f", "SkillsForUnity/Editor/x.asset");
+            G(_seed, "commit", "-q", "-m", "force-add ignored path");
+            G(_seed, "tag", "v1.1.0");
+            G(_seed, "push", "-q", "origin", "v1.1.0");
+            G(_seed, "checkout", "-q", "main");
+
+            WriteFile(_clone, "SkillsForUnity/Editor/x.asset", "precious local data");
+
+            var result = Update(ClonePackage, "1.1.0");
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
+            Assert.That(result.Entries, Is.EqualTo(new[] { "SkillsForUnity/Editor/x.asset" }));
+            Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "x.asset")), Is.EqualTo("precious local data"));
+            Assert.That(Head(_clone), Is.EqualTo(starHead));
         }
 
         [Test]
@@ -522,9 +760,11 @@ namespace UnitySkills.Tests.Core
         public void AlreadyUpToDate_NoChange()
         {
             BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
             var before = Snapshot(_clone);
 
-            Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate));
+            Assert.That(Update(ClonePackage, "1.0.0").Outcome, Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate));
             Assert.That(Snapshot(_clone), Is.EqualTo(before));
         }
 
@@ -532,6 +772,7 @@ namespace UnitySkills.Tests.Core
         public void LocalAhead_ReportsUpToDate_NoChange()
         {
             BuildOfficial();
+            G(_clone, "checkout", "-q", "-b", "beta", "origin/beta");
             Commit(_clone, "SkillsForUnity/Editor/mine.cs", "mine");
             var before = Snapshot(_clone);
 
@@ -545,8 +786,9 @@ namespace UnitySkills.Tests.Core
         public void Diverged_Refuses_NothingChanged()
         {
             BuildOfficial();
+            G(_clone, "checkout", "-q", "-b", "beta", "origin/beta");
             Commit(_clone, "SkillsForUnity/Editor/mine.cs", "mine");
-            CommitUpstream("main", "SkillsForUnity/Editor/theirs.cs", "theirs");
+            CommitUpstream("beta", "SkillsForUnity/Editor/theirs.cs", "theirs");
             var before = Snapshot(_clone);
 
             Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.Diverged));
@@ -554,13 +796,118 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void ParseCherryAddedCommits_SeparatesUnmatchedFromMatched()
+        {
+            var sha1 = new string('1', 40);
+            var sha2 = new string('2', 40);
+            var sha3 = new string('3', 40);
+            var output = $"- {sha1}\n+ {sha2}\n- {sha3}\n";
+
+            var added = LocalGitSync.ParseCherryAddedCommits(output, out var totalCommits);
+
+            Assert.That(totalCommits, Is.EqualTo(3));
+            Assert.That(added, Is.EqualTo(new[] { sha2 }));
+        }
+
+        [Test]
+        public void Main_PostFetchStarHistoryAndCherryPickedDocsDivergence_SafeAlignsToNewTag()
+        {
+            BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
+            G(_clone, "fetch", "-q", "--tags", "origin");
+
+            // Main receives a cherry-picked docs commit and a Star History bot commit after v1.0.0.
+            WriteFile(_seed, "docs/note.md", "sponsor note\n");
+            G(_seed, "add", "docs/note.md");
+            G(_seed, "commit", "-q", "-m", "docs: add sponsor note");
+            WriteFile(_seed, "docs/star-history-light.svg", "<svg>old</svg>");
+            G(_seed, "add", "docs/star-history-light.svg");
+            G(_seed, "commit", "-q", "--author=github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+                "-m", "docs: update Star History charts");
+            G(_seed, "push", "-q", "origin", "main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+
+            // Beta (from v1.0.0) gets the equivalent docs commit plus v1.1.0, then replaces main (dropping Star History).
+            G(_seed, "checkout", "-q", "beta");
+            WriteFile(_seed, "docs/note.md", "sponsor note\n");
+            G(_seed, "add", "docs/note.md");
+            G(_seed, "commit", "-q", "-m", "docs: add sponsor note");
+            WriteFile(_seed, "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"1.1.0\"}");
+            WriteFile(_seed, "SkillsForUnity/Editor/v110.cs", "v110");
+            G(_seed, "add", "-A");
+            G(_seed, "commit", "-q", "-m", "release 1.1.0");
+            var release110 = Head(_seed);
+            G(_seed, "tag", "-a", "v1.1.0", "-m", "v1.1.0");
+            G(_seed, "branch", "-f", "main", release110);
+            G(_seed, "checkout", "-q", "main");
+            WriteFile(_seed, "docs/star-history-light.svg", "<svg>new</svg>");
+            G(_seed, "add", "docs/star-history-light.svg");
+            G(_seed, "commit", "-q", "--author=github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+                "-m", "docs: update Star History charts");
+            G(_seed, "push", "-q", "--force", "origin", "main", "beta");
+            G(_seed, "push", "-q", "origin", "v1.1.0");
+
+            // Simulate an IDE auto-fetch overwriting origin/main before the user clicks Update.
+            G(_clone, "fetch", "-q", "origin", "main");
+
+            var ctx = Context(ClonePackage, "1.1.0");
+            ctx.CurrentVersion = "1.0.0";
+            var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
+            Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
+            Assert.That(prepared.NeedsBranchAlign, Is.True);
+
+            var applied = LocalGitSync.Apply(ctx, prepared);
+            Assert.That(applied.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(applied.NeedsBranchAlign, Is.True);
+            Assert.That(Head(_clone), Is.EqualTo(release110));
+            Assert.That(G(_clone, "symbolic-ref", "-q", "--short", "HEAD").StdOut.Trim(), Is.EqualTo("main"));
+            Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "v110.cs")), Is.True);
+        }
+
+        [Test]
+        public void Main_PostFetchCherryPickedDocsPlusUserCommit_RefusesWithDiverged()
+        {
+            BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
+
+            WriteFile(_seed, "docs/note.md", "sponsor note\n");
+            G(_seed, "add", "docs/note.md");
+            G(_seed, "commit", "-q", "-m", "docs: add sponsor note");
+            G(_seed, "push", "-q", "origin", "main");
+            G(_clone, "pull", "-q", "--ff-only", "origin", "main");
+            Commit(_clone, "SkillsForUnity/Editor/mine.cs", "mine");
+
+            G(_seed, "checkout", "-q", "beta");
+            WriteFile(_seed, "docs/note.md", "sponsor note\n");
+            G(_seed, "add", "docs/note.md");
+            G(_seed, "commit", "-q", "-m", "docs: add sponsor note");
+            WriteFile(_seed, "SkillsForUnity/Editor/v110.cs", "v110");
+            G(_seed, "add", "-A");
+            G(_seed, "commit", "-q", "-m", "release 1.1.0");
+            G(_seed, "tag", "-a", "v1.1.0", "-m", "v1.1.0");
+            G(_seed, "branch", "-f", "main", Head(_seed));
+            G(_seed, "checkout", "-q", "main");
+            G(_seed, "push", "-q", "--force", "origin", "main", "beta");
+            G(_seed, "push", "-q", "origin", "v1.1.0");
+
+            G(_clone, "fetch", "-q", "origin", "main");
+            var before = Snapshot(_clone);
+
+            var result = Update(ClonePackage, "1.1.0");
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Diverged));
+            Assert.That(Snapshot(_clone), Is.EqualTo(before));
+        }
+
+        [Test]
         public void NonOverlappingTrackedEdit_UpdatesAndPreservesLocalEdit()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my edit");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(head));
@@ -572,11 +919,11 @@ namespace UnitySkills.Tests.Core
         public void NonOverlappingStagedChange_UpdatesAndPreservesStagedEdit()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
             File.WriteAllText(Path.Combine(_clone, "README.md"), "staged");
             G(_clone, "add", "README.md");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(head));
@@ -588,10 +935,10 @@ namespace UnitySkills.Tests.Core
         public void NonOverlappingUntrackedFile_UpdatesAndPreservesFile()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(head));
@@ -602,11 +949,11 @@ namespace UnitySkills.Tests.Core
         public void NonOverlappingUntrackedHiddenByConfig_UpdatesAndPreservesFile()
         {
             BuildOfficial();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
             G(_clone, "config", "status.showUntrackedFiles", "no");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "untracked");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(head));
@@ -622,11 +969,11 @@ namespace UnitySkills.Tests.Core
             G(_clone, "fetch", "-q", "origin", "main");
             G(_clone, "merge", "--ff-only", "-q", initial);
 
-            var upstream = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
+            var upstream = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"), "line1_user\nline2\nline3\nline4\nline5\n");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Custom.cs"), "custom");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(upstream));
@@ -644,11 +991,11 @@ namespace UnitySkills.Tests.Core
             G(_clone, "fetch", "-q", "origin", "main");
             G(_clone, "merge", "--ff-only", "-q", initial);
 
-            var upstream = CommitUpstream("main", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
+            var upstream = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/multi.cs", "line1\nline2\nline3\nline4\nline5_upstream\n");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "multi.cs"), "line1_staged\nline2\nline3\nline4\nline5\n");
             G(_clone, "add", "SkillsForUnity/Editor/multi.cs");
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(upstream));
@@ -662,11 +1009,11 @@ namespace UnitySkills.Tests.Core
         public void OverlappingTrackedEdit_RefusesWithWouldOverwrite_PreservesLocalEdit()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/a.cs", "upstream edit");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my edit");
             var before = Snapshot(_clone);
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(result.IsLegacyArchiveClone, Is.False);
@@ -682,12 +1029,12 @@ namespace UnitySkills.Tests.Core
         public void OverlappingStagedEdit_RefusesWithWouldOverwrite_PreservesStagedEdit()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/a.cs", "upstream edit");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "my staged edit");
             G(_clone, "add", "SkillsForUnity/Editor/a.cs");
             var before = Snapshot(_clone);
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(result.CanStashAndSync, Is.True);
@@ -700,11 +1047,11 @@ namespace UnitySkills.Tests.Core
         public void OverlappingUntrackedFile_RefusesWithWouldOverwrite_PreservesLocalFile()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/Scratch.cs", "upstream scratch");
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/Scratch.cs", "upstream scratch");
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "Scratch.cs"), "local scratch");
             var before = Snapshot(_clone);
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(result.Entries, Has.Some.EndsWith("SkillsForUnity/Editor/Scratch.cs"));
@@ -715,11 +1062,11 @@ namespace UnitySkills.Tests.Core
         public void LegacyArchiveOverwrittenClone_DetectedAndStashAndApply_SucceedsAndKeepsStash()
         {
             BuildOfficial();
-            var upstream = CommitUpstream("main", "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"2.0.0\"}");
+            var upstream = CommitAndTagUpstream("main", "v2.0.0", "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"2.0.0\"}");
             WriteFile(_clone, "SkillsForUnity/package.json", "{\"name\":\"com.besty.unity-skills\",\"version\":\"1.5.0\"}");
             WriteFile(_clone, "SkillsForUnity/Editor/CustomNote.txt", "keep in stash");
 
-            var ctx = Context(ClonePackage);
+            var ctx = Context(ClonePackage, "2.0.0");
             var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
 
             Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
@@ -744,11 +1091,12 @@ namespace UnitySkills.Tests.Core
             WriteFile(_seed, "SkillsForUnity/Editor/x.asset", "upstream");
             G(_seed, "add", "-f", "SkillsForUnity/Editor/x.asset");
             G(_seed, "commit", "-q", "-m", "force-add ignored path");
-            G(_seed, "push", "-q", "origin", "main");
+            G(_seed, "tag", "v1.1.0");
+            G(_seed, "push", "-q", "origin", "main", "v1.1.0");
             WriteFile(_clone, "SkillsForUnity/Editor/x.asset", "precious local data");
             var headBefore = Head(_clone);
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(result.Entries, Is.EqualTo(new[] { "SkillsForUnity/Editor/x.asset" }));
@@ -805,14 +1153,14 @@ namespace UnitySkills.Tests.Core
             CommitUpstream("main", "SkillsForUnity/Editor/unreleased.cs", "c");
             G(_seed, "push", "-q", "origin", "v1.1.0", "v1.2.0-rc1");
 
-            var ctx = Context(ClonePackage);
+            var ctx = Context(ClonePackage, "1.1.0");
             var check = LocalGitSync.CheckRemote(ctx, LocalGitSync.Probe(ctx));
             Assert.That(check.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
             Assert.That(check.TargetLabel, Is.EqualTo("v1.1.0"), "Only vX.Y.Z tags count as releases.");
             Assert.That(check.Probe.Track, Is.EqualTo(LocalUpdateTrack.GitTag));
             Assert.That(check.Probe.HeadLabel, Is.EqualTo("v1.0.0"));
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(_clone), Is.EqualTo(release), "Annotated tags resolve to their commit.");
@@ -820,6 +1168,46 @@ namespace UnitySkills.Tests.Core
             Assert.That(G(_clone, "rev-parse", "refs/tags/v1.1.0^{commit}").StdOut.Trim(), Is.EqualTo(release));
             Assert.That(Status(_clone), Is.Empty);
             Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "unreleased.cs")), Is.False);
+        }
+
+        [Test]
+        public void DetachedAtReleaseTag_CheckRemote_WithoutTargetVersion_ReturnsReleaseCheckRequired()
+        {
+            BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
+            G(_clone, "fetch", "-q", "--tags", "origin");
+            G(_clone, "checkout", "-q", "--detach", "v1.0.0");
+
+            var ctx = Context(ClonePackage);
+            var probe = LocalGitSync.Probe(ctx);
+            Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.Blocked));
+            Assert.That(probe.HeadAtReleaseTag, Is.True);
+
+            var check = LocalGitSync.CheckRemote(ctx, probe);
+            Assert.That(check.Outcome, Is.EqualTo(LocalUpdateOutcome.ReleaseCheckRequired));
+            Assert.That(check.Probe.Track, Is.EqualTo(LocalUpdateTrack.GitTag));
+            Assert.That(check.Probe.IsDetachedTag, Is.True);
+        }
+
+        [Test]
+        public void DetachedAtReleaseTag_UpdatesToExactTargetVersion_NotUnreleasedHigherTag()
+        {
+            BuildOfficial();
+            G(_seed, "tag", "v1.0.0");
+            G(_seed, "push", "-q", "origin", "v1.0.0");
+            G(_clone, "fetch", "-q", "--tags", "origin");
+            G(_clone, "checkout", "-q", "--detach", "v1.0.0");
+
+            var release110 = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+            CommitAndTagUpstream("main", "v1.2.0", "SkillsForUnity/Editor/c.cs", "c");
+
+            var result = Update(ClonePackage, "1.1.0");
+
+            Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(Head(_clone), Is.EqualTo(release110));
+            Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "b.cs")), Is.True);
+            Assert.That(File.Exists(Path.Combine(_clone, "SkillsForUnity", "Editor", "c.cs")), Is.False);
         }
 
         [Test]
@@ -832,7 +1220,7 @@ namespace UnitySkills.Tests.Core
             G(_clone, "checkout", "-q", "--detach", "v1.0.0");
             CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
 
-            Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate),
+            Assert.That(Update(ClonePackage, "1.0.0").Outcome, Is.EqualTo(LocalUpdateOutcome.AlreadyUpToDate),
                 "Newer branch commits are not a release; a pinned tag only moves to a newer tag.");
         }
 
@@ -852,7 +1240,7 @@ namespace UnitySkills.Tests.Core
             WriteFile(_clone, "SkillsForUnity/Editor/x.asset", "precious local data");
             var headBefore = Head(_clone);
 
-            var result = Update(ClonePackage);
+            var result = Update(ClonePackage, "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.WouldOverwriteLocalFiles));
             Assert.That(File.ReadAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "x.asset")), Is.EqualTo("precious local data"));
@@ -876,9 +1264,9 @@ namespace UnitySkills.Tests.Core
             G(forkClone, "remote", "set-url", "origin", fork);
             G(forkClone, "fetch", "-q", "origin");
             var trackingBefore = G(forkClone, "rev-parse", "refs/remotes/origin/main").StdOut.Trim();
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
 
-            var result = Update(Path.Combine(forkClone, "SkillsForUnity"));
+            var result = Update(Path.Combine(forkClone, "SkillsForUnity"), "1.1.0");
 
             Assert.That(result.Outcome, Is.EqualTo(LocalUpdateOutcome.Updated), "Identity comes from the official root commit.");
             Assert.That(Head(forkClone), Is.EqualTo(head));
@@ -892,11 +1280,12 @@ namespace UnitySkills.Tests.Core
         public void RenamedOfficialRemote_UpdatesItsTrackingRef()
         {
             BuildOfficial();
+            G(_clone, "checkout", "-q", "-b", "beta", "origin/beta");
             G(_clone, "remote", "rename", "origin", "upstream");
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitUpstream("beta", "SkillsForUnity/Editor/b.cs", "b");
 
             Assert.That(Update(ClonePackage).Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
-            Assert.That(G(_clone, "rev-parse", "refs/remotes/upstream/main").StdOut.Trim(), Is.EqualTo(head));
+            Assert.That(G(_clone, "rev-parse", "refs/remotes/upstream/beta").StdOut.Trim(), Is.EqualTo(head));
         }
 
         [Test]
@@ -924,12 +1313,12 @@ namespace UnitySkills.Tests.Core
             G(_root, "clone", "-q", "--depth", "1", new Uri(_official).AbsoluteUri, shallow);
             G(shallow, "config", "core.hooksPath", _hooks);
             G(shallow, "remote", "remove", "origin");
-            var head = CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
+            var head = CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
 
             var probe = LocalGitSync.Probe(Context(Path.Combine(shallow, "SkillsForUnity")));
             Assert.That(probe.IsShallow, Is.True);
-            Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.GitSync), "Shallow clones lack the root commit but are accepted.");
-            Assert.That(Update(Path.Combine(shallow, "SkillsForUnity")).Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
+            Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.GitTag), "Shallow clones lack the root commit but are accepted.");
+            Assert.That(Update(Path.Combine(shallow, "SkillsForUnity"), "1.1.0").Outcome, Is.EqualTo(LocalUpdateOutcome.Updated));
             Assert.That(Head(shallow), Is.EqualTo(head));
         }
 
@@ -937,8 +1326,8 @@ namespace UnitySkills.Tests.Core
         public void ApplyRechecks_BranchSwitchedAfterPrepare_MergesNothing()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/b.cs", "b");
-            var ctx = Context(ClonePackage);
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/b.cs", "b");
+            var ctx = Context(ClonePackage, "1.1.0");
             var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
             Assert.That(prepared.Outcome, Is.EqualTo(LocalUpdateOutcome.UpdateAvailable));
             G(_clone, "checkout", "-q", "-b", "feature/y");
@@ -952,8 +1341,8 @@ namespace UnitySkills.Tests.Core
         public void ApplyRechecks_EditedAfterPrepare_Refuses()
         {
             BuildOfficial();
-            CommitUpstream("main", "SkillsForUnity/Editor/a.cs", "upstream edit");
-            var ctx = Context(ClonePackage);
+            CommitAndTagUpstream("main", "v1.1.0", "SkillsForUnity/Editor/a.cs", "upstream edit");
+            var ctx = Context(ClonePackage, "1.1.0");
             var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
             File.WriteAllText(Path.Combine(_clone, "SkillsForUnity", "Editor", "a.cs"), "edited meanwhile");
 
@@ -1046,14 +1435,14 @@ namespace UnitySkills.Tests.Core
 
         private string ClonePackage => Path.Combine(_clone, "SkillsForUnity");
 
-        private LocalUpdateResult Update(string packageDir)
+        private LocalUpdateResult Update(string packageDir, string targetVersion = null, string currentVersion = null)
         {
-            var ctx = Context(packageDir);
+            var ctx = Context(packageDir, targetVersion, currentVersion);
             var prepared = LocalGitSync.Prepare(ctx, LocalGitSync.Probe(ctx));
             return prepared.Outcome == LocalUpdateOutcome.UpdateAvailable ? LocalGitSync.Apply(ctx, prepared) : prepared;
         }
 
-        private GitSyncContext Context(string packageDir) => new GitSyncContext
+        private GitSyncContext Context(string packageDir, string targetVersion = null, string currentVersion = null) => new GitSyncContext
         {
             GitPath = _git,
             GitVersion = _gitVersion,
@@ -1061,6 +1450,8 @@ namespace UnitySkills.Tests.Core
             OfficialUrl = _official,
             OfficialRootCommit = _rootCommit ?? new string('0', 40),
             MarkerCeiling = _root,
+            TargetVersion = targetVersion,
+            CurrentVersion = currentVersion,
         };
 
         private GitSyncContext NoGitContext(string packageDir) => new GitSyncContext
@@ -1114,6 +1505,39 @@ namespace UnitySkills.Tests.Core
             G(_seed, "checkout", "-q", branch);
             var sha = Commit(_seed, relativePath, content);
             G(_seed, "push", "-q", "origin", branch);
+            G(_seed, "checkout", "-q", "main");
+            return sha;
+        }
+
+        private string CommitAndTagUpstream(string branch, string tagName, string relativePath, string content)
+        {
+            G(_seed, "checkout", "-q", branch);
+            var sha = Commit(_seed, relativePath, content);
+            G(_seed, "tag", tagName);
+            G(_seed, "push", "-q", "origin", branch, tagName);
+            G(_seed, "checkout", "-q", "main");
+            return sha;
+        }
+
+        private string CommitStarHistoryUpstream(string branch)
+        {
+            G(_seed, "checkout", "-q", branch);
+            WriteFile(_seed, "docs/star-history-light.svg", "<svg>light</svg>");
+            G(_seed, "add", "-A");
+            G(_seed, "commit", "-q", "--author=github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+                "-m", "docs: update Star History charts");
+            var sha = Head(_seed);
+            G(_seed, "push", "-q", "origin", branch);
+            G(_seed, "checkout", "-q", "main");
+            return sha;
+        }
+
+        private string CommitSiblingReleaseTag(string tagName, string relativePath, string content)
+        {
+            G(_seed, "checkout", "-q", "-B", "rel", _rootCommit);
+            var sha = Commit(_seed, relativePath, content);
+            G(_seed, "tag", tagName);
+            G(_seed, "push", "-q", "origin", tagName);
             G(_seed, "checkout", "-q", "main");
             return sha;
         }
