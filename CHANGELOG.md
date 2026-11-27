@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [3.0.4] - 2026-11-27
+
+> **非 UPM 安装统一按正式 Release Tag（`vX.Y.Z`）检测与更新，修复手动检查失败误报并收紧本地安装包识别边界** —— 本地官方 Git 克隆在 `main` 分支及游离正式发布标签上改为严格依据 GitHub `releases/latest` 的 `vX.Y.Z` 标签检测与升级（不再跟踪 `main` 日常文档或 Star History 机器人提交），`beta` 分支克隆保留按提交快进同步；当 `main` 因官方同步或 Star History 图表产生无用户本地提交的分叉时安全对齐到目标标签并保留 3-way 合并与回滚保护，有用户自建提交时仍拒绝并提示 `Diverged`。同时修复手动检查更新在网络/限流失败时误报「已是最新版本」的问题，并将 `.tgz`/`.tar.gz`、非 HTTP Git URL 与版本号依赖归类为 `Unsupported`。873 个技能不变。
+
+### Changed
+
+- **非 UPM 本地 Git 克隆按 Release Tag 更新** — `LocalGitSync` 将 `main` 分支与游离官方标签统一归入 `LocalUpdateTrack.GitTag`，仅以 GitHub `releases/latest` 作为权威目标版本源；同版本下的文档或 Star History 提交不再触发更新提示；`beta` 分支克隆继续使用 `GitSync` 按分支提交快进。`SelfUpdateFeedback`、设置抽屉与三语字典（`en.json` / `zh-CN.json` / `ru.json`）同步区分按标签更新与 `beta` 提交同步提示。
+- **收紧 `PackageManagerHelper.ClassifySpec` 本地包归类边界** — 仅将无来源的嵌入式包与目录型 `file:` 依赖识别为 `Local`；本地 `.tgz` / `.tar.gz` 压缩包、`ssh://` / `git://` / `git@` 等非 HTTP Git 地址以及 registry 版本号统一归类为 `Unsupported`，避免露出无效的一键更新按钮。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.4`。
+
+### Fixed
+
+- **本地 `main` 克隆跨 Star History 与官方同步分叉安全对齐** — `LocalGitSync.EvaluateMainBranchTransition` 与 `IsStarHistoryOnlyDivergence` 在 `main` 无法快进时，通过 `TrackingRef` 祖先校验及 `git cherry` + Star History 提交/路径校验识别仅含官方同步或 `github-actions[bot]` 图表提交的分叉，使用 `git switch -C`（旧版 Git 回退 `git checkout -B`）配合 `--no-overwrite-ignore` 留在 `main` 分支对齐目标标签，并在存在用户本地提交时保持拒绝。
+- **手动检查更新失败不再误报「已是最新版本」** — `VersionCheckService` 新增 `LastCheckSucceeded` 与 `EvaluateManualCheck`，设置抽屉在 `releases/latest` 请求失败或被取消时明确展示网络错误原因。
+
+### Docs
+
+- **README 赞助商展示区优化** — 补充 Infistar 赞助商信息并将赞助商横幅与详情表格收敛为可折叠展示（`README.md`、`README_CN.md`）。
+
 ## [3.0.3] - 2026-11-21
 
 > **取消启动时无条件注入 `testables`、增强 `test_run` 测试过滤与自测隔离、修复新版 Antigravity 进程归因并默认关闭评测界面** —— 遵循 UPM 惯例不再自动修改宿主工程 `Packages/manifest.json`，并在 SettingsDrawer Runtime 区提供按需开关；`test_run` 支持 `assemblyNames`、`categoryNames` 与 `excludeSelfTests`（默认 `true`），精准过滤实际含测试的程序集；`ClientProcessResolver` 支持新版无平台后缀 `language_server.exe` 穿透及 `--override_ide_name` 兜底；顶部评测标签页调整为默认隐藏，可随时在设置中重新打开。873 个技能不变。
